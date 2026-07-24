@@ -10,6 +10,8 @@ jobs:
       WIREGUARD_PRIVATE_KEY: placeholder
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: docker compose config
         run: docker compose config --quiet
       - name: Validate manifest against the contract
