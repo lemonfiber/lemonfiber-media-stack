@@ -13,6 +13,11 @@
   open-source, all pinned.
 </p>
 
+<p align="center">
+  <a href="https://github.com/lemonfiber/media-stack/actions/workflows/validate.yml"><img alt="validate" src="https://github.com/lemonfiber/media-stack/actions/workflows/validate.yml/badge.svg"></a>
+  <a href="https://scorecard.dev/viewer/?uri=github.com/lemonfiber/media-stack"><img alt="OpenSSF Scorecard" src="https://api.scorecard.dev/projects/github.com/lemonfiber/media-stack/badge"></a>
+</p>
+
 ---
 
 > **Status: scaffold.** The manifest (`stack.toml`) is complete; `compose.yml` is
