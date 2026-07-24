@@ -1,0 +1,8 @@
+# Local hooks mirroring CI (Q-R57).
+pre-commit:
+  commands:
+    manifest:
+      glob: "stack.toml"
+      run: python3 scripts/validate_manifest.py
+    typos:
+      run: typos

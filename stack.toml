@@ -1,0 +1,429 @@
+# The stack manifest — the contract between media-stack and cli.
+# Schema: https://github.com/lemonfiber/spec/blob/main/20-architecture/contracts/stack-manifest.md
+# Every field here is consumed by lemonfiber; adding a service is a data change.
+
+schema_version  = 1
+stack_version   = "0.1.0"
+min_cli_version = "0.1.0"
+
+# ─────────────────────────── Profiles (one per service's role) ───────────────
+[[profile]]
+id = "search"
+name = "Indexers"
+description = "Finding things"
+
+[[profile]]
+id = "usenet"
+name = "Usenet"
+description = "Usenet downloading"
+
+[[profile]]
+id = "torrent"
+name = "Torrents"
+description = "Torrent downloading, VPN-isolated"
+
+[[profile]]
+id = "tv"
+name = "Television"
+description = "TV automation"
+
+[[profile]]
+id = "movies"
+name = "Movies"
+description = "Film automation"
+
+[[profile]]
+id = "music"
+name = "Music"
+description = "Music automation"
+
+[[profile]]
+id = "books"
+name = "Books"
+description = "Book and audiobook automation"
+
+[[profile]]
+id = "subs"
+name = "Subtitles"
+description = "Subtitle automation"
+
+[[profile]]
+id = "media"
+name = "Library"
+description = "Serving what you have"
+
+[[profile]]
+id = "tuning"
+name = "Tuning"
+description = "Quality profiles and extraction"
+
+[[profile]]
+id = "dash"
+name = "Dashboard"
+description = "A page linking everything"
+
+[[profile]]
+id = "proxy"
+name = "Proxy"
+description = "Friendly hostnames"
+
+# ─────────────────────────── Forms (named slices) ────────────────────────────
+[[form]]
+id = "search"
+name = "Search"
+description = "Find things. Nothing else runs."
+profiles = ["search"]
+
+[[form]]
+id = "dl"
+name = "Download"
+description = "You have a link — fetch it."
+profiles = ["usenet", "torrent"]
+
+[[form]]
+id = "hunt"
+name = "Hunt"
+description = "Search and grab, manually."
+profiles = ["search", "usenet", "torrent"]
+
+[[form]]
+id = "tv"
+name = "TV"
+description = "Search, download and automate television"
+profiles = ["search", "usenet", "torrent", "tv", "subs"]
+
+[[form]]
+id = "movies"
+name = "Movies"
+description = "Search, download and automate film"
+profiles = ["search", "usenet", "torrent", "movies", "subs"]
+
+[[form]]
+id = "music"
+name = "Music"
+description = "Search, download and automate music"
+profiles = ["search", "usenet", "torrent", "music"]
+
+[[form]]
+id = "books"
+name = "Books"
+description = "Search, download and automate books and audiobooks"
+profiles = ["search", "usenet", "torrent", "books"]
+
+[[form]]
+id = "auto"
+name = "Auto"
+description = "Everything automated, nothing served"
+profiles = ["search", "usenet", "torrent", "tv", "movies", "music", "books", "subs", "tuning"]
+
+[[form]]
+id = "library"
+name = "Library"
+description = "Serve what exists. Requires no third-party accounts."
+profiles = ["media"]
+
+[[form]]
+id = "full"
+name = "Full"
+description = "The lot."
+profiles = ["search", "usenet", "torrent", "tv", "movies", "music", "books", "subs", "media", "tuning", "dash"]
+
+[[form]]
+id = "proxy"
+name = "Proxy"
+description = "Friendly hostnames. Layers onto any other form."
+profiles = ["proxy"]
+
+# ─────────────────────────── Services (19) ───────────────────────────────────
+[[service]]
+id = "prowlarr"
+name = "Prowlarr"
+profile = "search"
+image = "lscr.io/linuxserver/prowlarr"
+tag = "1.28.1"
+port = 9696
+bind = "loopback"
+criticality = "core"
+license = "GPL-3.0-only"
+upstream = "https://github.com/Prowlarr/Prowlarr"
+describes = "Holds your indexer accounts in one place and shares them with everything else"
+without_it = "Every app needs indexers configured separately"
+health = { kind = "http", path = "/ping", timeout_s = 60 }
+api = { kind = "servarr", key_source = "config-xml", path = "/config/config.xml" }
+
+[[service]]
+id = "flaresolverr"
+name = "FlareSolverr"
+profile = "search"
+image = "ghcr.io/flaresolverr/flaresolverr"
+tag = "v3.5.0"
+port = 8191
+bind = "loopback"
+criticality = "enhancing"
+license = "MIT"
+upstream = "https://github.com/FlareSolverr/FlareSolverr"
+describes = "Gets past bot-protection on some indexers"
+without_it = "Those indexers return nothing"
+health = { kind = "tcp", timeout_s = 60 }
+
+[[service]]
+id = "nzbhydra2"
+name = "NZBHydra2"
+profile = "search"
+image = "lscr.io/linuxserver/nzbhydra2"
+tag = "8.9.0"
+port = 5076
+bind = "loopback"
+criticality = "enhancing"
+license = "Apache-2.0"
+upstream = "https://github.com/theotherp/nzbhydra2"
+describes = "A search box across all your Usenet indexers at once"
+without_it = "Search one indexer at a time"
+health = { kind = "http", path = "/", timeout_s = 60 }
+
+[[service]]
+id = "sabnzbd"
+name = "SABnzbd"
+profile = "usenet"
+image = "lscr.io/linuxserver/sabnzbd"
+tag = "4.5.1"
+port = 8085
+bind = "loopback"
+criticality = "core"
+license = "GPL-2.0-only"
+upstream = "https://github.com/sabnzbd/sabnzbd"
+describes = "Downloads from Usenet"
+without_it = "No Usenet downloads"
+health = { kind = "http", path = "/api?mode=version", timeout_s = 60 }
+api = { kind = "sabnzbd", key_source = "config-ini", path = "/config/sabnzbd.ini" }
+
+[[service]]
+id = "gluetun"
+name = "Gluetun"
+profile = "torrent"
+image = "qmcgaw/gluetun"
+tag = "v3.40.0"
+criticality = "critical"
+license = "MIT"
+upstream = "https://github.com/qdm12/gluetun"
+describes = "Routes torrent traffic through your VPN and blocks it if the VPN drops"
+without_it = "Your home IP is visible to every peer"
+capabilities = ["NET_ADMIN"]
+health = { kind = "container" }
+
+[[service]]
+id = "qbittorrent"
+name = "qBittorrent"
+profile = "torrent"
+image = "lscr.io/linuxserver/qbittorrent"
+tag = "5.0.3"
+port = 8081
+bind = "loopback"
+criticality = "core"
+license = "GPL-2.0-only"
+upstream = "https://github.com/qbittorrent/qBittorrent"
+describes = "Downloads torrents"
+without_it = "No torrent downloads"
+depends_on = ["gluetun"]
+health = { kind = "http", path = "/api/v2/app/version", timeout_s = 60 }
+api = { kind = "qbittorrent", key_source = "none" }
+
+[[service]]
+id = "sonarr"
+name = "Sonarr"
+profile = "tv"
+image = "lscr.io/linuxserver/sonarr"
+tag = "4.0.15"
+port = 8989
+bind = "loopback"
+criticality = "core"
+license = "GPL-3.0-only"
+upstream = "https://github.com/Sonarr/Sonarr"
+describes = "Watches for new episodes and fetches them"
+without_it = "Find and download episodes yourself"
+media_types = ["tv"]
+health = { kind = "http", path = "/ping", timeout_s = 90 }
+api = { kind = "servarr", key_source = "config-xml", path = "/config/config.xml" }
+
+[[service]]
+id = "radarr"
+name = "Radarr"
+profile = "movies"
+image = "lscr.io/linuxserver/radarr"
+tag = "5.14.0"
+port = 7878
+bind = "loopback"
+criticality = "core"
+license = "GPL-3.0-only"
+upstream = "https://github.com/Radarr/Radarr"
+describes = "Watches for films and fetches them"
+without_it = "Find and download films yourself"
+media_types = ["movies"]
+health = { kind = "http", path = "/ping", timeout_s = 90 }
+api = { kind = "servarr", key_source = "config-xml", path = "/config/config.xml" }
+
+[[service]]
+id = "lidarr"
+name = "Lidarr"
+profile = "music"
+image = "lscr.io/linuxserver/lidarr"
+tag = "2.9.6"
+port = 8686
+bind = "loopback"
+criticality = "core"
+license = "GPL-3.0-only"
+upstream = "https://github.com/Lidarr/Lidarr"
+describes = "Watches for music and fetches it"
+without_it = "Find and download music yourself"
+media_types = ["music"]
+health = { kind = "http", path = "/ping", timeout_s = 90 }
+api = { kind = "servarr", key_source = "config-xml", path = "/config/config.xml" }
+
+[[service]]
+id = "bindery"
+name = "Bindery"
+profile = "books"
+image = "ghcr.io/vavallee/bindery"
+tag = "v1.27.0"
+port = 8787
+bind = "loopback"
+criticality = "core"
+license = "MIT"
+upstream = "https://github.com/vavallee/bindery"
+describes = "Watches for books and audiobooks and fetches them"
+without_it = "No book automation (Readarr is discontinued)"
+media_types = ["books"]
+health = { kind = "http", path = "/", timeout_s = 90 }
+api = { kind = "bindery", key_source = "config-json", path = "/config/config.json" }
+
+[[service]]
+id = "bazarr"
+name = "Bazarr"
+profile = "subs"
+image = "lscr.io/linuxserver/bazarr"
+tag = "1.4.5"
+port = 6767
+bind = "loopback"
+criticality = "enhancing"
+license = "GPL-3.0-only"
+upstream = "https://github.com/morpheus65535/bazarr"
+describes = "Finds and downloads subtitles"
+without_it = "No automatic subtitles"
+health = { kind = "http", path = "/", timeout_s = 90 }
+
+[[service]]
+id = "jellyfin"
+name = "Jellyfin"
+profile = "media"
+image = "jellyfin/jellyfin"
+tag = "10.10.3"
+port = 8096
+bind = "lan"
+criticality = "important"
+license = "GPL-2.0-only"
+upstream = "https://github.com/jellyfin/jellyfin"
+describes = "Plays your library on TVs, phones and browsers"
+without_it = "Files on disk, no way to watch them"
+health = { kind = "http", path = "/health", timeout_s = 120 }
+
+[[service]]
+id = "seerr"
+name = "Seerr"
+profile = "media"
+image = "ghcr.io/seerr-team/seerr"
+tag = "3.3.0"
+port = 5055
+bind = "lan"
+criticality = "important"
+license = "MIT"
+upstream = "https://github.com/seerr-team/seerr"
+describes = "Where the household asks for things"
+without_it = "Requests come to you in person"
+health = { kind = "http", path = "/api/v1/status", timeout_s = 90 }
+api = { kind = "seerr", key_source = "api-settings" }
+
+[[service]]
+id = "calibre-web-automated"
+name = "Calibre-Web-Automated"
+profile = "media"
+image = "crocodilestick/calibre-web-automated"
+tag = "V3.0.4"
+port = 8083
+bind = "lan"
+criticality = "enhancing"
+license = "GPL-3.0-only"
+upstream = "https://github.com/crocodilestick/Calibre-Web-Automated"
+describes = "Reading and organising your ebook library"
+without_it = "No ebook reader"
+health = { kind = "http", path = "/", timeout_s = 90 }
+
+[[service]]
+id = "audiobookshelf"
+name = "Audiobookshelf"
+profile = "media"
+image = "ghcr.io/advplyr/audiobookshelf"
+tag = "2.17.7"
+port = 13378
+bind = "lan"
+criticality = "enhancing"
+license = "GPL-3.0-only"
+upstream = "https://github.com/advplyr/audiobookshelf"
+describes = "Listening to audiobooks, with progress synced"
+without_it = "No audiobook player"
+health = { kind = "http", path = "/healthcheck", timeout_s = 90 }
+
+[[service]]
+id = "recyclarr"
+name = "Recyclarr"
+profile = "tuning"
+image = "ghcr.io/recyclarr/recyclarr"
+tag = "7.4.0"
+criticality = "enhancing"
+license = "MIT"
+upstream = "https://github.com/recyclarr/recyclarr"
+describes = "Keeps quality settings in line with community guidance"
+without_it = "Tune quality profiles by hand"
+health = { kind = "container" }
+
+[[service]]
+id = "unpackerr"
+name = "Unpackerr"
+profile = "tuning"
+image = "ghcr.io/hotio/unpackerr"
+tag = "0.14.5"
+criticality = "enhancing"
+license = "MIT"
+upstream = "https://github.com/Unpackerr/unpackerr"
+describes = "Extracts archived releases so they can be imported"
+without_it = "Some downloads never import"
+health = { kind = "container" }
+
+[[service]]
+id = "homepage"
+name = "Homepage"
+profile = "dash"
+image = "ghcr.io/gethomepage/homepage"
+tag = "v0.9.13"
+port = 3000
+bind = "lan"
+criticality = "enhancing"
+license = "GPL-3.0-only"
+upstream = "https://github.com/gethomepage/homepage"
+describes = "One page linking everything, with live status"
+without_it = "Remember a dozen URLs and ports"
+health = { kind = "http", path = "/", timeout_s = 60 }
+
+[[service]]
+id = "caddy"
+name = "Caddy"
+profile = "proxy"
+image = "caddy"
+tag = "2.8.4"
+port = 80
+bind = "lan"
+criticality = "optional"
+license = "Apache-2.0"
+upstream = "https://github.com/caddyserver/caddy"
+describes = "Friendly hostnames instead of ports"
+without_it = "Use localhost:8989 and friends"
+health = { kind = "tcp", timeout_s = 30 }

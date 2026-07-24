@@ -1,0 +1,4 @@
+# NAS / copy-mode overlay. Applied when the data root is a network mount where
+# hardlinks are unavailable (C5). The *arrs are configured to copy rather than
+# link; this overlay adjusts mounts accordingly. Scaffold — extend per service.
+services: {}

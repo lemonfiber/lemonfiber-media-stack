@@ -1,0 +1,119 @@
+# lemonfiber media-stack. Runs with plain `docker compose` — no lemonfiber binary
+# needed (F1-R1). Each service carries exactly one profile; forms are composed by
+# activating profile sets. See stack.toml for the manifest lemonfiber consumes.
+#
+# Scaffold: a representative subset of the 19 services, enough to validate and to
+# show the load-bearing patterns. The remaining services follow the same shape;
+# see stack.toml and spec 30-repos/media-stack.md.
+#
+# THE ONE RULE: every service gets exactly one ${DATA_ROOT}:/data mount. Splitting
+# downloads and media into separate mounts silently breaks hardlinks (ADR-0006).
+
+x-common: &common
+  restart: unless-stopped
+  environment: &env
+    PUID: ${PUID:-1000}
+    PGID: ${PGID:-1000}
+    TZ: ${TZ:-Europe/Amsterdam}
+
+services:
+  # ── search ──────────────────────────────────────────────────────────────
+  prowlarr:
+    <<: *common
+    image: lscr.io/linuxserver/prowlarr:1.28.1
+    profiles: [search]
+    environment: *env
+    ports: ["127.0.0.1:9696:9696"]
+    volumes:
+      - ${DATA_ROOT:-./data}:/data
+      - ./config/prowlarr:/config
+
+  flaresolverr:
+    <<: *common
+    image: ghcr.io/flaresolverr/flaresolverr:v3.5.0
+    profiles: [search]
+    ports: ["127.0.0.1:8191:8191"]
+
+  # ── usenet ──────────────────────────────────────────────────────────────
+  sabnzbd:
+    <<: *common
+    image: lscr.io/linuxserver/sabnzbd:4.5.1
+    profiles: [usenet]
+    environment: *env
+    ports: ["127.0.0.1:8085:8080"]
+    volumes:
+      - ${DATA_ROOT:-./data}:/data
+      - ./config/sabnzbd:/config
+
+  # ── torrent (VPN-isolated) ──────────────────────────────────────────────
+  gluetun:
+    <<: *common
+    image: qmcgaw/gluetun:v3.40.0
+    profiles: [torrent]
+    cap_add: [NET_ADMIN]
+    devices: ["/dev/net/tun:/dev/net/tun"]
+    ports:
+      - "127.0.0.1:8081:8081" # qBittorrent UI, published on gluetun's namespace
+    environment:
+      VPN_SERVICE_PROVIDER: ${VPN_PROVIDER:?set VPN_PROVIDER in .env}
+      VPN_TYPE: wireguard
+      WIREGUARD_PRIVATE_KEY: ${WIREGUARD_PRIVATE_KEY:?set in .env}
+      SERVER_COUNTRIES: ${VPN_COUNTRIES:-Netherlands}
+      # Port forwarding: only some providers support it (ProtonVPN, PIA,
+      # PrivateVPN, Perfect Privacy). Off for NordVPN, Mullvad, etc. (C2-R16).
+      VPN_PORT_FORWARDING: ${VPN_PORT_FORWARDING:-off}
+      VPN_PORT_FORWARDING_PROVIDER: ${VPN_PROVIDER}
+      # Push the dynamic forwarded port into qBittorrent on acquire AND release —
+      # the down command is not optional; qBittorrent must be reset to re-acquire
+      # after a reconnect (C2-R19, REPO-R21).
+      VPN_PORT_FORWARDING_UP_COMMAND: >-
+        /bin/sh -c 'wget -qO- --post-data
+        "json={\"listen_port\":{{PORT}}}"
+        http://127.0.0.1:8081/api/v2/app/setPreferences'
+      VPN_PORT_FORWARDING_DOWN_COMMAND: >-
+        /bin/sh -c 'wget -qO- --post-data
+        "json={\"listen_port\":0}"
+        http://127.0.0.1:8081/api/v2/app/setPreferences'
+
+  qbittorrent:
+    <<: *common
+    image: lscr.io/linuxserver/qbittorrent:5.0.3
+    profiles: [torrent]
+    environment:
+      <<: *env
+      WEBUI_PORT: 8081
+    network_mode: "service:gluetun" # all traffic through the tunnel (C2-R12)
+    depends_on: [gluetun]
+    volumes:
+      - ${DATA_ROOT:-./data}:/data
+      - ./config/qbittorrent:/config
+
+  # ── tv ──────────────────────────────────────────────────────────────────
+  sonarr:
+    <<: *common
+    image: lscr.io/linuxserver/sonarr:4.0.15
+    profiles: [tv]
+    environment: *env
+    ports: ["127.0.0.1:8989:8989"]
+    volumes:
+      - ${DATA_ROOT:-./data}:/data
+      - ./config/sonarr:/config
+
+  # ── media (LAN-bound — reachable from a TV) ─────────────────────────────
+  jellyfin:
+    <<: *common
+    image: jellyfin/jellyfin:10.10.3
+    profiles: [media]
+    ports: ["8096:8096"]
+    volumes:
+      - ${DATA_ROOT:-./data}/media:/media:ro
+      - ./config/jellyfin:/config
+
+  seerr:
+    <<: *common
+    image: ghcr.io/seerr-team/seerr:3.3.0
+    profiles: [media]
+    environment: *env
+    ports: ["5055:5055"]
+    volumes:
+      - ./config/seerr:/app/config

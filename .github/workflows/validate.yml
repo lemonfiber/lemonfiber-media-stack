@@ -1,0 +1,16 @@
+name: validate
+on: [pull_request]
+permissions:
+  contents: read
+jobs:
+  compose:
+    runs-on: ubuntu-latest
+    env:
+      VPN_PROVIDER: protonvpn
+      WIREGUARD_PRIVATE_KEY: placeholder
+    steps:
+      - uses: actions/checkout@v4
+      - name: docker compose config
+        run: docker compose config --quiet
+      - name: Validate manifest against the contract
+        run: python3 scripts/validate_manifest.py

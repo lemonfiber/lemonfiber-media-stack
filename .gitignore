@@ -1,0 +1,6 @@
+/data/
+/config/*/
+!/config/*/.gitkeep
+.env
+.planning/
+.DS_Store
