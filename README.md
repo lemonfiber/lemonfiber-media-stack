@@ -79,3 +79,5 @@ open-source (GPL/MIT/Apache); this repo distributes configuration, not their cod
   </a>
   &nbsp;&middot;&nbsp;<a href="https://discord.gg/daQmY23ym"><img alt="Discord" src=".github/discord.svg" height="20"></a>
 </p>
+
+<!-- ci check observation -->
