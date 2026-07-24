@@ -5,10 +5,10 @@
   </picture>
 </p>
 
-<h1 align="center">lemonfiber &mdash; media-stack</h1>
+<h1 align="center">Lemonfiber &mdash; media-stack</h1>
 
 <p align="center">
-  The Docker Compose stack lemonfiber orchestrates: indexers, download clients,
+  The Docker Compose stack Lemonfiber orchestrates: indexers, download clients,
   the *arr automation apps, Jellyfin and Seerr &mdash; 19 services, all
   open-source, all pinned.
 </p>
@@ -30,7 +30,7 @@ cp .env.example .env      # set DATA_ROOT, and VPN creds if using torrents
 docker compose --profile search --profile usenet --profile tv up -d
 ```
 
-That's what makes adopting lemonfiber a reversible decision.
+That's what makes adopting Lemonfiber a reversible decision.
 
 ## The one rule
 
@@ -44,7 +44,7 @@ CI rejects it. See spec
 
 | File | What |
 |------|------|
-| `stack.toml` | The manifest lemonfiber consumes — services, profiles, forms |
+| `stack.toml` | The manifest Lemonfiber consumes — services, profiles, forms |
 | `compose.yml` | The stack itself |
 | `.env.example` | Every variable, documented |
 | `stacks/` | Overlays: NAS/copy mode, Caddy proxy |
