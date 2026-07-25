@@ -5,11 +5,11 @@ services:
     extends:
       file: compose/_common.yml
       service: rootless
-    image: ghcr.io/gethomepage/homepage:v0.9.13
+    image: ghcr.io/gethomepage/homepage:v1.13.2
     profiles: [dash]
     environment:
-      # Homepage refuses requests whose Host header isn't listed. Widen this in
-      # .env if you reach the dashboard by hostname rather than by address.
+      # The Host headers Homepage will answer for. Widen this in .env to every
+      # address the household actually types, comma-separated.
       HOMEPAGE_ALLOWED_HOSTS: ${HOMEPAGE_ALLOWED_HOSTS:-localhost:3000}
       # Substituted into config/homepage/services.yaml as {{HOMEPAGE_VAR_*}}.
       # Listed one by one rather than passed as an env_file, so that the VPN key

@@ -2,26 +2,27 @@
 /data/
 
 # Each service's /config is runtime state it writes itself — databases, API
-# keys, session tokens. Ignored wholesale, then the templates we ship are
-# re-admitted one by one below. A directory has to be re-included before
-# anything inside it can be.
+# keys, session tokens.
 /config/*/
 
-# Seeded templates. Each directory is re-included before the file inside it,
-# because git cannot re-include a file whose parent directory is excluded.
+# Three of those directories also hold templates we ship. Each is re-included,
+# then its contents are excluded again, then the template files are named one by
+# one. All three steps are needed: git cannot re-include a file whose parent
+# directory is excluded, and re-including the directory alone would admit
+# everything the service later writes into it.
 !/config/recyclarr/
-!/config/recyclarr/*.yml
-!/config/homepage/
-!/config/homepage/*.yaml
-!/config/caddy/
-!/config/caddy/Caddyfile
+/config/recyclarr/*
+!/config/recyclarr/recyclarr.yml
 
-# ...but those three directories are also live config directories, so the state
-# each service writes into them goes back on the ignore list.
-/config/recyclarr/cache/
-/config/recyclarr/logs/
-/config/recyclarr/repositories/
-/config/homepage/logs/
+!/config/homepage/
+/config/homepage/*
+!/config/homepage/settings.yaml
+!/config/homepage/services.yaml
+!/config/homepage/widgets.yaml
+
+!/config/caddy/
+/config/caddy/*
+!/config/caddy/Caddyfile
 
 .env
 .planning/
