@@ -20,10 +20,12 @@
 
 ---
 
-> **Status: scaffold.** The manifest (`stack.toml`) is complete; `compose.yml` is
-> a validating subset. See the [spec](https://github.com/lemonfiber/spec) and
-> [roadmap](https://github.com/lemonfiber/spec/blob/main/00-overview/roadmap.md)
-> (this repo is milestone **M1**).
+> **Status: complete, not yet run on hardware.** All 19 services are defined and
+> every rule below is enforced in CI. The remaining **M1** exit criteria are the
+> two things CI cannot check — a hardlink import verified end to end, and the VPN
+> killswitch verified by hand. See the
+> [spec](https://github.com/lemonfiber/spec) and
+> [roadmap](https://github.com/lemonfiber/spec/blob/main/00-overview/roadmap.md).
 
 ## Runs without lemonfiber
 
@@ -32,10 +34,21 @@ it, set `.env`, and run it with plain Docker — no `lemonfiber` binary anywhere
 
 ```
 cp .env.example .env      # set DATA_ROOT, and VPN creds if using torrents
-docker compose --profile search --profile usenet --profile tv up -d
+docker compose --profile search --profile usenet --profile torrent \
+               --profile tv --profile subs up -d
+```
+
+That five-profile set is the **`tv` form**. Forms are named profile sets, and
+`just up tv` expands one for you straight from `stack.toml`:
+
+```
+just forms-list           # search, dl, hunt, tv, movies, music, books, …
+just up tv
 ```
 
 That's what makes adopting Lemonfiber a reversible decision.
+
+Requires Docker Compose **v2.20 or newer** — `compose.yml` uses `include:`.
 
 ## The one rule
 
@@ -50,17 +63,41 @@ CI rejects it. See spec
 | File | What |
 |------|------|
 | `stack.toml` | The manifest Lemonfiber consumes — services, profiles, forms |
-| `compose.yml` | The stack itself |
+| `compose.yml` | Stitches the fragments together; no services of its own |
+| `compose/` | One fragment per profile — `tv.yml`, `media.yml`, `torrent.yml`, … |
+| `compose/_common.yml` | Shared service defaults, reached via `extends:` |
 | `.env.example` | Every variable, documented |
-| `stacks/` | Overlays: NAS/copy mode, Caddy proxy |
-| `config/` | Seeded service config templates |
+| `stacks/` | Overlay: NAS/copy mode |
+| `config/` | Seeded templates for Recyclarr, Homepage and Caddy |
+| `scripts/` | The checks CI runs, all runnable locally via `just` |
 
 ## Adding a service
 
-Three data edits, no code: a service block in `compose.yml`, a `[[service]]` in
-`stack.toml`, and its profile added to the relevant forms. CI holds it to every
-rule. See spec
+Three data edits, no code: a service block in the right `compose/<profile>.yml`,
+a `[[service]]` in `stack.toml`, and its profile added to the relevant forms. Then
+`just ci`. See spec
 [`30-repos/media-stack.md`](https://github.com/lemonfiber/spec/blob/main/30-repos/media-stack.md).
+
+## What CI enforces
+
+Not style preferences — each has a spec requirement behind it, and each is
+proven to fail when broken by `scripts/test_validate_manifest.py`.
+
+| Check | Enforces |
+|-------|----------|
+| Manifest ↔ compose parity | Every service in one is in the other (`REPO-R18`) |
+| One `${DATA_ROOT}:/data` mount per service | Hardlinks (`ADR-0006`, `C5-R5`) |
+| Bindings match the manifest tier | Admin on loopback, household on LAN (`C6-R1/R2`) |
+| No `depends_on` across a profile | Any subset boots (`B1-R14`) |
+| Killswitch routing | Nothing shares Gluetun's profile without its namespace (`C2-R12`) |
+| Pinned, non-floating tags | Nothing changes because time passed (`E1-R1`) |
+| Capabilities match the manifest | Only Gluetun holds `NET_ADMIN` (`C6`) |
+| OSI licence per service | Verified against a vendored SPDX list (`F2-R5`) |
+| Every form resolves | And drags in nothing outside its profiles (`REPO-R17`) |
+| arm64 + amd64 per pin | Read from each registry's manifest list (`F2-R6`) |
+
+The parity checks read `docker compose config`'s resolved model rather than the
+YAML, so they check what Docker will run, not what the file appears to say.
 
 ## Contributing
 
