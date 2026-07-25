@@ -226,7 +226,7 @@ describes = "Downloads torrents"
 without_it = "No torrent downloads"
 depends_on = ["gluetun"]
 health = { kind = "http", path = "/api/v2/app/version", timeout_s = 60 }
-api = { kind = "qbittorrent", key_source = "none" }
+api = { kind = "qbittorrent", key_source = "generated" }
 
 [[service]]
 id = "sonarr"
