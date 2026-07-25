@@ -16,11 +16,13 @@ description = "Finding things"
 id = "usenet"
 name = "Usenet"
 description = "Usenet downloading"
+protocol = "usenet"
 
 [[profile]]
 id = "torrent"
 name = "Torrents"
 description = "Torrent downloading, VPN-isolated"
+protocol = "torrent"
 
 [[profile]]
 id = "tv"
