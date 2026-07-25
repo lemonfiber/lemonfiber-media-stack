@@ -22,6 +22,7 @@ one error per run turns fixing a fork into a guessing game.
 from __future__ import annotations
 
 import argparse
+import datetime
 import json
 import os
 import pathlib
@@ -51,9 +52,10 @@ FLOATING_TAGS = {"latest", "stable", "edge", "nightly", "develop", "dev", "main"
 
 SERVICE_REQUIRED = (
     "id", "name", "profile", "image", "tag",
-    "criticality", "license", "upstream", "describes", "without_it",
+    "criticality", "license", "upstream", "last_release", "describes", "without_it",
 )
 SEMVER = re.compile(r"^\d+\.\d+\.\d+(?:[-+].*)?$")
+ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
 class Report:
@@ -70,6 +72,34 @@ class Report:
         if not ok:
             self.fail(where, message, requirement)
         return ok
+
+
+def validate_last_release(service: dict, where: str, report: Report) -> None:
+    """The latest upstream release, as of the last review of this service's pin.
+
+    Drifting behind upstream is normal and not checked here — it only means
+    someone released something. A date in the future cannot arise that way, so it
+    is a value that was guessed rather than looked up.
+    """
+    raw = str(service.get("last_release", ""))
+    if not report.check(
+        bool(ISO_DATE.match(raw)),
+        where,
+        f"last_release must be YYYY-MM-DD, got {raw!r}",
+        "F2-R14",
+    ):
+        return
+    try:
+        recorded = datetime.date.fromisoformat(raw)
+    except ValueError:
+        report.fail(where, f"last_release {raw!r} is not a real date", "F2-R14")
+        return
+    report.check(
+        recorded <= datetime.date.today(),
+        where,
+        f"last_release {raw} is in the future",
+        "F2-R14",
+    )
 
 
 def osi_licences() -> set[str]:
@@ -183,6 +213,7 @@ def validate_manifest(manifest: dict, report: Report) -> None:
             "upstream must be an https URL",
             "F2-R4",
         )
+        validate_last_release(service, where, report)
 
         if "port" in service:
             port = service["port"]

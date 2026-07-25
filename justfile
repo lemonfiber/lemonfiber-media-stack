@@ -26,6 +26,10 @@ configs:
     python3 scripts/check_configs.py
     python3 scripts/check_configs.py --self-test
 
+# Recorded upstream release dates still agree with upstream. Networked.
+releases:
+    python3 scripts/check_releases.py
+
 # Raw Compose validity, no manifest involved.
 config:
     VPN_PROVIDER=protonvpn WIREGUARD_PRIVATE_KEY=x docker compose config --quiet
