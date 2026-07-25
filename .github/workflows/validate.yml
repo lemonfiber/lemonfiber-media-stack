@@ -47,3 +47,13 @@ jobs:
 
       - name: The template check can fail
         run: python3 scripts/check_configs.py --self-test
+
+      # A recorded release date newer than upstream's latest was guessed rather
+      # than looked up. Drifting behind upstream is reported, never failed.
+      - name: Recorded release dates agree with upstream
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 scripts/check_releases.py
+
+      - name: The release check can fail
+        run: python3 scripts/check_releases.py --self-test

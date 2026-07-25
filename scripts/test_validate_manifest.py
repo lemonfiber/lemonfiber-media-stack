@@ -146,6 +146,26 @@ CASES = [
         "killswitch",
     ),
     (
+        "F2-R14 missing last_release",
+        patch("stack.toml", 'last_release = "2026-06-26"\n', ""),
+        "missing required field 'last_release'",
+    ),
+    (
+        "F2-R14 malformed last_release",
+        patch("stack.toml", 'last_release = "2026-07-22"', 'last_release = "22-07-2026"'),
+        "last_release must be YYYY-MM-DD",
+    ),
+    (
+        "F2-R14 last_release in the future",
+        patch("stack.toml", 'last_release = "2025-11-16"', 'last_release = "2099-01-01"'),
+        "is in the future",
+    ),
+    (
+        "F2-R14 last_release that is not a real date",
+        patch("stack.toml", 'last_release = "2026-07-04"', 'last_release = "2026-02-31"'),
+        "is not a real date",
+    ),
+    (
         "F2-R5 non-OSI licence",
         patch(
             "stack.toml",
