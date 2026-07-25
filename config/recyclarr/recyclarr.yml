@@ -1,0 +1,37 @@
+# Recyclarr — keeps quality profiles in line with TRaSH Guides community
+# guidance, so nobody has to tune scoring by hand.
+#
+# Instances are reached over the Compose network by service name and *container*
+# port, not the published loopback port — Recyclarr runs beside them, not on the
+# host.
+#
+# API keys are injected as environment variables. They are empty until the stack
+# is seeded, and Recyclarr skips an instance whose key is blank, so an unseeded
+# stack logs and does nothing rather than failing loudly.
+#
+# Recyclarr is in the `tuning` profile and the *arrs are not. Running `tuning`
+# without `tv` is legal and simply means Sonarr is unreachable that cycle; the
+# next scheduled sync picks it up.
+#
+# Template names are Recyclarr's own. Confirm them against your pinned version
+# with `docker compose run --rm recyclarr list templates` before editing.
+
+sonarr:
+  main:
+    base_url: http://sonarr:8989
+    api_key: !env_var SONARR_API_KEY
+
+    include:
+      - template: sonarr-quality-definition-series
+      - template: sonarr-v4-quality-profile-web-1080p
+      - template: sonarr-v4-custom-formats-web-1080p
+
+radarr:
+  main:
+    base_url: http://radarr:7878
+    api_key: !env_var RADARR_API_KEY
+
+    include:
+      - template: radarr-quality-definition-movie
+      - template: radarr-quality-profile-hd-bluray-web
+      - template: radarr-custom-formats-hd-bluray-web
