@@ -43,6 +43,7 @@ CRITICALITIES = {"critical", "core", "important", "enhancing", "optional"}
 BINDS = {"loopback", "lan"}
 HEALTH_KINDS = {"http", "tcp", "container"}
 API_KINDS = {"servarr", "sabnzbd", "qbittorrent", "seerr", "bindery"}
+PROTOCOLS = {"usenet", "torrent"}
 KEY_SOURCES = {"config-xml", "config-ini", "config-json", "api-settings", "generated", "none"}
 MEDIA_TYPES = {"tv", "movies", "music", "books"}
 # Anything beyond this list is a privilege the stack has not justified (C6).
@@ -137,6 +138,7 @@ def validate_manifest(manifest: dict, report: Report) -> None:
     services = manifest.get("service", [])
 
     profile_ids: set[str] = set()
+    claimed_protocols: dict[str, str] = {}
     for profile in profiles:
         where = f"profile {profile.get('id', '<unnamed>')}"
         for field in ("id", "name", "description"):
@@ -145,6 +147,24 @@ def validate_manifest(manifest: dict, report: Report) -> None:
         if pid is not None:
             report.check(pid not in profile_ids, where, "duplicate profile id")
             profile_ids.add(pid)
+
+        # A profile marked with a protocol is one lemonfiber narrows away when
+        # that provider is not configured. An unrecognised value would be read
+        # as "never narrow", which is how a VPN-less torrent profile starts.
+        protocol = profile.get("protocol")
+        if protocol is not None:
+            report.check(
+                protocol in PROTOCOLS,
+                where,
+                f"protocol {protocol!r} is not one of {sorted(PROTOCOLS)}",
+            )
+            owner = claimed_protocols.get(protocol)
+            report.check(
+                owner is None,
+                where,
+                f"protocol {protocol!r} is already claimed by profile {owner!r}",
+            )
+            claimed_protocols.setdefault(protocol, pid)
 
     form_ids: set[str] = set()
     for form in forms:

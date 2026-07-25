@@ -54,6 +54,24 @@ CASES = [
         None,
     ),
     (
+        "B1-R15 a profile claiming a protocol nobody configures",
+        patch(
+            "stack.toml",
+            'description = "Usenet downloading"\nprotocol = "usenet"',
+            'description = "Usenet downloading"\nprotocol = "carrier-pigeon"',
+        ),
+        "is not one of",
+    ),
+    (
+        "B1-R15 two profiles claiming the same protocol",
+        patch(
+            "stack.toml",
+            'description = "Torrent downloading, VPN-isolated"\nprotocol = "torrent"',
+            'description = "Torrent downloading, VPN-isolated"\nprotocol = "usenet"',
+        ),
+        "already claimed",
+    ),
+    (
         "ADR-0006 two mounts beneath the data root",
         patch(
             "compose/media.yml",
