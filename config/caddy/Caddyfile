@@ -1,0 +1,63 @@
+# Caddy — friendly hostnames instead of ports.
+#
+# Caddy reaches each service over the Compose network by service name and
+# *container* port. That is deliberately not the same as the published host
+# port: Sonarr publishes 127.0.0.1:8989 on the host, and Caddy talks to
+# sonarr:8989 inside the network.
+#
+# WHAT IS PROXIED, AND WHAT IS NOT
+#
+# Only household services are proxied. Every admin service — the *arrs, SABnzbd,
+# qBittorrent, Prowlarr, NZBHydra2, Bindery — is bound to loopback on purpose,
+# and putting a hostname in front of one publishes a full-control surface, most
+# with weak or disabled default authentication, to every device on the network.
+# Stanzas for them are at the bottom, commented out, with what you are accepting
+# written next to them.
+#
+# Set DOMAIN and CADDY_EMAIL in .env. With a real domain whose DNS points here,
+# Caddy obtains genuine certificates automatically. Self-signed TLS is not
+# offered: teaching a household to click through certificate warnings is a worse
+# outcome than honest HTTP on a trusted LAN.
+
+{
+	email {$CADDY_EMAIL}
+}
+
+# ── household ────────────────────────────────────────────────────────────────
+
+watch.{$DOMAIN} {
+	reverse_proxy jellyfin:8096
+}
+
+requests.{$DOMAIN} {
+	reverse_proxy seerr:5055
+}
+
+books.{$DOMAIN} {
+	reverse_proxy calibre-web-automated:8083
+}
+
+listen.{$DOMAIN} {
+	reverse_proxy audiobookshelf:80
+}
+
+home.{$DOMAIN} {
+	reverse_proxy homepage:3000
+}
+
+# ── admin — deliberately disabled ────────────────────────────────────────────
+#
+# Uncommenting any of these publishes an admin surface to the LAN. That is
+# permitted, but it is a decision: the service's own authentication becomes the
+# only thing between your network and full control of the stack. Put a Caddy
+# `basic_auth` or forward-auth in front of it, and record why.
+#
+# sonarr.{$DOMAIN}      { reverse_proxy sonarr:8989 }
+# radarr.{$DOMAIN}      { reverse_proxy radarr:7878 }
+# lidarr.{$DOMAIN}      { reverse_proxy lidarr:8686 }
+# bindery.{$DOMAIN}     { reverse_proxy bindery:8787 }
+# bazarr.{$DOMAIN}      { reverse_proxy bazarr:6767 }
+# prowlarr.{$DOMAIN}    { reverse_proxy prowlarr:9696 }
+# nzbhydra.{$DOMAIN}    { reverse_proxy nzbhydra2:5076 }
+# sabnzbd.{$DOMAIN}     { reverse_proxy sabnzbd:8080 }
+# qbittorrent.{$DOMAIN} { reverse_proxy gluetun:8081 }

@@ -1,0 +1,129 @@
+# Homepage services.
+#
+# Two different URLs per entry, and the difference matters:
+#
+#   href    where your browser goes. Admin services are bound to loopback, so
+#           their links only resolve on the machine running the stack.
+#           Household services use ${HOMEPAGE_VAR_LAN_HOST} so a phone on the
+#           sofa reaches them too.
+#   widget  where Homepage itself goes, over the Compose network by service
+#           name and container port.
+#
+# API keys arrive as HOMEPAGE_VAR_* environment variables and are empty until
+# the stack is seeded. A widget with no key simply shows no data; it does not
+# break the page. Never paste a key into this file — it is committed.
+#
+# A group whose services aren't in the running form just shows them as down.
+# That is correct: the form is the statement of what should be running.
+
+- Watch:
+    - Jellyfin:
+        icon: jellyfin.png
+        href: http://{{HOMEPAGE_VAR_LAN_HOST}}:8096
+        description: Films and television
+        widget:
+          type: jellyfin
+          url: http://jellyfin:8096
+          key: "{{HOMEPAGE_VAR_JELLYFIN_KEY}}"
+
+    - Seerr:
+        icon: overseerr.png
+        href: http://{{HOMEPAGE_VAR_LAN_HOST}}:5055
+        description: Ask for something
+        widget:
+          type: overseerr
+          url: http://seerr:5055
+          key: "{{HOMEPAGE_VAR_SEERR_KEY}}"
+
+- Library:
+    - Calibre-Web:
+        icon: calibre-web.png
+        href: http://{{HOMEPAGE_VAR_LAN_HOST}}:8083
+        description: Ebooks
+
+    - Audiobookshelf:
+        icon: audiobookshelf.png
+        href: http://{{HOMEPAGE_VAR_LAN_HOST}}:13378
+        description: Audiobooks
+        widget:
+          type: audiobookshelf
+          url: http://audiobookshelf:80
+          key: "{{HOMEPAGE_VAR_AUDIOBOOKSHELF_KEY}}"
+
+- Automation:
+    - Sonarr:
+        icon: sonarr.png
+        href: http://localhost:8989
+        description: Television
+        widget:
+          type: sonarr
+          url: http://sonarr:8989
+          key: "{{HOMEPAGE_VAR_SONARR_KEY}}"
+
+    - Radarr:
+        icon: radarr.png
+        href: http://localhost:7878
+        description: Film
+        widget:
+          type: radarr
+          url: http://radarr:7878
+          key: "{{HOMEPAGE_VAR_RADARR_KEY}}"
+
+    - Lidarr:
+        icon: lidarr.png
+        href: http://localhost:8686
+        description: Music
+        widget:
+          type: lidarr
+          url: http://lidarr:8686
+          key: "{{HOMEPAGE_VAR_LIDARR_KEY}}"
+
+    - Bazarr:
+        icon: bazarr.png
+        href: http://localhost:6767
+        description: Subtitles
+        widget:
+          type: bazarr
+          url: http://bazarr:6767
+          key: "{{HOMEPAGE_VAR_BAZARR_KEY}}"
+
+    - Bindery:
+        icon: mdi-book-open-variant
+        href: http://localhost:8787
+        description: Books and audiobooks
+
+- Acquisition:
+    - Prowlarr:
+        icon: prowlarr.png
+        href: http://localhost:9696
+        description: Indexers
+        widget:
+          type: prowlarr
+          url: http://prowlarr:9696
+          key: "{{HOMEPAGE_VAR_PROWLARR_KEY}}"
+
+    - NZBHydra2:
+        icon: nzbhydra2.png
+        href: http://localhost:5076
+        description: Usenet search
+
+    - SABnzbd:
+        icon: sabnzbd.png
+        href: http://localhost:8085
+        description: Usenet downloads
+        widget:
+          type: sabnzbd
+          url: http://sabnzbd:8080
+          key: "{{HOMEPAGE_VAR_SABNZBD_KEY}}"
+
+    - qBittorrent:
+        icon: qbittorrent.png
+        href: http://localhost:8081
+        # Reached through Gluetun: qBittorrent has no network namespace of its
+        # own, so on the Compose network it answers on the tunnel's name.
+        description: Torrents, via the VPN
+        widget:
+          type: qbittorrent
+          url: http://gluetun:8081
+          username: "{{HOMEPAGE_VAR_QBITTORRENT_USER}}"
+          password: "{{HOMEPAGE_VAR_QBITTORRENT_PASS}}"

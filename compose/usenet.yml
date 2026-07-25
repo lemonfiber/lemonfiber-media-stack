@@ -1,0 +1,13 @@
+# Profile: usenet — Usenet downloading.
+
+services:
+  sabnzbd:
+    extends:
+      file: compose/_common.yml
+      service: rootless
+    image: lscr.io/linuxserver/sabnzbd:4.5.1
+    profiles: [usenet]
+    ports: ["127.0.0.1:8085:8080"]
+    volumes:
+      - ${DATA_ROOT:-./data}:/data
+      - ./config/sabnzbd:/config

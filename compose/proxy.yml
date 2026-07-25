@@ -1,0 +1,27 @@
+# Profile: proxy — friendly hostnames. Off unless `--profile proxy` is given.
+#
+# Layers onto any other form: `docker compose --profile full --profile proxy up`.
+# Caddy is the supported route to real certificates. Self-signed TLS is
+# deliberately not offered: training operators to click through certificate
+# warnings is a worse outcome than honest HTTP on a trusted LAN.
+
+services:
+  caddy:
+    extends:
+      file: compose/_common.yml
+      service: defaults
+    image: caddy:2.8.4
+    profiles: [proxy]
+    ports:
+      - "${LAN_BIND:-0.0.0.0}:80:80"
+      - "${LAN_BIND:-0.0.0.0}:443:443"
+    volumes:
+      - ./config/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      # Caddy's own certificate and configuration stores, unrelated to
+      # ${DATA_ROOT}. Losing caddy_data means re-issuing every certificate.
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  caddy_data:
+  caddy_config:

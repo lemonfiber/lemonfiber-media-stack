@@ -1,0 +1,16 @@
+# Profile: books — book and audiobook automation.
+#
+# Bindery is not a Servarr application: Prowlarr's app sync does not reach it,
+# so its indexers are wired as Torznab endpoints during seeding.
+
+services:
+  bindery:
+    extends:
+      file: compose/_common.yml
+      service: rootless
+    image: ghcr.io/vavallee/bindery:v1.27.0
+    profiles: [books]
+    ports: ["127.0.0.1:8787:8787"]
+    volumes:
+      - ${DATA_ROOT:-./data}:/data
+      - ./config/bindery:/config

@@ -1,0 +1,13 @@
+# Profile: movies — film automation.
+
+services:
+  radarr:
+    extends:
+      file: compose/_common.yml
+      service: rootless
+    image: lscr.io/linuxserver/radarr:5.14.0
+    profiles: [movies]
+    ports: ["127.0.0.1:7878:7878"]
+    volumes:
+      - ${DATA_ROOT:-./data}:/data
+      - ./config/radarr:/config

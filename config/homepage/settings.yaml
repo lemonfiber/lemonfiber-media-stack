@@ -1,0 +1,27 @@
+# Homepage — one page linking everything, with live status (F2 § Homepage).
+#
+# Homepage is published to the LAN, so it refuses requests whose Host header it
+# doesn't recognise. Set HOMEPAGE_ALLOWED_HOSTS in .env to the address the
+# household actually types, e.g. `homepage.local:3000,192.168.1.10:3000`.
+
+title: Lemonfiber
+description: The house media stack
+
+headerStyle: clean
+statusStyle: dot
+hideVersion: true
+
+# Groups are laid out in the order services.yaml declares them.
+layout:
+  Watch:
+    style: row
+    columns: 4
+  Library:
+    style: row
+    columns: 3
+  Automation:
+    style: row
+    columns: 4
+  Acquisition:
+    style: row
+    columns: 4

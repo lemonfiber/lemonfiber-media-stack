@@ -1,4 +1,74 @@
-# NAS / copy-mode overlay. Applied when the data root is a network mount where
-# hardlinks are unavailable (C5). The *arrs are configured to copy rather than
-# link; this overlay adjusts mounts accordingly. Scaffold — extend per service.
-services: {}
+# NAS / copy-mode overlay.
+#
+#     docker compose -f compose.yml -f stacks/compose.storage.nas.yml \
+#       --profile tv up -d
+#
+# Applied when the data root lives on a network mount. It replaces the host bind
+# with an NFS-backed named volume so that Docker owns the mount: a bind to a path
+# the host has silently unmounted looks like an empty directory, and the *arrs
+# will happily write a phantom library into it. A volume that cannot mount fails
+# the container instead, which is the failure you want.
+#
+# WHAT THIS OVERLAY DOES NOT DO
+#
+# It cannot make the *arrs copy instead of hardlink — that is an application
+# setting, written over each app's API during seeding. Standalone operators set
+# it by hand: Settings → Media Management → Importing → turn off "Use Hardlinks
+# instead of Copy", in Sonarr, Radarr and Lidarr each. Leaving it on across a
+# filesystem that cannot link means every import silently falls back to a copy
+# anyway — slower, and twice the disk while it runs.
+#
+# Hardlink capability is never inferred from any of this. lemonfiber creates a
+# file, links it, and compares inodes. This overlay is what you apply once that
+# test has already come back negative.
+#
+# THE LONG SYNTAX BELOW IS LOAD-BEARING. Compose merges service volumes by mount
+# point, so `type: volume, target: /data` replaces the base file's bind at /data
+# and leaves /config alone. The short form `data:/data` does NOT merge that way
+# in an override — it is parsed as a volume literally named "data:/data", matches
+# no existing mount point, and gets appended, leaving two mounts fighting over
+# /data. Keep the long form.
+
+volumes:
+  data:
+    driver: local
+    driver_opts:
+      type: nfs
+      # `hard` rather than `soft`: on a dropped NAS you want I/O to block until
+      # the mount returns, not to surface as a short read that an *arr records
+      # as a corrupt import.
+      o: "addr=${NAS_HOST:?set NAS_HOST in .env},nfsvers=4,rw,hard,timeo=600,retrans=2"
+      device: ":${NAS_EXPORT:?set NAS_EXPORT in .env}"
+
+x-nas-data: &nas-data
+  - type: volume
+    source: data
+    target: /data
+
+services:
+  prowlarr:
+    volumes: *nas-data
+  nzbhydra2:
+    volumes: *nas-data
+  sabnzbd:
+    volumes: *nas-data
+  qbittorrent:
+    volumes: *nas-data
+  sonarr:
+    volumes: *nas-data
+  radarr:
+    volumes: *nas-data
+  lidarr:
+    volumes: *nas-data
+  bindery:
+    volumes: *nas-data
+  bazarr:
+    volumes: *nas-data
+  jellyfin:
+    volumes: *nas-data
+  calibre-web-automated:
+    volumes: *nas-data
+  audiobookshelf:
+    volumes: *nas-data
+  unpackerr:
+    volumes: *nas-data

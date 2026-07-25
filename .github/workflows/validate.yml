@@ -2,17 +2,40 @@ name: validate
 on: [pull_request]
 permissions:
   contents: read
+
 jobs:
-  compose:
+  # The offline half: contract, parity, every form. No network, no registry.
+  stack:
     runs-on: ubuntu-latest
-    env:
-      VPN_PROVIDER: protonvpn
-      WIREGUARD_PRIVATE_KEY: placeholder
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: docker compose config
-        run: docker compose config --quiet
-      - name: Validate manifest against the contract
+
+      # stack.toml against the contract, and the resolved Compose model held in
+      # parity with it — services, images, profiles, mounts, bindings and
+      # capabilities (REPO-R18, REPO-R19).
+      - name: Manifest contract and compose parity
         run: python3 scripts/validate_manifest.py
+
+      # Every form is a valid project on its own and drags in nothing outside
+      # its own profiles (REPO-R17, B1-R14).
+      - name: Every form and overlay resolves
+        run: python3 scripts/check_forms.py
+
+      # The lint's own negative tests. A rule nobody has watched fail is a rule
+      # nobody knows works.
+      - name: Validator test suite
+        run: python3 scripts/test_validate_manifest.py
+
+  # The networked half, kept apart so a registry outage reads as a registry
+  # outage rather than as a broken manifest (REPO-R20).
+  images:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Every pin publishes linux/amd64 and linux/arm64
+        run: python3 scripts/check_images.py

@@ -1,119 +1,52 @@
 # lemonfiber media-stack. Runs with plain `docker compose` — no lemonfiber binary
-# needed (F1-R1). Each service carries exactly one profile; forms are composed by
-# activating profile sets. See stack.toml for the manifest lemonfiber consumes.
+# needed. One fragment per profile, stitched together here; forms are composed by
+# activating profile sets, e.g.
 #
-# Scaffold: a representative subset of the 19 services, enough to validate and to
-# show the load-bearing patterns. The remaining services follow the same shape;
-# see stack.toml and spec 30-repos/media-stack.md.
+#     docker compose --profile search --profile usenet --profile tv up -d
 #
-# THE ONE RULE: every service gets exactly one ${DATA_ROOT}:/data mount. Splitting
-# downloads and media into separate mounts silently breaks hardlinks (ADR-0006).
+# See stack.toml for the manifest lemonfiber consumes. The two are held in parity
+# by scripts/validate_manifest.py — every service in one is in the other.
+#
+# THE ONE RULE: every service that touches the library gets exactly one
+# ${DATA_ROOT}:/data mount. Downloads and media are subdirectories beneath it, on
+# one filesystem, so imports hardlink instead of copy. Splitting them into
+# separate mounts silently turns every import into a copy.
+#
+# BINDING: admin services publish on 127.0.0.1; household services publish on
+# ${LAN_BIND} so a TV or a phone can reach them.
+#
+# `project_directory: .` on every entry is load-bearing, not boilerplate: without
+# it, a fragment's relative paths resolve against compose/ instead of the project
+# root, and `./config/sonarr` becomes `compose/config/sonarr`. With it, every
+# relative path in every fragment is root-relative — one rule, no exceptions.
+#
+# Omitting it is caught rather than tolerated: the fragment's `extends:` path
+# rebases too, so Compose cannot find compose/_common.yml and builds no model at
+# all. The mount-source check in scripts/validate_manifest.py is the backstop for
+# any fragment that has no extends to break first.
 
-x-common: &common
-  restart: unless-stopped
-  environment: &env
-    PUID: ${PUID:-1000}
-    PGID: ${PGID:-1000}
-    TZ: ${TZ:-Europe/Amsterdam}
-
-services:
-  # ── search ──────────────────────────────────────────────────────────────
-  prowlarr:
-    <<: *common
-    image: lscr.io/linuxserver/prowlarr:1.28.1
-    profiles: [search]
-    environment: *env
-    ports: ["127.0.0.1:9696:9696"]
-    volumes:
-      - ${DATA_ROOT:-./data}:/data
-      - ./config/prowlarr:/config
-
-  flaresolverr:
-    <<: *common
-    image: ghcr.io/flaresolverr/flaresolverr:v3.5.0
-    profiles: [search]
-    ports: ["127.0.0.1:8191:8191"]
-
-  # ── usenet ──────────────────────────────────────────────────────────────
-  sabnzbd:
-    <<: *common
-    image: lscr.io/linuxserver/sabnzbd:4.5.1
-    profiles: [usenet]
-    environment: *env
-    ports: ["127.0.0.1:8085:8080"]
-    volumes:
-      - ${DATA_ROOT:-./data}:/data
-      - ./config/sabnzbd:/config
-
-  # ── torrent (VPN-isolated) ──────────────────────────────────────────────
-  gluetun:
-    <<: *common
-    image: qmcgaw/gluetun:v3.40.0
-    profiles: [torrent]
-    cap_add: [NET_ADMIN]
-    devices: ["/dev/net/tun:/dev/net/tun"]
-    ports:
-      - "127.0.0.1:8081:8081" # qBittorrent UI, published on gluetun's namespace
-    environment:
-      VPN_SERVICE_PROVIDER: ${VPN_PROVIDER:?set VPN_PROVIDER in .env}
-      VPN_TYPE: wireguard
-      WIREGUARD_PRIVATE_KEY: ${WIREGUARD_PRIVATE_KEY:?set in .env}
-      SERVER_COUNTRIES: ${VPN_COUNTRIES:-Netherlands}
-      # Port forwarding: only some providers support it (ProtonVPN, PIA,
-      # PrivateVPN, Perfect Privacy). Off for NordVPN, Mullvad, etc. (C2-R16).
-      VPN_PORT_FORWARDING: ${VPN_PORT_FORWARDING:-off}
-      VPN_PORT_FORWARDING_PROVIDER: ${VPN_PROVIDER}
-      # Push the dynamic forwarded port into qBittorrent on acquire AND release —
-      # the down command is not optional; qBittorrent must be reset to re-acquire
-      # after a reconnect (C2-R19, REPO-R21).
-      VPN_PORT_FORWARDING_UP_COMMAND: >-
-        /bin/sh -c 'wget -qO- --post-data
-        "json={\"listen_port\":{{PORT}}}"
-        http://127.0.0.1:8081/api/v2/app/setPreferences'
-      VPN_PORT_FORWARDING_DOWN_COMMAND: >-
-        /bin/sh -c 'wget -qO- --post-data
-        "json={\"listen_port\":0}"
-        http://127.0.0.1:8081/api/v2/app/setPreferences'
-
-  qbittorrent:
-    <<: *common
-    image: lscr.io/linuxserver/qbittorrent:5.0.3
-    profiles: [torrent]
-    environment:
-      <<: *env
-      WEBUI_PORT: 8081
-    network_mode: "service:gluetun" # all traffic through the tunnel (C2-R12)
-    depends_on: [gluetun]
-    volumes:
-      - ${DATA_ROOT:-./data}:/data
-      - ./config/qbittorrent:/config
-
-  # ── tv ──────────────────────────────────────────────────────────────────
-  sonarr:
-    <<: *common
-    image: lscr.io/linuxserver/sonarr:4.0.15
-    profiles: [tv]
-    environment: *env
-    ports: ["127.0.0.1:8989:8989"]
-    volumes:
-      - ${DATA_ROOT:-./data}:/data
-      - ./config/sonarr:/config
-
-  # ── media (LAN-bound — reachable from a TV) ─────────────────────────────
-  jellyfin:
-    <<: *common
-    image: jellyfin/jellyfin:10.10.3
-    profiles: [media]
-    ports: ["8096:8096"]
-    volumes:
-      - ${DATA_ROOT:-./data}/media:/media:ro
-      - ./config/jellyfin:/config
-
-  seerr:
-    <<: *common
-    image: ghcr.io/seerr-team/seerr:3.3.0
-    profiles: [media]
-    environment: *env
-    ports: ["5055:5055"]
-    volumes:
-      - ./config/seerr:/app/config
+include:
+  - path: compose/search.yml
+    project_directory: .
+  - path: compose/usenet.yml
+    project_directory: .
+  - path: compose/torrent.yml
+    project_directory: .
+  - path: compose/tv.yml
+    project_directory: .
+  - path: compose/movies.yml
+    project_directory: .
+  - path: compose/music.yml
+    project_directory: .
+  - path: compose/books.yml
+    project_directory: .
+  - path: compose/subs.yml
+    project_directory: .
+  - path: compose/media.yml
+    project_directory: .
+  - path: compose/tuning.yml
+    project_directory: .
+  - path: compose/dash.yml
+    project_directory: .
+  - path: compose/proxy.yml
+    project_directory: .
