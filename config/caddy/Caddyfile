@@ -14,34 +14,40 @@
 # Stanzas for them are at the bottom, commented out, with what you are accepting
 # written next to them.
 #
-# Set DOMAIN and CADDY_EMAIL in .env. With a real domain whose DNS points here,
-# Caddy obtains genuine certificates automatically. Self-signed TLS is not
-# offered: teaching a household to click through certificate warnings is a worse
-# outcome than honest HTTP on a trusted LAN.
-
-{
-	email {$CADDY_EMAIL}
-}
+# Set DOMAIN in .env. With a real domain whose DNS points here, Caddy obtains
+# genuine certificates automatically. Self-signed TLS is not offered: teaching a
+# household to click through certificate warnings is a worse outcome than honest
+# HTTP on a trusted LAN.
+#
+# The default below keeps this file valid before DOMAIN is set. A `.local` name
+# cannot be issued a public certificate, so Caddy serves plain HTTP until you
+# point a real domain here.
+#
+# To receive certificate-expiry notices from the CA, uncomment and set:
+#
+# {
+# 	email you@example.com
+# }
 
 # ── household ────────────────────────────────────────────────────────────────
 
-watch.{$DOMAIN} {
+watch.{$DOMAIN:home.local} {
 	reverse_proxy jellyfin:8096
 }
 
-requests.{$DOMAIN} {
+requests.{$DOMAIN:home.local} {
 	reverse_proxy seerr:5055
 }
 
-books.{$DOMAIN} {
+books.{$DOMAIN:home.local} {
 	reverse_proxy calibre-web-automated:8083
 }
 
-listen.{$DOMAIN} {
+listen.{$DOMAIN:home.local} {
 	reverse_proxy audiobookshelf:80
 }
 
-home.{$DOMAIN} {
+home.{$DOMAIN:home.local} {
 	reverse_proxy homepage:3000
 }
 
@@ -52,12 +58,12 @@ home.{$DOMAIN} {
 # only thing between your network and full control of the stack. Put a Caddy
 # `basic_auth` or forward-auth in front of it, and record why.
 #
-# sonarr.{$DOMAIN}      { reverse_proxy sonarr:8989 }
-# radarr.{$DOMAIN}      { reverse_proxy radarr:7878 }
-# lidarr.{$DOMAIN}      { reverse_proxy lidarr:8686 }
-# bindery.{$DOMAIN}     { reverse_proxy bindery:8787 }
-# bazarr.{$DOMAIN}      { reverse_proxy bazarr:6767 }
-# prowlarr.{$DOMAIN}    { reverse_proxy prowlarr:9696 }
-# nzbhydra.{$DOMAIN}    { reverse_proxy nzbhydra2:5076 }
-# sabnzbd.{$DOMAIN}     { reverse_proxy sabnzbd:8080 }
-# qbittorrent.{$DOMAIN} { reverse_proxy gluetun:8081 }
+# sonarr.{$DOMAIN:home.local}      { reverse_proxy sonarr:8989 }
+# radarr.{$DOMAIN:home.local}      { reverse_proxy radarr:7878 }
+# lidarr.{$DOMAIN:home.local}      { reverse_proxy lidarr:8686 }
+# bindery.{$DOMAIN:home.local}     { reverse_proxy bindery:8787 }
+# bazarr.{$DOMAIN:home.local}      { reverse_proxy bazarr:6767 }
+# prowlarr.{$DOMAIN:home.local}    { reverse_proxy prowlarr:9696 }
+# nzbhydra.{$DOMAIN:home.local}    { reverse_proxy nzbhydra2:5076 }
+# sabnzbd.{$DOMAIN:home.local}     { reverse_proxy sabnzbd:8080 }
+# qbittorrent.{$DOMAIN:home.local} { reverse_proxy gluetun:8081 }

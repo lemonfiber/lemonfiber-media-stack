@@ -21,6 +21,11 @@ test:
 images:
     python3 scripts/check_images.py
 
+# Shipped config templates parse in the service that reads them. Networked.
+configs:
+    python3 scripts/check_configs.py
+    python3 scripts/check_configs.py --self-test
+
 # Raw Compose validity, no manifest involved.
 config:
     VPN_PROVIDER=protonvpn WIREGUARD_PRIVATE_KEY=x docker compose config --quiet

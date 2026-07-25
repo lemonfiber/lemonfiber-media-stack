@@ -39,3 +39,11 @@ jobs:
 
       - name: Every pin publishes linux/amd64 and linux/arm64
         run: python3 scripts/check_images.py
+
+      # A template can resolve as Compose data and still be rejected by the
+      # service that reads it, which would surface only at `up` time.
+      - name: Shipped config templates parse
+        run: python3 scripts/check_configs.py
+
+      - name: The template check can fail
+        run: python3 scripts/check_configs.py --self-test

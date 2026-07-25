@@ -12,6 +12,10 @@ services:
       service: defaults
     image: caddy:2.8.4
     profiles: [proxy]
+    environment:
+      # config/caddy/Caddyfile reads this. Without it every site address
+      # collapses to a bare suffix and Caddy refuses to start.
+      DOMAIN: ${DOMAIN:-home.local}
     ports:
       - "${LAN_BIND:-0.0.0.0}:80:80"
       - "${LAN_BIND:-0.0.0.0}:443:443"
