@@ -42,7 +42,7 @@ CRITICALITIES = {"critical", "core", "important", "enhancing", "optional"}
 BINDS = {"loopback", "lan"}
 HEALTH_KINDS = {"http", "tcp", "container"}
 API_KINDS = {"servarr", "sabnzbd", "qbittorrent", "seerr", "bindery"}
-KEY_SOURCES = {"config-xml", "config-ini", "config-json", "api-settings", "none"}
+KEY_SOURCES = {"config-xml", "config-ini", "config-json", "api-settings", "generated", "none"}
 MEDIA_TYPES = {"tv", "movies", "music", "books"}
 # Anything beyond this list is a privilege the stack has not justified (C6).
 ALLOWED_CAPABILITIES = {"NET_ADMIN"}
