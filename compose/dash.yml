@@ -1,0 +1,35 @@
+# Profile: dash — a page linking everything.
+
+services:
+  homepage:
+    extends:
+      file: compose/_common.yml
+      service: rootless
+    image: ghcr.io/gethomepage/homepage:v0.9.13
+    profiles: [dash]
+    environment:
+      # Homepage refuses requests whose Host header isn't listed. Widen this in
+      # .env if you reach the dashboard by hostname rather than by address.
+      HOMEPAGE_ALLOWED_HOSTS: ${HOMEPAGE_ALLOWED_HOSTS:-localhost:3000}
+      # Substituted into config/homepage/services.yaml as {{HOMEPAGE_VAR_*}}.
+      # Listed one by one rather than passed as an env_file, so that the VPN key
+      # and the rest of .env never enter a LAN-facing container. All empty until
+      # seeding; a widget with no key renders without data.
+      HOMEPAGE_VAR_LAN_HOST: ${HOMEPAGE_VAR_LAN_HOST:-localhost}
+      HOMEPAGE_VAR_JELLYFIN_KEY: ${HOMEPAGE_VAR_JELLYFIN_KEY:-}
+      HOMEPAGE_VAR_SEERR_KEY: ${HOMEPAGE_VAR_SEERR_KEY:-}
+      HOMEPAGE_VAR_AUDIOBOOKSHELF_KEY: ${HOMEPAGE_VAR_AUDIOBOOKSHELF_KEY:-}
+      HOMEPAGE_VAR_SONARR_KEY: ${HOMEPAGE_VAR_SONARR_KEY:-}
+      HOMEPAGE_VAR_RADARR_KEY: ${HOMEPAGE_VAR_RADARR_KEY:-}
+      HOMEPAGE_VAR_LIDARR_KEY: ${HOMEPAGE_VAR_LIDARR_KEY:-}
+      HOMEPAGE_VAR_BAZARR_KEY: ${HOMEPAGE_VAR_BAZARR_KEY:-}
+      HOMEPAGE_VAR_PROWLARR_KEY: ${HOMEPAGE_VAR_PROWLARR_KEY:-}
+      HOMEPAGE_VAR_SABNZBD_KEY: ${HOMEPAGE_VAR_SABNZBD_KEY:-}
+      HOMEPAGE_VAR_QBITTORRENT_USER: ${HOMEPAGE_VAR_QBITTORRENT_USER:-}
+      HOMEPAGE_VAR_QBITTORRENT_PASS: ${HOMEPAGE_VAR_QBITTORRENT_PASS:-}
+    ports: ["${LAN_BIND:-0.0.0.0}:3000:3000"]
+    volumes:
+      - ./config/homepage:/app/config
+    # The Docker socket is deliberately NOT mounted. Homepage is published to the
+    # LAN and the socket is root-equivalent on the host; one is not worth the
+    # other. Service widgets use each app's own API instead.

@@ -1,0 +1,14 @@
+# Profile: subs — subtitle automation.
+
+services:
+  bazarr:
+    extends:
+      file: compose/_common.yml
+      service: rootless
+    image: lscr.io/linuxserver/bazarr:1.4.5
+    profiles: [subs]
+    ports: ["127.0.0.1:6767:6767"]
+    volumes:
+      # Read-write: subtitles are written next to the media they belong to.
+      - ${DATA_ROOT:-./data}:/data
+      - ./config/bazarr:/config

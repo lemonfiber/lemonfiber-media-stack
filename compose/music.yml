@@ -1,0 +1,17 @@
+# Profile: music — music automation.
+#
+# Lidarr is the slowest-moving service in the stack — roughly eight months
+# between releases. Not archived, still functional, and no viable successor
+# exists, so it is retained and watched.
+
+services:
+  lidarr:
+    extends:
+      file: compose/_common.yml
+      service: rootless
+    image: lscr.io/linuxserver/lidarr:2.9.6
+    profiles: [music]
+    ports: ["127.0.0.1:8686:8686"]
+    volumes:
+      - ${DATA_ROOT:-./data}:/data
+      - ./config/lidarr:/config

@@ -1,0 +1,36 @@
+# Profile: search — finding things.
+# Admin tier: everything here publishes on loopback only.
+
+services:
+  prowlarr:
+    extends:
+      file: compose/_common.yml
+      service: rootless
+    image: lscr.io/linuxserver/prowlarr:2.5.2
+    profiles: [search]
+    ports: ["127.0.0.1:9696:9696"]
+    volumes:
+      - ${DATA_ROOT:-./data}:/data
+      - ./config/prowlarr:/config
+
+  flaresolverr:
+    extends:
+      file: compose/_common.yml
+      service: defaults
+    image: ghcr.io/flaresolverr/flaresolverr:v3.5.0
+    profiles: [search]
+    environment:
+      LOG_LEVEL: ${FLARESOLVERR_LOG_LEVEL:-info}
+    ports: ["127.0.0.1:8191:8191"]
+    # No data mount: it solves browser challenges, it never touches the library.
+
+  nzbhydra2:
+    extends:
+      file: compose/_common.yml
+      service: rootless
+    image: lscr.io/linuxserver/nzbhydra2:8.9.0
+    profiles: [search]
+    ports: ["127.0.0.1:5076:5076"]
+    volumes:
+      - ${DATA_ROOT:-./data}:/data
+      - ./config/nzbhydra2:/config

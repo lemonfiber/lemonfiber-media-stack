@@ -1,0 +1,66 @@
+# Profile: media — serving what you have.
+#
+# The household tier. These are the only services published beyond loopback,
+# because a library nobody can reach from the TV is not a library. Set LAN_BIND
+# in .env to pin them to one interface address rather than all of them.
+
+services:
+  jellyfin:
+    extends:
+      file: compose/_common.yml
+      service: defaults
+    image: jellyfin/jellyfin:10.10.3
+    profiles: [media]
+    # The official image takes a uid:gid pair rather than PUID/PGID.
+    user: "${PUID:-1000}:${PGID:-1000}"
+    ports: ["${LAN_BIND:-0.0.0.0}:8096:8096"]
+    volumes:
+      # One mount, like everything else. Jellyfin writes artwork and NFO files
+      # back into the library by default, so this is deliberately not read-only.
+      - ${DATA_ROOT:-./data}:/data
+      - ./config/jellyfin:/config
+      - ./config/jellyfin/cache:/cache
+    # Hardware transcoding: uncomment both lines and set RENDER_GID in .env to
+    # the host's render group id (`getent group render`). Intel/AMD VA-API.
+    # devices: ["/dev/dri:/dev/dri"]
+    # group_add: ["${RENDER_GID:-0}"]
+
+  seerr:
+    extends:
+      file: compose/_common.yml
+      service: defaults
+    image: ghcr.io/seerr-team/seerr:v3.3.0
+    profiles: [media]
+    environment:
+      LOG_LEVEL: ${SEERR_LOG_LEVEL:-info}
+    ports: ["${LAN_BIND:-0.0.0.0}:5055:5055"]
+    volumes:
+      - ./config/seerr:/app/config
+    # No data mount: it takes requests and calls APIs, it never reads the library.
+
+  calibre-web-automated:
+    extends:
+      file: compose/_common.yml
+      service: rootless
+    image: crocodilestick/calibre-web-automated:V3.0.4
+    profiles: [media]
+    ports: ["${LAN_BIND:-0.0.0.0}:8083:8083"]
+    volumes:
+      # Point the Calibre library at /data/media/books on first run. Acquisition
+      # is Bindery's job, so the image's separate ingest folder goes unused — a
+      # second mount beneath the data root is not available to us.
+      - ${DATA_ROOT:-./data}:/data
+      - ./config/calibre-web-automated:/config
+
+  audiobookshelf:
+    extends:
+      file: compose/_common.yml
+      service: defaults
+    image: ghcr.io/advplyr/audiobookshelf:2.17.7
+    profiles: [media]
+    # The container serves on 80; 13378 is the conventional host port.
+    ports: ["${LAN_BIND:-0.0.0.0}:13378:80"]
+    volumes:
+      - ${DATA_ROOT:-./data}:/data
+      - ./config/audiobookshelf:/config
+      - ./config/audiobookshelf/metadata:/metadata

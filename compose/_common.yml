@@ -1,0 +1,27 @@
+# Shared service defaults.
+#
+# This file is deliberately NOT in compose.yml's include list. It is reached only
+# through `extends:`, so `defaults` and `rootless` are templates — they never
+# become containers, and they never appear in `docker compose ps`.
+#
+# Paths here read `compose/_common.yml` rather than `_common.yml` because every
+# include sets `project_directory: .`, making all relative paths root-relative.
+
+services:
+  # Everything gets these two. A container that stops for any reason other than
+  # an explicit `docker compose down` comes back.
+  defaults:
+    restart: unless-stopped
+    environment:
+      TZ: ${TZ:-Europe/Amsterdam}
+
+  # Images that drop privileges from a PUID/PGID pair — LinuxServer.io, hotio,
+  # Homepage, Calibre-Web-Automated. Setting these on an image that ignores them
+  # would be a silent no-op that reads like a security control, so services whose
+  # upstream doesn't document them extend `defaults` and set `user:` instead.
+  rootless:
+    extends:
+      service: defaults
+    environment:
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}

@@ -1,0 +1,47 @@
+# Profile: tuning — quality profiles and extraction.
+#
+# Neither service has a web interface, so neither publishes a port. They reach
+# the *arrs over the network by URL, which is not a `depends_on` and so does not
+# cross a profile boundary — the tuning profile boots on its own and simply has
+# nothing to talk to until an *arr is up.
+
+services:
+  recyclarr:
+    extends:
+      file: compose/_common.yml
+      service: defaults
+    image: ghcr.io/recyclarr/recyclarr:7.4.0
+    profiles: [tuning]
+    # Upstream documents a uid:gid pair rather than PUID/PGID.
+    user: "${PUID:-1000}:${PGID:-1000}"
+    environment:
+      CRON_SCHEDULE: ${RECYCLARR_CRON:-@daily}
+      # config/recyclarr/recyclarr.yml reads these through `!env_var`. They are
+      # empty until the stack is seeded; until then each cycle logs an
+      # authentication failure and changes nothing, which is the inert state.
+      SONARR_API_KEY: ${SONARR_API_KEY:-}
+      RADARR_API_KEY: ${RADARR_API_KEY:-}
+    volumes:
+      - ./config/recyclarr:/config
+    # No data mount: it edits quality profiles over the API, not files on disk.
+
+  unpackerr:
+    extends:
+      file: compose/_common.yml
+      service: rootless
+    image: ghcr.io/hotio/unpackerr:release-0.14.5
+    profiles: [tuning]
+    environment:
+      UMASK: ${UMASK:-002}
+      # Left empty until seeding fills them in. Unpackerr skips any *arr whose
+      # URL is unset, so an unseeded stack simply idles.
+      UN_SONARR_0_URL: ${UN_SONARR_0_URL:-}
+      UN_SONARR_0_API_KEY: ${UN_SONARR_0_API_KEY:-}
+      UN_RADARR_0_URL: ${UN_RADARR_0_URL:-}
+      UN_RADARR_0_API_KEY: ${UN_RADARR_0_API_KEY:-}
+      UN_LIDARR_0_URL: ${UN_LIDARR_0_URL:-}
+      UN_LIDARR_0_API_KEY: ${UN_LIDARR_0_API_KEY:-}
+    volumes:
+      # It extracts archives in place in the download directory.
+      - ${DATA_ROOT:-./data}:/data
+      - ./config/unpackerr:/config
