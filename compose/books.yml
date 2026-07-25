@@ -7,9 +7,19 @@ services:
   bindery:
     extends:
       file: compose/_common.yml
-      service: rootless
+      # Not `rootless`: the image is distroless and runs as a fixed non-root
+      # user, so PUID and PGID would be set and silently ignored. On Linux the
+      # data root must be writable by that user rather than by PUID.
+      service: defaults
     image: ghcr.io/vavallee/bindery:v1.27.0
     profiles: [books]
+    environment:
+      # Bindery defaults these to /books and /downloads, which are not on the
+      # single data mount — imports would land inside the container and vanish
+      # with it. Audiobook paths inherit from these when unset.
+      BINDERY_LIBRARY_DIR: /data/media/books
+      BINDERY_AUDIOBOOK_DIR: /data/media/audiobooks
+      BINDERY_DOWNLOAD_DIR: /data/downloads
     ports: ["127.0.0.1:8787:8787"]
     volumes:
       - ${DATA_ROOT:-./data}:/data
