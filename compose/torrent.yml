@@ -38,17 +38,18 @@ services:
       # otherwise the tunnel comes up on a server that cannot forward, and the
       # only symptom is a port that never arrives.
       PORT_FORWARD_ONLY: ${VPN_PORT_FORWARDING:-off}
-      # Push the dynamic forwarded port into qBittorrent on acquire AND release.
-      # The down command is not optional: without it qBittorrent keeps the stale
-      # port and will not re-acquire correctly after a reconnect.
-      VPN_PORT_FORWARDING_UP_COMMAND: >-
-        /bin/sh -c 'wget -qO- --post-data
-        "json={\"listen_port\":{{PORT}}}"
-        http://127.0.0.1:8081/api/v2/app/setPreferences'
-      VPN_PORT_FORWARDING_DOWN_COMMAND: >-
-        /bin/sh -c 'wget -qO- --post-data
-        "json={\"listen_port\":0}"
-        http://127.0.0.1:8081/api/v2/app/setPreferences'
+      # qBittorrent's WebUI API answers 403 without a session, so the push logs
+      # in first. Credentials come from the operator's .env; with none set the
+      # script says the port was not pushed rather than failing quietly.
+      QBT_USERNAME: ${QBITTORRENT_USERNAME:-admin}
+      QBT_PASSWORD: ${QBITTORRENT_PASSWORD:-}
+      # Push the forwarded port on acquire AND release. The down command is not
+      # optional: qBittorrent left holding a port the provider has taken back
+      # does not re-acquire correctly on the next reconnect.
+      VPN_PORT_FORWARDING_UP_COMMAND: /bin/sh /gluetun/push-port.sh {{PORT}}
+      VPN_PORT_FORWARDING_DOWN_COMMAND: /bin/sh /gluetun/push-port.sh 0
+    volumes:
+      - ./scripts/push-port.sh:/gluetun/push-port.sh:ro
 
   qbittorrent:
     extends:
