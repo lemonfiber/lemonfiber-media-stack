@@ -32,7 +32,12 @@ services:
       # PrivateVPN, Perfect Privacy. Off for NordVPN, Mullvad and the rest,
       # where the port machinery simply does not run.
       VPN_PORT_FORWARDING: ${VPN_PORT_FORWARDING:-off}
-      VPN_PORT_FORWARDING_PROVIDER: ${VPN_PROVIDER}
+      VPN_PORT_FORWARDING_PROVIDER: ${VPN_PROVIDER:-}
+      # Asking for a forwarded port is not the same as landing on a server that
+      # can grant one. Tied to the same switch so the two cannot disagree:
+      # otherwise the tunnel comes up on a server that cannot forward, and the
+      # only symptom is a port that never arrives.
+      PORT_FORWARD_ONLY: ${VPN_PORT_FORWARDING:-off}
       # Push the dynamic forwarded port into qBittorrent on acquire AND release.
       # The down command is not optional: without it qBittorrent keeps the stale
       # port and will not re-acquire correctly after a reconnect.
