@@ -2,17 +2,41 @@
 default:
     @just --list
 
-# Everything CI runs.
-ci: config validate
+# Everything CI runs bar the image check, which needs the network.
+ci: validate forms test
 
-# Validate the compose file.
-config:
-    VPN_PROVIDER=protonvpn WIREGUARD_PRIVATE_KEY=x docker compose config --quiet
-
-# Validate the manifest against the contract.
+# stack.toml against the contract, and compose.yml held in parity with it.
 validate:
     python3 scripts/validate_manifest.py
 
+# Every form and overlay resolves to a valid project.
+forms:
+    python3 scripts/check_forms.py
+
+# The lint's own tests — each rule proven to fail when the rule is broken.
+test:
+    python3 scripts/test_validate_manifest.py
+
+# Every pinned image publishes linux/amd64 and linux/arm64. Networked.
+images:
+    python3 scripts/check_images.py
+
+# Raw Compose validity, no manifest involved.
+config:
+    VPN_PROVIDER=protonvpn WIREGUARD_PRIVATE_KEY=x docker compose config --quiet
+
+# List the forms this stack declares.
+forms-list:
+    @python3 scripts/form_profiles.py --list
+
 # Start a form, e.g. `just up tv`.
+#
+# A form is a *set* of profiles, not one profile: `tv` means search, usenet,
+# torrent, tv and subs together. The set is read from stack.toml, so this cannot
+# drift from what lemonfiber would start.
 up form:
-    docker compose --profile {{form}} up -d
+    docker compose $(python3 scripts/form_profiles.py {{form}}) up -d
+
+# Stop a form the same way.
+down form:
+    docker compose $(python3 scripts/form_profiles.py {{form}}) down
