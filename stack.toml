@@ -294,7 +294,7 @@ describes = "Watches for books and audiobooks and fetches them"
 without_it = "No book automation (Readarr is discontinued)"
 media_types = ["books"]
 health = { kind = "http", path = "/", timeout_s = 90 }
-api = { kind = "bindery", key_source = "config-json", path = "/config/config.json" }
+api = { kind = "bindery", key_source = "api-settings" }
 
 [[service]]
 id = "bazarr"
