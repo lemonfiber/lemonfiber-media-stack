@@ -65,7 +65,7 @@ def github_latest(upstream: str) -> datetime.date | None:
         try:
             with urllib.request.urlopen(urllib.request.Request(url, headers=headers), timeout=20) as r:
                 published = pick(json.load(r))
-        except (urllib.error.HTTPError, urllib.error.URLError, json.JSONDecodeError):
+        except (urllib.error.URLError, json.JSONDecodeError):
             continue
         if published:
             return datetime.date.fromisoformat(published[:10])
