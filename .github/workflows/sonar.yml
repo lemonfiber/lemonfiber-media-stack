@@ -1,0 +1,14 @@
+# Gate media-stack PRs on zero new SonarCloud issues. The scan is SonarCloud
+# Automatic Analysis; this enforces the standard the free-plan gate cannot
+# (Q-R64) via the shared reusable in spec, so every repo gates identically.
+name: sonar
+on:
+  pull_request:
+permissions:
+  contents: read
+  pull-requests: write
+jobs:
+  gate:
+    uses: lemonfiber/spec/.github/workflows/sonar-gate.yml@48c475fb2a674f2460bfdfc0093d918291341530 # main
+    secrets:
+      sonar-token: ${{ secrets.SONAR_TOKEN }}
