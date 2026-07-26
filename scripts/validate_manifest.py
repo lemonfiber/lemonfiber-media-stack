@@ -57,6 +57,7 @@ SERVICE_REQUIRED = (
 )
 SEMVER = re.compile(r"^\d+\.\d+\.\d+(?:[-+].*)?$")
 ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+STACK_TOML = "stack.toml"
 
 
 class Report:
@@ -115,13 +116,11 @@ def osi_licences() -> set[str]:
 # ── manifest ────────────────────────────────────────────────────────────────
 
 
-def validate_manifest(manifest: dict, report: Report) -> None:
-    licences = osi_licences()
-
+def validate_versions(manifest: dict, report: Report) -> None:
     version = manifest.get("schema_version")
     report.check(
         version in SUPPORTED_SCHEMA_VERSIONS,
-        "stack.toml",
+        STACK_TOML,
         f"schema_version {version!r} unsupported; this validator implements "
         f"{sorted(SUPPORTED_SCHEMA_VERSIONS)}",
     )
@@ -129,14 +128,12 @@ def validate_manifest(manifest: dict, report: Report) -> None:
         value = manifest.get(field)
         report.check(
             isinstance(value, str) and bool(SEMVER.match(value)),
-            "stack.toml",
+            STACK_TOML,
             f"{field} must be semver, got {value!r}",
         )
 
-    profiles = manifest.get("profile", [])
-    forms = manifest.get("form", [])
-    services = manifest.get("service", [])
 
+def validate_profiles(profiles: list, report: Report) -> set[str]:
     profile_ids: set[str] = set()
     claimed_protocols: dict[str, str] = {}
     for profile in profiles:
@@ -165,7 +162,10 @@ def validate_manifest(manifest: dict, report: Report) -> None:
                 f"protocol {protocol!r} is already claimed by profile {owner!r}",
             )
             claimed_protocols.setdefault(protocol, pid)
+    return profile_ids
 
+
+def validate_forms(forms: list, profile_ids: set[str], report: Report) -> None:
     form_ids: set[str] = set()
     for form in forms:
         where = f"form {form.get('id', '<unnamed>')}"
@@ -184,103 +184,116 @@ def validate_manifest(manifest: dict, report: Report) -> None:
                 isinstance(form["composable"], bool), where, "composable must be a boolean"
             )
 
-    service_ids: set[str] = set()
-    profile_of: dict[str, str] = {}
-    for service in services:
-        sid = service.get("id", "<unnamed>")
-        where = f"service {sid}"
-        for field in SERVICE_REQUIRED:
-            report.check(field in service, where, f"missing required field {field!r}")
-        report.check(sid not in service_ids, where, "duplicate service id")
-        service_ids.add(sid)
-        profile_of[sid] = service.get("profile", "")
 
+def validate_service_runtime(service: dict, where: str, report: Report) -> None:
+    if "port" in service:
+        port = service["port"]
         report.check(
-            service.get("profile") in profile_ids,
-            where,
-            f"unknown profile {service.get('profile')!r}",
-            "B1-R1",
+            isinstance(port, int) and 1 <= port <= 65535, where, f"invalid port {port!r}"
         )
+        report.check("bind" in service, where, "port declared without bind", "C6")
+    if "bind" in service:
         report.check(
-            ":" not in str(service.get("image", "")),
-            where,
-            "image must not carry a tag; use the separate `tag` field",
+            service["bind"] in BINDS, where, f"bind must be one of {sorted(BINDS)}", "C6"
         )
-        tag = str(service.get("tag", ""))
+    for capability in service.get("capabilities", []):
         report.check(
-            tag.lower().lstrip("v") not in FLOATING_TAGS and tag != "",
+            capability in ALLOWED_CAPABILITIES,
             where,
-            f"floating tag {tag!r}",
-            "E1-R1",
+            f"capability {capability!r} is outside the allow-list "
+            f"{sorted(ALLOWED_CAPABILITIES)}",
+            "C6",
         )
+    for media_type in service.get("media_types", []):
         report.check(
-            service.get("criticality") in CRITICALITIES,
-            where,
-            f"criticality must be one of {sorted(CRITICALITIES)}",
-            "F2-R3",
+            media_type in MEDIA_TYPES, where, f"unknown media type {media_type!r}"
         )
-        licence = service.get("license")
-        report.check(
-            licence in licences,
-            where,
-            f"licence {licence!r} is not a recognised OSI identifier; see "
-            "scripts/spdx_osi.txt",
-            "F2-R5",
-        )
-        report.check(
-            str(service.get("upstream", "")).startswith("https://"),
-            where,
-            "upstream must be an https URL",
-            "F2-R4",
-        )
-        validate_last_release(service, where, report)
 
-        if "port" in service:
-            port = service["port"]
-            report.check(
-                isinstance(port, int) and 1 <= port <= 65535, where, f"invalid port {port!r}"
-            )
-            report.check("bind" in service, where, "port declared without bind", "C6")
-        if "bind" in service:
-            report.check(
-                service["bind"] in BINDS, where, f"bind must be one of {sorted(BINDS)}", "C6"
-            )
 
-        for capability in service.get("capabilities", []):
-            report.check(
-                capability in ALLOWED_CAPABILITIES,
-                where,
-                f"capability {capability!r} is outside the allow-list "
-                f"{sorted(ALLOWED_CAPABILITIES)}",
-                "C6",
-            )
-        for media_type in service.get("media_types", []):
-            report.check(
-                media_type in MEDIA_TYPES, where, f"unknown media type {media_type!r}"
-            )
+def validate_service_health(service: dict, where: str, report: Report) -> None:
+    health = service.get("health")
+    if health is None:
+        return
+    kind = health.get("kind")
+    report.check(kind in HEALTH_KINDS, where, f"health.kind {kind!r} unknown")
+    if kind == "http":
+        report.check("path" in health, where, "http health requires a path")
+        report.check("port" in service, where, "http health requires a port")
+    if "timeout_s" in health:
+        report.check(
+            isinstance(health["timeout_s"], int) and health["timeout_s"] > 0,
+            where,
+            "health.timeout_s must be a positive integer",
+        )
 
-        health = service.get("health")
-        if health is not None:
-            kind = health.get("kind")
-            report.check(kind in HEALTH_KINDS, where, f"health.kind {kind!r} unknown")
-            if kind == "http":
-                report.check("path" in health, where, "http health requires a path")
-                report.check("port" in service, where, "http health requires a port")
-            if "timeout_s" in health:
-                report.check(
-                    isinstance(health["timeout_s"], int) and health["timeout_s"] > 0,
-                    where,
-                    "health.timeout_s must be a positive integer",
-                )
 
-        api = service.get("api")
-        if api is not None:
-            report.check(api.get("kind") in API_KINDS, where, f"api.kind {api.get('kind')!r} unknown")
-            key_source = api.get("key_source")
-            report.check(key_source in KEY_SOURCES, where, f"api.key_source {key_source!r} unknown")
-            if key_source in {"config-xml", "config-ini", "config-json"}:
-                report.check("path" in api, where, f"api.key_source {key_source!r} requires a path")
+def validate_service_api(service: dict, where: str, report: Report) -> None:
+    api = service.get("api")
+    if api is None:
+        return
+    report.check(api.get("kind") in API_KINDS, where, f"api.kind {api.get('kind')!r} unknown")
+    key_source = api.get("key_source")
+    report.check(key_source in KEY_SOURCES, where, f"api.key_source {key_source!r} unknown")
+    if key_source in {"config-xml", "config-ini", "config-json"}:
+        report.check("path" in api, where, f"api.key_source {key_source!r} requires a path")
 
+
+def validate_service(service: dict, profile_ids: set[str], licences: set[str],
+                     service_ids: set[str], profile_of: dict[str, str], report: Report) -> None:
+    sid = service.get("id", "<unnamed>")
+    where = f"service {sid}"
+    for field in SERVICE_REQUIRED:
+        report.check(field in service, where, f"missing required field {field!r}")
+    report.check(sid not in service_ids, where, "duplicate service id")
+    service_ids.add(sid)
+    profile_of[sid] = service.get("profile", "")
+
+    report.check(
+        service.get("profile") in profile_ids,
+        where,
+        f"unknown profile {service.get('profile')!r}",
+        "B1-R1",
+    )
+    report.check(
+        ":" not in str(service.get("image", "")),
+        where,
+        "image must not carry a tag; use the separate `tag` field",
+    )
+    tag = str(service.get("tag", ""))
+    report.check(
+        tag.lower().lstrip("v") not in FLOATING_TAGS and tag != "",
+        where,
+        f"floating tag {tag!r}",
+        "E1-R1",
+    )
+    report.check(
+        service.get("criticality") in CRITICALITIES,
+        where,
+        f"criticality must be one of {sorted(CRITICALITIES)}",
+        "F2-R3",
+    )
+    licence = service.get("license")
+    report.check(
+        licence in licences,
+        where,
+        f"licence {licence!r} is not a recognised OSI identifier; see "
+        "scripts/spdx_osi.txt",
+        "F2-R5",
+    )
+    report.check(
+        str(service.get("upstream", "")).startswith("https://"),
+        where,
+        "upstream must be an https URL",
+        "F2-R4",
+    )
+    validate_last_release(service, where, report)
+    validate_service_runtime(service, where, report)
+    validate_service_health(service, where, report)
+    validate_service_api(service, where, report)
+
+
+def validate_dependencies(services: list, service_ids: set[str],
+                          profile_of: dict[str, str], report: Report) -> None:
     # depends_on needs every id known, so it runs after the first pass.
     for service in services:
         sid = service.get("id", "<unnamed>")
@@ -296,16 +309,33 @@ def validate_manifest(manifest: dict, report: Report) -> None:
                 "B1-R14",
             )
 
+
+def validate_orphans(profile_ids: set[str], forms: list, services: list, report: Report) -> None:
     # A profile no service claims cannot start anything, so a form naming it is a
     # promise the stack cannot keep.
     claimed = {service.get("profile") for service in services}
     for pid in sorted(profile_ids - claimed):
         report.fail(f"profile {pid}", "no service declares this profile")
-
     # A service in no form is unreachable through lemonfiber.
     in_forms = {entry for form in forms for entry in form.get("profiles", [])}
     for pid in sorted(profile_ids - in_forms):
         report.fail(f"profile {pid}", "no form activates this profile")
+
+
+def validate_manifest(manifest: dict, report: Report) -> None:
+    licences = osi_licences()
+    validate_versions(manifest, report)
+    profiles = manifest.get("profile", [])
+    forms = manifest.get("form", [])
+    services = manifest.get("service", [])
+    profile_ids = validate_profiles(profiles, report)
+    validate_forms(forms, profile_ids, report)
+    service_ids: set[str] = set()
+    profile_of: dict[str, str] = {}
+    for service in services:
+        validate_service(service, profile_ids, licences, service_ids, profile_of, report)
+    validate_dependencies(services, service_ids, profile_of, report)
+    validate_orphans(profile_ids, forms, services, report)
 
 
 # ── parity with the resolved Compose model ──────────────────────────────────
@@ -458,6 +488,64 @@ def validate_capabilities(sid: str, spec: dict, service: dict, report: Report) -
     )
 
 
+def resolve_port_owner(published: str, publisher: str, owners: dict,
+                       clients: dict, declared: dict, report: Report) -> str | None:
+    """The service whose bind tier governs this published port, or None when it
+    cannot be attributed to a single tier (reported as a failure)."""
+    owner = owners.get(published)
+    if owner is not None:
+        return owner
+    # Not a declared primary port — the manifest records one per service, and
+    # Caddy's 443 or a discovery port is legitimate. It still has to obey its
+    # owner's tier, so attribute it.
+    tiered = [c for c in clients.get(publisher, [])
+              if c in declared and declared[c].get("bind")]
+    if publisher in declared and declared[publisher].get("bind"):
+        return publisher
+    if len(tiered) == 1:
+        return tiered[0]
+    report.fail(
+        f"service {publisher}",
+        f"publishes undeclared port {published} and no single service "
+        "in its network namespace declares a bind tier, so the "
+        "binding policy cannot be applied",
+        "C6",
+    )
+    return None
+
+
+def check_bind_tier(owner: str, host_ip: str, declared: dict, report: Report) -> None:
+    tier = declared[owner].get("bind")
+    if tier == "loopback":
+        report.check(
+            host_ip == "127.0.0.1",
+            f"service {owner}",
+            f"admin service published on {host_ip}; must be 127.0.0.1",
+            "C6-R1",
+        )
+    elif tier == "lan":
+        report.check(
+            host_ip != "127.0.0.1",
+            f"service {owner}",
+            "household service published on loopback; unreachable from a TV",
+            "C6-R2",
+        )
+
+
+def check_declared_published(declared: dict, compose: dict, gateway_of: dict, report: Report) -> None:
+    for sid, spec in sorted(declared.items()):
+        if "port" not in spec or sid not in compose:
+            continue
+        publisher = gateway_of.get(sid, sid)
+        if str(spec["port"]) not in {p for p, _ in published_ports(compose.get(publisher, {}))}:
+            report.fail(
+                f"service {sid}",
+                f"stack.toml declares port {spec['port']} but neither it nor its "
+                f"gateway {publisher!r} publishes it",
+                "REPO-R18",
+            )
+
+
 def validate_bindings(declared: dict, compose: dict, gateway_of: dict, report: Report) -> None:
     """Every published port must belong to a declared service and match its tier."""
     # Who each publisher is publishing for: itself, plus anyone in its namespace.
@@ -473,55 +561,11 @@ def validate_bindings(declared: dict, compose: dict, gateway_of: dict, report: R
             if c in declared and "port" in declared[c]
         }
         for published, host_ip in published_ports(service):
-            owner = owners.get(published)
-            if owner is None:
-                # Not a declared primary port — the manifest records one per
-                # service, and Caddy's 443 or a discovery port is legitimate.
-                # It still has to obey its owner's tier, so attribute it.
-                tiered = [
-                    c for c in clients.get(publisher, [])
-                    if c in declared and declared[c].get("bind")
-                ]
-                if publisher in declared and declared[publisher].get("bind"):
-                    owner = publisher
-                elif len(tiered) == 1:
-                    owner = tiered[0]
-                else:
-                    report.fail(
-                        f"service {publisher}",
-                        f"publishes undeclared port {published} and no single service "
-                        "in its network namespace declares a bind tier, so the "
-                        "binding policy cannot be applied",
-                        "C6",
-                    )
-                    continue
-            tier = declared[owner].get("bind")
-            if tier == "loopback":
-                report.check(
-                    host_ip == "127.0.0.1",
-                    f"service {owner}",
-                    f"admin service published on {host_ip}; must be 127.0.0.1",
-                    "C6-R1",
-                )
-            elif tier == "lan":
-                report.check(
-                    host_ip != "127.0.0.1",
-                    f"service {owner}",
-                    "household service published on loopback; unreachable from a TV",
-                    "C6-R2",
-                )
+            owner = resolve_port_owner(published, publisher, owners, clients, declared, report)
+            if owner is not None:
+                check_bind_tier(owner, host_ip, declared, report)
 
-    for sid, spec in sorted(declared.items()):
-        if "port" not in spec or sid not in compose:
-            continue
-        publisher = gateway_of.get(sid, sid)
-        if str(spec["port"]) not in {p for p, _ in published_ports(compose.get(publisher, {}))}:
-            report.fail(
-                f"service {sid}",
-                f"stack.toml declares port {spec['port']} but neither it nor its "
-                f"gateway {publisher!r} publishes it",
-                "REPO-R18",
-            )
+    check_declared_published(declared, compose, gateway_of, report)
 
 
 def validate_gateways(declared: dict, compose: dict, gateway_of: dict, report: Report) -> None:
@@ -553,7 +597,7 @@ def main() -> int:
     args = parser.parse_args()
 
     report = Report()
-    manifest = tomllib.loads((ROOT / "stack.toml").read_text(encoding="utf-8"))
+    manifest = tomllib.loads((ROOT / STACK_TOML).read_text(encoding="utf-8"))
     validate_manifest(manifest, report)
 
     checked_parity = False
