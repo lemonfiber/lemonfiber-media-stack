@@ -27,3 +27,11 @@
 .env
 .planning/
 .DS_Store
+
+# CPython writes bytecode next to the source it imports, so running the
+# validators — or the tests that import them — leaves scripts/__pycache__/
+# behind in a working tree that should stay clean. Nothing here is ours to
+# track: it is regenerated from the .py files on the next import.
+__pycache__/
+*.py[cod]
+.pytest_cache/
