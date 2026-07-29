@@ -54,6 +54,19 @@ CASES = [
         None,
     ),
     (
+        "a servarr service that declares no API version",
+        patch(
+            "stack.toml",
+            'media_types = ["tv"]\n'
+            'health = { kind = "http", path = "/ping", timeout_s = 90 }\n'
+            'api = { kind = "servarr", key_source = "config-xml", path = "/config/config.xml", version = 3 }',
+            'media_types = ["tv"]\n'
+            'health = { kind = "http", path = "/ping", timeout_s = 90 }\n'
+            'api = { kind = "servarr", key_source = "config-xml", path = "/config/config.xml" }',
+        ),
+        "servarr api.version must be",
+    ),
+    (
         "B1-R15 a profile claiming a protocol nobody configures",
         patch(
             "stack.toml",

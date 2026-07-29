@@ -236,6 +236,16 @@ def validate_service_api(service: dict, where: str, report: Report) -> None:
     report.check(key_source in KEY_SOURCES, where, f"api.key_source {key_source!r} unknown")
     if key_source in {"config-xml", "config-ini", "config-json"}:
         report.check("path" in api, where, f"api.key_source {key_source!r} requires a path")
+    # The servarr shape spans two API major versions — Sonarr/Radarr are v3,
+    # Lidarr/Prowlarr v1 — so the one client cannot assume one; the version is
+    # data, and required. The other kinds have a single fixed version their
+    # client already knows.
+    if api.get("kind") == "servarr":
+        report.check(
+            api.get("version") in {1, 3},
+            where,
+            f"servarr api.version must be 1 or 3, got {api.get('version')!r}",
+        )
 
 
 def validate_service(service: dict, profile_ids: set[str], licences: set[str],
