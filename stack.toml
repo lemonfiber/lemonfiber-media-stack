@@ -339,6 +339,7 @@ last_release = "2026-06-06"
 describes = "Plays your library on TVs, phones and browsers"
 without_it = "Files on disk, no way to watch them"
 health = { kind = "http", path = "/health", timeout_s = 120 }
+api = { kind = "jellyfin", key_source = "generated" }
 
 [[service]]
 id = "seerr"
