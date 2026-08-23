@@ -592,7 +592,7 @@ def validate_gateways(declared: dict, compose: dict, gateway_of: dict, report: R
                 f"service {sid}",
                 f"shares the {profile!r} profile with the {gateway!r} tunnel but does "
                 f"not use `network_mode: service:{gateway}`; its traffic would bypass "
-                "the killswitch",
+                "the killswitch, and lemonfiber would report it as leaking",
                 "C2-R12",
             )
 

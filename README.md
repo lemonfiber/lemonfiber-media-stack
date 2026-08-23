@@ -89,11 +89,11 @@ proven to fail when broken by `scripts/test_validate_manifest.py`.
 | One `${DATA_ROOT}:/data` mount per service | Hardlinks (`ADR-0006`, `C5-R5`) |
 | Bindings match the manifest tier | Admin on loopback, household on LAN (`C6-R1/R2`) |
 | No `depends_on` across a profile | Any subset boots (`B1-R14`) |
-| Killswitch routing | Nothing shares Gluetun's profile without its namespace (`C2-R12`) |
+| Killswitch routing | Nothing shares Gluetun's profile without its namespace, so no client here is one lemonfiber must report as leaking (`C2-R12`) |
 | Pinned, non-floating tags | Nothing changes because time passed (`E1-R1`) |
 | Capabilities match the manifest | Only Gluetun holds `NET_ADMIN` (`C6`) |
 | OSI licence per service | Verified against a vendored SPDX list (`F2-R5`) |
-| Every form resolves | And drags in nothing outside its profiles (`REPO-R17`) |
+| Every form resolves | `docker compose config` per form (`REPO-R17`), dragging in nothing outside its profiles (`B1-R14`, `REPO-R19`) |
 | arm64 + amd64 per pin | Read from each registry's manifest list (`F2-R6`) |
 
 The parity checks read `docker compose config`'s resolved model rather than the

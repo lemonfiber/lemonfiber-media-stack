@@ -41,7 +41,8 @@ templates never become containers:
   `linux/amd64` and `linux/arm64` fails CI (`F2-R6`).
 - **`bind` matches the manifest tier** — admin services `loopback`, household
   services `lan` (`C6`). Only Gluetun holds `NET_ADMIN`, and anything sharing its
-  profile must use `network_mode: service:gluetun` (`C2-R12`).
+  profile must use `network_mode: service:gluetun` — a download client outside the
+  tunnel's namespace is one lemonfiber reports as leaking (`C2-R12`).
 - `stack.toml` and the Compose model must stay in parity — every service in one
   is in the other, with the same image, tag and profile.
 
