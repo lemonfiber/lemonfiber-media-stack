@@ -23,6 +23,14 @@ jobs:
       - name: Every form and overlay resolves
         run: python3 scripts/check_forms.py
 
+      # `19 services` is restated in this repo's prose and in documents outside
+      # it. stack.toml is the only place that knows.
+      - name: The docs state the count stack.toml defines
+        run: python3 scripts/check_docs.py
+
+      - name: The count check can fail
+        run: python3 scripts/check_docs.py --self-test
+
       # The lint's own negative tests. A rule nobody has watched fail is a rule
       # nobody knows works.
       - name: Validator test suite

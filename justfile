@@ -3,7 +3,7 @@ default:
     @just --list
 
 # Everything CI runs bar the image check, which needs the network.
-ci: validate forms test
+ci: validate forms docs test
 
 # stack.toml against the contract, and compose.yml held in parity with it.
 validate:
@@ -12,6 +12,11 @@ validate:
 # Every form and overlay resolves to a valid project.
 forms:
     python3 scripts/check_forms.py
+
+# The service count the docs state matches the one stack.toml defines.
+docs:
+    python3 scripts/check_docs.py
+    python3 scripts/check_docs.py --self-test
 
 # The lint's own tests — each rule proven to fail when the rule is broken.
 test:
