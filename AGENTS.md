@@ -1,10 +1,10 @@
-# AGENTS.md — media-stack
+# AGENTS.md — lemonfiber-media-stack
 
 Guidance for any AI agent working in this repo.
 
 > **Common rules for every lemonfiber repo are canonical in the spec:**
 > [50-governance/ai-contributors.md](https://github.com/lemonfiber/spec/blob/main/50-governance/ai-contributors.md).
-> Read them. This file is the `media-stack`-specific header only.
+> Read them. This file is the `lemonfiber-media-stack`-specific header only.
 
 ## What this repo is
 
