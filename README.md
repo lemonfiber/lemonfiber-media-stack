@@ -76,7 +76,7 @@ CI rejects it. See spec
 Three data edits, no code: a service block in the right `compose/<profile>.yml`,
 a `[[service]]` in `stack.toml`, and its profile added to the relevant forms. Then
 `just ci`. See spec
-[`30-repos/media-stack.md`](https://github.com/lemonfiber/spec/blob/main/30-repos/media-stack.md).
+[`30-repos/lemonfiber-media-stack.md`](https://github.com/lemonfiber/spec/blob/main/30-repos/lemonfiber-media-stack.md).
 
 ## What CI enforces
 
