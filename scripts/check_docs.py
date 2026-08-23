@@ -3,10 +3,10 @@
 
 `19 services` appears in this repo's prose and in several documents outside it.
 The manifest is the only place that knows, so the prose is checked against it
-rather than trusted (REPO-R18).
+rather than trusted.
 
-Run from the repo root. `--self-test` proves the check fails when it should.
-Exit 0 = every stated count is right, 1 = one is not.
+Run from the repo root. `--self-test` proves the check fails when it should
+(REPO-R37). Exit 0 = every stated count is right, 1 = one is not.
 """
 from __future__ import annotations
 
