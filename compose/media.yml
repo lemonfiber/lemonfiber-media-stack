@@ -1,8 +1,10 @@
 # Profile: media — serving what you have.
 #
-# The household tier. These are the only services published beyond loopback,
-# because a library nobody can reach from the TV is not a library. Set LAN_BIND
-# in .env to pin them to one interface address rather than all of them.
+# The household tier: these publish on ${LAN_BIND} rather than loopback, because
+# a library nobody can reach from the TV is not a library. Homepage (dash) and
+# Caddy (proxy) publish there too — `bind = "lan"` in stack.toml is the list of
+# record. Set LAN_BIND in .env to pin them to one interface address rather than
+# all of them.
 
 services:
   jellyfin:
