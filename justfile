@@ -1,4 +1,4 @@
-# lemonfiber/media-stack tasks.
+# lemonfiber/lemonfiber-media-stack tasks.
 default:
     @just --list
 

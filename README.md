@@ -5,7 +5,7 @@
   </picture>
 </p>
 
-<h1 align="center">Lemonfiber &mdash; media-stack</h1>
+<h1 align="center">lemonfiber-media-stack</h1>
 
 <p align="center">
   The Docker Compose stack Lemonfiber orchestrates: indexers, download clients,
@@ -14,8 +14,8 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/lemonfiber/media-stack/actions/workflows/validate.yml"><img alt="validate" src="https://github.com/lemonfiber/media-stack/actions/workflows/validate.yml/badge.svg"></a>
-  <a href="https://scorecard.dev/viewer/?uri=github.com/lemonfiber/media-stack"><img alt="OpenSSF Scorecard" src="https://api.scorecard.dev/projects/github.com/lemonfiber/media-stack/badge"></a>
+  <a href="https://github.com/lemonfiber/lemonfiber-media-stack/actions/workflows/validate.yml"><img alt="validate" src="https://github.com/lemonfiber/lemonfiber-media-stack/actions/workflows/validate.yml/badge.svg"></a>
+  <a href="https://scorecard.dev/viewer/?uri=github.com/lemonfiber/lemonfiber-media-stack"><img alt="OpenSSF Scorecard" src="https://api.scorecard.dev/projects/github.com/lemonfiber/lemonfiber-media-stack/badge"></a>
 </p>
 
 ---
