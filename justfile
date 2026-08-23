@@ -2,6 +2,11 @@
 default:
     @just --list
 
+# Turn on the repository's own git hooks. Once per clone.
+hooks:
+    git config core.hooksPath .githooks
+    @echo "hooks on: .githooks/pre-push"
+
 # Everything CI runs bar the image check, which needs the network.
 ci: validate forms docs test
 
