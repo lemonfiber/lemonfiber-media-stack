@@ -7,8 +7,9 @@ hooks:
     git config core.hooksPath .githooks
     @echo "hooks on: .githooks/pre-push"
 
-# Everything CI runs bar the image check, which needs the network.
-ci: validate forms docs test
+# Everything CI runs bar the image check, which needs the network — and the hooks
+# turned on if they are not already, this being the command run before a push.
+ci: hooks validate forms docs test
 
 # stack.toml against the contract, and compose.yml held in parity with it.
 validate:

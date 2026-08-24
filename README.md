@@ -105,6 +105,12 @@ The spec is **canonical** — every change cites a spec identifier. Read
 [AGENTS.md](AGENTS.md) and the
 [contributing guide](https://github.com/lemonfiber/spec/blob/main/50-governance/contributing.md).
 
+`just ci` runs the checks above and turns on this repository's pre-push hook,
+which refuses a push that would leave a branch carrying no commit `origin/main`
+does not — what pushing the trunk over a feature branch looks like. It is `git
+config core.hooksPath .githooks`, per clone, and `just hooks` does only that. A
+clone where neither has run has no hook: git cannot read `.githooks/` on its own.
+
 ## Licence
 
 [Hippocratic License 3.0](LICENSE). The bundled *services* are each independently
