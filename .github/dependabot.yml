@@ -1,0 +1,61 @@
+# Dependency updates (spec ADR-0016).
+#
+# One file per repo. Dependabot cannot extend a shared preset the way Renovate
+# could, so this is copied rather than inherited and kept alike by review.
+#
+# The pull requests it opens cite nothing — Dependabot composes its own commit
+# message and offers no way to add a `Spec:` trailer. `spec_check.py` supplies
+# `GOV-R12` for a pull request GitHub says `dependabot[bot]` opened (Q-R55).
+#
+# Not configured here, deliberately:
+#   - the container images. Every pin is written twice — `image: repo:tag` in a
+#     compose fragment and `image` + `tag` in stack.toml — and
+#     validate_manifest.py fails the run when the two disagree. Dependabot's
+#     docker-compose manager edits the compose half and cannot reach the
+#     manifest, so each pull request it opened would arrive already red.
+#     `check_releases.py`, in validate.yml's `images` job, is what reports a pin
+#     falling behind upstream; moving one is a manifest change made by hand.
+#   - `config/recyclarr/recyclarr.yml`. The `template:` names in it are
+#     Recyclarr's own, resolved against the TRaSH Guides at run time rather than
+#     pinned here, so there is no version in the file to advance.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: daily
+      time: "05:00"
+      timezone: Europe/Amsterdam
+    labels: ["dependencies"]
+    commit-message:
+      prefix: chore
+      include: scope
+    # A release waits three days before it is offered. The shared gates are
+    # excluded from that wait: a repo running a stale gate is the failure this
+    # grouping exists to prevent, and the delay is the whole cost of it.
+    # Security updates are never subject to cooldown.
+    cooldown:
+      default-days: 3
+      exclude: ["lemonfiber/spec*"]
+    groups:
+      # First match wins, so the shared gates are claimed before the wildcard.
+      shared-workflows:
+        patterns: ["lemonfiber/spec*"]
+      # `init` and `analyze` in codeql.yml and `upload-sarif` in scorecard.yml
+      # are one action published from one repository, and CodeQL refuses a run
+      # whose `init` and `analyze` are different revisions of it. Offered
+      # separately, each is a pull request that cannot pass until its siblings
+      # land — which is what happened in `lemonfiber`, where three majors
+      # arrived alone and none of them could go first.
+      #
+      # Majors are grouped here and nowhere else in this file. The judgement is
+      # still a judgement; it is one about the action rather than three that
+      # have to be made together and in step.
+      codeql:
+        patterns: ["github/codeql-action*"]
+        update-types: ["major", "minor", "patch"]
+      actions:
+        patterns: ["*"]
+        exclude-patterns: ["lemonfiber/spec*"]
+        # Majors are left out, so each arrives on its own carrying `major`.
+        update-types: ["minor", "patch"]
