@@ -323,6 +323,10 @@ last_release = "2026-07-04"
 describes = "Finds and downloads subtitles"
 without_it = "No automatic subtitles"
 health = { kind = "http", path = "/", timeout_s = 90 }
+# Its key is in the file it writes, which is YAML — the one service here that
+# keeps it that way. The path is inside the container: its /config mount holds a
+# config directory of its own.
+api = { kind = "bazarr", key_source = "config-yaml", path = "/config/config/config.yaml" }
 
 [[service]]
 id = "jellyfin"
