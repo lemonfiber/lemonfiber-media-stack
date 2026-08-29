@@ -67,6 +67,24 @@ CASES = [
         "servarr api.version must be",
     ),
     (
+        "an api kind no client here implements",
+        patch(
+            "stack.toml",
+            'api = { kind = "bazarr", key_source = "config-yaml", path = "/config/config/config.yaml" }',
+            'api = { kind = "subtitler", key_source = "config-yaml", path = "/config/config/config.yaml" }',
+        ),
+        "api.kind 'subtitler' unknown",
+    ),
+    (
+        "a key source nothing knows how to read",
+        patch(
+            "stack.toml",
+            'api = { kind = "bazarr", key_source = "config-yaml", path = "/config/config/config.yaml" }',
+            'api = { kind = "bazarr", key_source = "config-runes", path = "/config/config/config.yaml" }',
+        ),
+        "api.key_source 'config-runes' unknown",
+    ),
+    (
         "B1-R15 a profile claiming a protocol nobody configures",
         patch(
             "stack.toml",
