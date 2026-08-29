@@ -57,6 +57,36 @@ def validate_caddyfile(path: pathlib.Path) -> tuple[bool, str]:
     return True, ""
 
 
+def compose_alias(service_id: str) -> str:
+    """The name the other services address it by: its Compose service name."""
+    manifest = tomllib.loads((ROOT / "stack.toml").read_text(encoding="utf-8"))
+    return next(s["id"] for s in manifest["service"] if s["id"] == service_id)
+
+
+def validate_sabnzbd_whitelist(path: pathlib.Path) -> tuple[bool, str]:
+    """The name the *arrs use must be one SABnzbd will answer to.
+
+    SABnzbd refuses any request whose Host header is a name it does not
+    recognise, and a fresh install recognises only the container's own generated
+    hostname. Names that are an IP, `localhost`, or that end in `.local` are
+    accepted without being listed; a Compose service alias is none of those, so
+    it has to be in the list or every *arr is answered with 403 — which they
+    report as "unable to connect", pointing at the network rather than at this.
+    """
+    alias = compose_alias("sabnzbd")
+    listed = [
+        line.split("=", 1)[1]
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if line.strip().startswith("host_whitelist")
+    ]
+    if not listed:
+        return False, "no host_whitelist is set, so only SABnzbd's own container hostname is accepted"
+    names = {name.strip() for name in listed[0].split(",") if name.strip()}
+    if alias not in names:
+        return False, f"host_whitelist does not name {alias!r}, which is how the *arrs address it"
+    return True, ""
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -76,6 +106,15 @@ def main() -> int:
             print("::error::self-test: a broken Caddyfile was accepted")
             return 1
         print(f"  ok   broken Caddyfile rejected: {error[:80]}")
+        with tempfile.TemporaryDirectory() as tmp:
+            bare = pathlib.Path(tmp) / "sabnzbd.ini"
+            # The shape a fresh install writes: no whitelist of its own.
+            bare.write_text("[misc]\nport = 8080\n", encoding="utf-8")
+            ok, error = validate_sabnzbd_whitelist(bare)
+        if ok:
+            print("::error::self-test: a sabnzbd.ini naming nobody was accepted")
+            return 1
+        print(f"  ok   sabnzbd.ini naming nobody rejected: {error[:80]}")
         print("\nself-test passed.")
         return 0
 
@@ -90,6 +129,18 @@ def main() -> int:
         )
         return 1
     print("  ok   config/caddy/Caddyfile adapts with an empty environment")
+
+    sabnzbd = ROOT / "config" / "sabnzbd" / "sabnzbd.ini"
+    ok, error = validate_sabnzbd_whitelist(sabnzbd)
+    if not ok:
+        print(f"::error::config/sabnzbd/sabnzbd.ini: {error}")
+        print(
+            "\nEvery *arr would be answered with 403 and report it as being unable "
+            "to connect. The download client would never register.",
+            file=sys.stderr,
+        )
+        return 1
+    print("  ok   config/sabnzbd/sabnzbd.ini answers to the name the *arrs use")
     print("\nall shipped templates valid.")
     return 0
 
