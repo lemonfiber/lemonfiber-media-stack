@@ -10,5 +10,11 @@ permissions:
 jobs:
   gate:
     uses: lemonfiber/spec/.github/workflows/sonar-gate.yml@0dda512352aea96a486df3933ae08354993ef67c # main
+    with:
+      # Named, because the default is <owner>_<repo> and this project is not called
+      # that. `lemonfiber_lemonfiber-media-stack` resolves to nothing, and a key that
+      # resolves to nothing answers every count with zero — so the half of the gate
+      # that watches the open-issue total has never once been enforced here.
+      project: lemonfiber_media-stack
     secrets:
       sonar-token: ${{ secrets.SONAR_TOKEN }}
