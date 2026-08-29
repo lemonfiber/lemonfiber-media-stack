@@ -5,7 +5,7 @@
 # keys, session tokens.
 /config/*/
 
-# Three of those directories also hold templates we ship. Each is re-included,
+# Four of those directories also hold templates we ship. Each is re-included,
 # then its contents are excluded again, then the template files are named one by
 # one. All three steps are needed: git cannot re-include a file whose parent
 # directory is excluded, and re-including the directory alone would admit
@@ -23,6 +23,10 @@
 !/config/caddy/
 /config/caddy/*
 !/config/caddy/Caddyfile
+
+!/config/sabnzbd/
+/config/sabnzbd/*
+!/config/sabnzbd/sabnzbd.ini
 
 .env
 .planning/
