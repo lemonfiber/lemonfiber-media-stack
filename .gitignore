@@ -13,6 +13,9 @@
 !/config/recyclarr/
 /config/recyclarr/*
 !/config/recyclarr/recyclarr.yml
+!/config/recyclarr/includes/
+/config/recyclarr/includes/*
+!/config/recyclarr/includes/*.yml
 
 !/config/homepage/
 /config/homepage/*

@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import argparse
 import pathlib
+import re
 import subprocess
 import sys
 import tempfile
@@ -87,6 +88,30 @@ def validate_sabnzbd_whitelist(path: pathlib.Path) -> tuple[bool, str]:
     return True, ""
 
 
+def validate_recyclarr(config: pathlib.Path, includes: pathlib.Path) -> tuple[bool, str]:
+    """Every include the config names exists, and no two instances share a name.
+
+    Two failures that both present as silence. A missing include file makes the
+    whole config unreadable, and two instances called the same thing are rejected
+    as duplicates — in either case the sync reports nothing at all and exits `0`,
+    so a stack that syncs nothing looks exactly like one with nothing to sync.
+    """
+    text = config.read_text(encoding="utf-8")
+
+    named = re.findall(r"^\s+- config:\s*(\S+)", text, re.MULTILINE)
+    if not named:
+        return False, "no include is named, so no instance asks the guides for anything"
+    for path in named:
+        if not (includes / pathlib.PurePosixPath(path).name).is_file():
+            return False, f"include {path} is named but not shipped"
+
+    instances = re.findall(r"^ {2}(\w[\w-]*):$", text, re.MULTILINE)
+    duplicated = {name for name in instances if instances.count(name) > 1}
+    if duplicated:
+        return False, f"instances share a name across services: {sorted(duplicated)}"
+    return True, ""
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -115,6 +140,22 @@ def main() -> int:
             print("::error::self-test: a sabnzbd.ini naming nobody was accepted")
             return 1
         print(f"  ok   sabnzbd.ini naming nobody rejected: {error[:80]}")
+        with tempfile.TemporaryDirectory() as tmp:
+            twice = pathlib.Path(tmp) / "recyclarr.yml"
+            # Two instances called the same thing: what 8.x rejects outright.
+            twice.write_text(
+                "sonarr:\n  main:\n    include:\n      - config: /config/includes/a.yml\n"
+                "radarr:\n  main:\n    include:\n      - config: /config/includes/a.yml\n",
+                encoding="utf-8",
+            )
+            shipped = pathlib.Path(tmp) / "includes"
+            shipped.mkdir()
+            (shipped / "a.yml").write_text("quality_definition:\n  type: movie\n", encoding="utf-8")
+            ok, error = validate_recyclarr(twice, shipped)
+        if ok:
+            print("::error::self-test: a config with two instances named alike was accepted")
+            return 1
+        print(f"  ok   duplicate instance names rejected: {error[:80]}")
         print("\nself-test passed.")
         return 0
 
@@ -141,6 +182,20 @@ def main() -> int:
         )
         return 1
     print("  ok   config/sabnzbd/sabnzbd.ini answers to the name the *arrs use")
+
+    ok, error = validate_recyclarr(
+        ROOT / "config" / "recyclarr" / "recyclarr.yml",
+        ROOT / "config" / "recyclarr" / "includes",
+    )
+    if not ok:
+        print(f"::error::config/recyclarr/recyclarr.yml: {error}")
+        print(
+            "\nThe sync would report nothing and exit 0, which looks exactly like a "
+            "stack with nothing to sync.",
+            file=sys.stderr,
+        )
+        return 1
+    print("  ok   config/recyclarr/recyclarr.yml names includes that exist, once each")
     print("\nall shipped templates valid.")
     return 0
 

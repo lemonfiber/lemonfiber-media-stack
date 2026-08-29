@@ -10,7 +10,7 @@ services:
     extends:
       file: compose/_common.yml
       service: defaults
-    image: ghcr.io/recyclarr/recyclarr:7.4.0
+    image: ghcr.io/recyclarr/recyclarr:8.7.1
     profiles: [tuning]
     # Upstream documents a uid:gid pair rather than PUID/PGID.
     user: "${PUID:-1000}:${PGID:-1000}"
