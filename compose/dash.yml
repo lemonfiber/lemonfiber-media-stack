@@ -13,20 +13,28 @@ services:
       HOMEPAGE_ALLOWED_HOSTS: ${HOMEPAGE_ALLOWED_HOSTS:-localhost:3000}
       # Substituted into config/homepage/services.yaml as {{HOMEPAGE_VAR_*}}.
       # Listed one by one rather than passed as an env_file, so that the VPN key
-      # and the rest of .env never enter a LAN-facing container. All empty until
-      # seeding; a widget with no key renders without data.
+      # and the rest of .env never enter a LAN-facing container.
+      #
+      # The names on the right are the ones seeding publishes — one per service,
+      # read from wherever that service keeps its key — and the mapping to what
+      # this image calls them lives here, so a service added later is a line of
+      # Compose rather than a line of anybody's code.
+      #
+      # The ones with no published key are services whose key nothing knows how to
+      # read, so they stay empty and their widget renders without data. That is a
+      # widget short of its numbers, not a broken dashboard.
       HOMEPAGE_VAR_LAN_HOST: ${HOMEPAGE_VAR_LAN_HOST:-localhost}
-      HOMEPAGE_VAR_JELLYFIN_KEY: ${HOMEPAGE_VAR_JELLYFIN_KEY:-}
-      HOMEPAGE_VAR_SEERR_KEY: ${HOMEPAGE_VAR_SEERR_KEY:-}
-      HOMEPAGE_VAR_AUDIOBOOKSHELF_KEY: ${HOMEPAGE_VAR_AUDIOBOOKSHELF_KEY:-}
-      HOMEPAGE_VAR_SONARR_KEY: ${HOMEPAGE_VAR_SONARR_KEY:-}
-      HOMEPAGE_VAR_RADARR_KEY: ${HOMEPAGE_VAR_RADARR_KEY:-}
-      HOMEPAGE_VAR_LIDARR_KEY: ${HOMEPAGE_VAR_LIDARR_KEY:-}
-      HOMEPAGE_VAR_BAZARR_KEY: ${HOMEPAGE_VAR_BAZARR_KEY:-}
-      HOMEPAGE_VAR_PROWLARR_KEY: ${HOMEPAGE_VAR_PROWLARR_KEY:-}
-      HOMEPAGE_VAR_SABNZBD_KEY: ${HOMEPAGE_VAR_SABNZBD_KEY:-}
-      HOMEPAGE_VAR_QBITTORRENT_USER: ${HOMEPAGE_VAR_QBITTORRENT_USER:-}
-      HOMEPAGE_VAR_QBITTORRENT_PASS: ${HOMEPAGE_VAR_QBITTORRENT_PASS:-}
+      HOMEPAGE_VAR_JELLYFIN_KEY: ${JELLYFIN_API_KEY:-}
+      HOMEPAGE_VAR_SEERR_KEY: ${SEERR_API_KEY:-}
+      HOMEPAGE_VAR_AUDIOBOOKSHELF_KEY: ${AUDIOBOOKSHELF_API_KEY:-}
+      HOMEPAGE_VAR_SONARR_KEY: ${SONARR_API_KEY:-}
+      HOMEPAGE_VAR_RADARR_KEY: ${RADARR_API_KEY:-}
+      HOMEPAGE_VAR_LIDARR_KEY: ${LIDARR_API_KEY:-}
+      HOMEPAGE_VAR_BAZARR_KEY: ${BAZARR_API_KEY:-}
+      HOMEPAGE_VAR_PROWLARR_KEY: ${PROWLARR_API_KEY:-}
+      HOMEPAGE_VAR_SABNZBD_KEY: ${SABNZBD_API_KEY:-}
+      HOMEPAGE_VAR_QBITTORRENT_USER: ${QBITTORRENT_USERNAME:-}
+      HOMEPAGE_VAR_QBITTORRENT_PASS: ${QBITTORRENT_PASSWORD:-}
     ports: ["${LAN_BIND:-0.0.0.0}:3000:3000"]
     volumes:
       - ./config/homepage:/app/config

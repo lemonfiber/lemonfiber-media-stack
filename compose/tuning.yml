@@ -33,14 +33,20 @@ services:
     profiles: [tuning]
     environment:
       UMASK: ${UMASK:-002}
-      # Left empty until seeding fills them in. Unpackerr skips any *arr whose
-      # URL is unset, so an unseeded stack simply idles.
-      UN_SONARR_0_URL: ${UN_SONARR_0_URL:-}
-      UN_SONARR_0_API_KEY: ${UN_SONARR_0_API_KEY:-}
-      UN_RADARR_0_URL: ${UN_RADARR_0_URL:-}
-      UN_RADARR_0_API_KEY: ${UN_RADARR_0_API_KEY:-}
-      UN_LIDARR_0_URL: ${UN_LIDARR_0_URL:-}
-      UN_LIDARR_0_API_KEY: ${UN_LIDARR_0_API_KEY:-}
+      # Where each *arr is, which this file already knows, and the key seeding
+      # published for it. The key names on the right are lemonfiber's own —
+      # one per service, read from wherever that service keeps it — and the
+      # mapping to what this image calls them lives here, so a service added
+      # later is a line of Compose rather than a line of anybody's code.
+      #
+      # Unpackerr skips any *arr whose key is unset, so an unseeded stack idles
+      # rather than erroring.
+      UN_SONARR_0_URL: http://sonarr:8989
+      UN_SONARR_0_API_KEY: ${SONARR_API_KEY:-}
+      UN_RADARR_0_URL: http://radarr:7878
+      UN_RADARR_0_API_KEY: ${RADARR_API_KEY:-}
+      UN_LIDARR_0_URL: http://lidarr:8686
+      UN_LIDARR_0_API_KEY: ${LIDARR_API_KEY:-}
     volumes:
       # It extracts archives in place in the download directory.
       - ${DATA_ROOT:-./data}:/data
