@@ -42,7 +42,7 @@ SUPPORTED_SCHEMA_VERSIONS = {1}
 CRITICALITIES = {"critical", "core", "important", "enhancing", "optional"}
 BINDS = {"loopback", "lan"}
 HEALTH_KINDS = {"http", "tcp", "container"}
-API_KINDS = {"servarr", "sabnzbd", "qbittorrent", "seerr", "bindery", "jellyfin", "bazarr"}
+API_KINDS = {"servarr", "sabnzbd", "qbittorrent", "seerr", "bindery", "jellyfin", "bazarr", "audiobookshelf"}
 PROTOCOLS = {"usenet", "torrent"}
 KEY_SOURCES = {
     "config-xml",
