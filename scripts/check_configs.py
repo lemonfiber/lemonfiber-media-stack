@@ -26,9 +26,16 @@ import tomllib
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 
 
+SABNZBD_INI = "sabnzbd.ini"
+
+
+def manifest() -> dict:
+    """The stack's own declaration, read once per call and parsed here alone."""
+    return tomllib.loads((ROOT / "stack.toml").read_text(encoding="utf-8"))
+
+
 def pinned_image(service_id: str) -> str:
-    manifest = tomllib.loads((ROOT / "stack.toml").read_text(encoding="utf-8"))
-    service = next(s for s in manifest["service"] if s["id"] == service_id)
+    service = next(s for s in manifest()["service"] if s["id"] == service_id)
     return f"{service['image']}:{service['tag']}"
 
 
@@ -60,8 +67,7 @@ def validate_caddyfile(path: pathlib.Path) -> tuple[bool, str]:
 
 def compose_alias(service_id: str) -> str:
     """The name the other services address it by: its Compose service name."""
-    manifest = tomllib.loads((ROOT / "stack.toml").read_text(encoding="utf-8"))
-    return next(s["id"] for s in manifest["service"] if s["id"] == service_id)
+    return next(s["id"] for s in manifest()["service"] if s["id"] == service_id)
 
 
 def validate_sabnzbd_whitelist(path: pathlib.Path) -> tuple[bool, str]:
@@ -94,9 +100,8 @@ def media_categories() -> set[str]:
     Read rather than listed here, so a service gaining a media type is not a category
     somebody has to remember to add in a second place.
     """
-    manifest = tomllib.loads((ROOT / "stack.toml").read_text(encoding="utf-8"))
     wanted: set[str] = set()
-    for service in manifest["service"]:
+    for service in manifest()["service"]:
         wanted.update(service.get("media_types", []))
     return wanted
 
@@ -177,7 +182,7 @@ def self_test() -> int:
         return 1
     print(f"  ok   broken Caddyfile rejected: {error[:80]}")
     with tempfile.TemporaryDirectory() as tmp:
-        bare = pathlib.Path(tmp) / "sabnzbd.ini"
+        bare = pathlib.Path(tmp) / SABNZBD_INI
         # The shape a fresh install writes: no whitelist of its own.
         bare.write_text("[misc]\nport = 8080\n", encoding="utf-8")
         ok, error = validate_sabnzbd_whitelist(bare)
@@ -186,7 +191,7 @@ def self_test() -> int:
         return 1
     print(f"  ok   sabnzbd.ini naming nobody rejected: {error[:80]}")
     with tempfile.TemporaryDirectory() as tmp:
-        defaults = pathlib.Path(tmp) / "sabnzbd.ini"
+        defaults = pathlib.Path(tmp) / SABNZBD_INI
         # Exactly what SABnzbd writes for itself: the two that match by accident
         # and not the one that does not.
         defaults.write_text(
@@ -254,7 +259,7 @@ def main() -> int:
         return 1
     print("  ok   config/caddy/Caddyfile adapts with an empty environment")
 
-    sabnzbd = ROOT / "config" / "sabnzbd" / "sabnzbd.ini"
+    sabnzbd = ROOT / "config" / "sabnzbd" / SABNZBD_INI
     ok, error = validate_sabnzbd_whitelist(sabnzbd)
     if not ok:
         print(f"::error::config/sabnzbd/sabnzbd.ini: {error}")
