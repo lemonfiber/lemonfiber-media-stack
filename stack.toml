@@ -360,7 +360,11 @@ last_release = "2026-06-02"
 describes = "Where the household asks for things"
 without_it = "Requests come to you in person"
 health = { kind = "http", path = "/api/v1/status", timeout_s = 90 }
-api = { kind = "seerr", key_source = "api-settings" }
+# Its key can be fetched over its own API, and it also writes it to this file,
+# which is the cheaper read and the one lemonfiber takes. The path is where the
+# service keeps it inside its own container — Seerr's config mount is beneath
+# its application directory rather than at /config like the rest.
+api = { kind = "seerr", key_source = "config-json", path = "/app/config/settings.json" }
 
 [[service]]
 id = "calibre-web-automated"
@@ -393,6 +397,11 @@ last_release = "2026-05-28"
 describes = "Listening to audiobooks, with progress synced"
 without_it = "No audiobook player"
 health = { kind = "http", path = "/healthcheck", timeout_s = 90 }
+# It starts with no account at all and refuses everything until one exists, so
+# lemonfiber makes the first one — the same shape as the media server's. The token
+# its dashboard panel uses is handed back on sign-in and is the same every time,
+# so what is kept is the password rather than the token.
+api = { kind = "audiobookshelf", key_source = "generated" }
 
 [[service]]
 id = "recyclarr"
