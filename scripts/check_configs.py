@@ -137,6 +137,64 @@ def validate_sabnzbd_categories(path: pathlib.Path) -> tuple[bool, str]:
     return True, ""
 
 
+# The credentials the dashboard reads that are not a service's API key: the account
+# name and password for the one service reached by neither.
+DASHBOARD_NOT_A_KEY = {"QBITTORRENT_USERNAME", "QBITTORRENT_PASSWORD"}
+
+# A dashboard variable that names no service — the address the panels link to.
+DASHBOARD_NOT_A_SERVICE = {"HOMEPAGE_VAR_LAN_HOST"}
+
+
+def validate_dashboard_keys(
+    services_yaml: pathlib.Path, dash_yml: pathlib.Path
+) -> tuple[bool, str]:
+    """Every credential a widget asks for is one something publishes.
+
+    A widget reads `{{HOMEPAGE_VAR_X}}`, Compose maps that to `${Y}`, and seeding
+    writes `Y` from the service it read it off. Three files, and a break anywhere
+    along the chain shows up as a panel displaying nothing at all — which looks
+    exactly like a service with nothing to report.
+
+    So: every variable the widget config names must be mapped, and every mapping must
+    name a credential something can write — a service that declares an `api` in the
+    manifest, or one of the two halves of the one credential that is not a key.
+    """
+    asked = {
+        name[2:-2]
+        for name in re.findall(r"\{\{HOMEPAGE_VAR_[A-Z_]+\}\}", services_yaml.read_text(encoding="utf-8"))
+    }
+    mapped = dict(
+        re.findall(r"(HOMEPAGE_VAR_[A-Z_]+):\s*\$\{([A-Z_]+)", dash_yml.read_text(encoding="utf-8"))
+    )
+
+    unmapped = sorted(asked - set(mapped) - DASHBOARD_NOT_A_SERVICE)
+    if unmapped:
+        return False, (
+            f"the dashboard asks for {', '.join(unmapped)}, which nothing maps — "
+            "its panel would show nothing at all"
+        )
+
+    keyed = {
+        service["id"].upper().replace("-", "_") + "_API_KEY"
+        for service in manifest()["service"]
+        if service.get("api")
+    }
+    unwritable = sorted(
+        source
+        for name, source in mapped.items()
+        if name in asked
+        and source not in keyed
+        and source not in DASHBOARD_NOT_A_KEY
+        and name not in DASHBOARD_NOT_A_SERVICE
+    )
+    if unwritable:
+        return False, (
+            f"the dashboard reads {', '.join(unwritable)}, which no service declares an "
+            "api to write — its panel would ask with an empty credential and be refused"
+        )
+    return True, ""
+
+
 def validate_recyclarr(config: pathlib.Path, includes: pathlib.Path) -> tuple[bool, str]:
     """Every include the config names exists, and no two instances share a name.
 
@@ -204,6 +262,15 @@ def self_test() -> int:
         print("::error::self-test: a sabnzbd.ini with no music category was accepted")
         return 1
     print(f"  ok   sabnzbd.ini missing a category rejected: {error[:80]}")
+    with tempfile.TemporaryDirectory() as tmp:
+        widgets = pathlib.Path(tmp) / "services.yaml"
+        mapping = pathlib.Path(tmp) / "dash.yml"
+        # A widget asking for a key, and a mapping that never heard of it.
+        widgets.write_text("key: {{HOMEPAGE_VAR_NOBODY_KEY}}\n", encoding="utf-8")
+        mapping.write_text("services:\n  homepage:\n", encoding="utf-8")
+        ok, error = validate_dashboard_keys(widgets, mapping)
+    if not reject_or_fail("a widget variable nothing maps", ok, error):
+        return 1
     with tempfile.TemporaryDirectory() as tmp:
         twice = pathlib.Path(tmp) / "recyclarr.yml"
         # Two instances called the same thing: what 8.x rejects outright.
@@ -281,6 +348,20 @@ def main() -> int:
         )
         return 1
     print("  ok   config/sabnzbd/sabnzbd.ini holds a category for every media type")
+
+    ok, error = validate_dashboard_keys(
+        ROOT / "config" / "homepage" / "services.yaml",
+        ROOT / "compose" / "dash.yml",
+    )
+    if not checked(
+        "config/homepage/services.yaml",
+        ok,
+        error,
+        "The panel would be blank, which reads the same as a service with nothing "
+        "to report.",
+        "every dashboard widget asks with a credential something publishes",
+    ):
+        return 1
 
     ok, error = validate_recyclarr(
         ROOT / "config" / "recyclarr" / "recyclarr.yml",
