@@ -156,6 +156,79 @@ def validate_recyclarr(config: pathlib.Path, includes: pathlib.Path) -> tuple[bo
     return True, ""
 
 
+def reject_or_fail(label: str, ok: bool, error: str) -> bool:
+    """A self-test case: the broken shape must have been rejected."""
+    if ok:
+        print(f"::error::self-test: {label} was accepted")
+        return False
+    print(f"  ok   {label} rejected: {error[:80]}")
+    return True
+
+
+def self_test() -> int:
+    """Every guard here refuses the shape that actually shipped."""
+    with tempfile.TemporaryDirectory() as tmp:
+        broken = pathlib.Path(tmp) / "Caddyfile"
+        # An `email` global with no argument: the exact shape that shipped.
+        broken.write_text("{\n\temail\n}\n", encoding="utf-8")
+        ok, error = validate_caddyfile(broken)
+    if ok:
+        print("::error::self-test: a broken Caddyfile was accepted")
+        return 1
+    print(f"  ok   broken Caddyfile rejected: {error[:80]}")
+    with tempfile.TemporaryDirectory() as tmp:
+        bare = pathlib.Path(tmp) / "sabnzbd.ini"
+        # The shape a fresh install writes: no whitelist of its own.
+        bare.write_text("[misc]\nport = 8080\n", encoding="utf-8")
+        ok, error = validate_sabnzbd_whitelist(bare)
+    if ok:
+        print("::error::self-test: a sabnzbd.ini naming nobody was accepted")
+        return 1
+    print(f"  ok   sabnzbd.ini naming nobody rejected: {error[:80]}")
+    with tempfile.TemporaryDirectory() as tmp:
+        defaults = pathlib.Path(tmp) / "sabnzbd.ini"
+        # Exactly what SABnzbd writes for itself: the two that match by accident
+        # and not the one that does not.
+        defaults.write_text(
+            "[categories]\n[[*]]\nname = *\n[[movies]]\nname = movies\n"
+            "[[tv]]\nname = tv\n[[audio]]\nname = audio\n",
+            encoding="utf-8",
+        )
+        ok, error = validate_sabnzbd_categories(defaults)
+    if ok:
+        print("::error::self-test: a sabnzbd.ini with no music category was accepted")
+        return 1
+    print(f"  ok   sabnzbd.ini missing a category rejected: {error[:80]}")
+    with tempfile.TemporaryDirectory() as tmp:
+        twice = pathlib.Path(tmp) / "recyclarr.yml"
+        # Two instances called the same thing: what 8.x rejects outright.
+        twice.write_text(
+            "sonarr:\n  main:\n    include:\n      - config: /config/includes/a.yml\n"
+            "radarr:\n  main:\n    include:\n      - config: /config/includes/a.yml\n",
+            encoding="utf-8",
+        )
+        shipped = pathlib.Path(tmp) / "includes"
+        shipped.mkdir()
+        (shipped / "a.yml").write_text("quality_definition:\n  type: movie\n", encoding="utf-8")
+        ok, error = validate_recyclarr(twice, shipped)
+    if ok:
+        print("::error::self-test: a config with two instances named alike was accepted")
+        return 1
+    print(f"  ok   duplicate instance names rejected: {error[:80]}")
+    print("\nself-test passed.")
+    return 0
+
+
+def checked(where: str, ok: bool, error: str, consequence: str, passed: str) -> bool:
+    """Report one guard's verdict, saying what it would have cost to miss it."""
+    if not ok:
+        print(f"::error::{where}: {error}")
+        print(f"\n{consequence}", file=sys.stderr)
+        return False
+    print(f"  ok   {passed}")
+    return True
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -166,56 +239,8 @@ def main() -> int:
     args = parser.parse_args()
 
     if args.self_test:
-        with tempfile.TemporaryDirectory() as tmp:
-            broken = pathlib.Path(tmp) / "Caddyfile"
-            # An `email` global with no argument: the exact shape that shipped.
-            broken.write_text("{\n\temail\n}\n", encoding="utf-8")
-            ok, error = validate_caddyfile(broken)
-        if ok:
-            print("::error::self-test: a broken Caddyfile was accepted")
-            return 1
-        print(f"  ok   broken Caddyfile rejected: {error[:80]}")
-        with tempfile.TemporaryDirectory() as tmp:
-            bare = pathlib.Path(tmp) / "sabnzbd.ini"
-            # The shape a fresh install writes: no whitelist of its own.
-            bare.write_text("[misc]\nport = 8080\n", encoding="utf-8")
-            ok, error = validate_sabnzbd_whitelist(bare)
-        if ok:
-            print("::error::self-test: a sabnzbd.ini naming nobody was accepted")
-            return 1
-        print(f"  ok   sabnzbd.ini naming nobody rejected: {error[:80]}")
-        with tempfile.TemporaryDirectory() as tmp:
-            defaults = pathlib.Path(tmp) / "sabnzbd.ini"
-            # Exactly what SABnzbd writes for itself: the two that match by accident
-            # and not the one that does not.
-            defaults.write_text(
-                "[categories]\n[[*]]\nname = *\n[[movies]]\nname = movies\n"
-                "[[tv]]\nname = tv\n[[audio]]\nname = audio\n",
-                encoding="utf-8",
-            )
-            ok, error = validate_sabnzbd_categories(defaults)
-        if ok:
-            print("::error::self-test: a sabnzbd.ini with no music category was accepted")
-            return 1
-        print(f"  ok   sabnzbd.ini missing a category rejected: {error[:80]}")
-        with tempfile.TemporaryDirectory() as tmp:
-            twice = pathlib.Path(tmp) / "recyclarr.yml"
-            # Two instances called the same thing: what 8.x rejects outright.
-            twice.write_text(
-                "sonarr:\n  main:\n    include:\n      - config: /config/includes/a.yml\n"
-                "radarr:\n  main:\n    include:\n      - config: /config/includes/a.yml\n",
-                encoding="utf-8",
-            )
-            shipped = pathlib.Path(tmp) / "includes"
-            shipped.mkdir()
-            (shipped / "a.yml").write_text("quality_definition:\n  type: movie\n", encoding="utf-8")
-            ok, error = validate_recyclarr(twice, shipped)
-        if ok:
-            print("::error::self-test: a config with two instances named alike was accepted")
-            return 1
-        print(f"  ok   duplicate instance names rejected: {error[:80]}")
-        print("\nself-test passed.")
-        return 0
+        return self_test()
+
 
     caddyfile = ROOT / "config" / "caddy" / "Caddyfile"
     ok, error = validate_caddyfile(caddyfile)
