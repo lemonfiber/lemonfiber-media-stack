@@ -17,6 +17,11 @@ services:
       # Bindery defaults these to /books and /downloads, which are not on the
       # single data mount — imports would land inside the container and vanish
       # with it. Audiobook paths inherit from these when unset.
+      # Taken verbatim on the service's *first* start, and ignored on every start
+      # after — it generates its own otherwise and keeps it in a database, where
+      # nothing outside the container could present it. So this is minted before the
+      # service has ever run rather than while seeding, which happens after it is up.
+      BINDERY_API_KEY: ${BINDERY_API_KEY:-}
       BINDERY_LIBRARY_DIR: /data/media/books
       BINDERY_AUDIOBOOK_DIR: /data/media/audiobooks
       BINDERY_DOWNLOAD_DIR: /data/downloads
