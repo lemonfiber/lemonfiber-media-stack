@@ -306,7 +306,11 @@ describes = "Watches for books and audiobooks and fetches them"
 without_it = "No book automation (Readarr is discontinued)"
 media_types = ["books"]
 health = { kind = "http", path = "/", timeout_s = 90 }
-api = { kind = "bindery", key_source = "api-settings" }
+# Its key is one lemonfiber mints and this service adopts, rather than one it
+# writes for lemonfiber to read: given BINDERY_API_KEY on its first start it
+# takes that value, and without one it generates its own into a database that
+# nothing outside the container can read.
+api = { kind = "bindery", key_source = "generated" }
 
 [[service]]
 id = "bazarr"
