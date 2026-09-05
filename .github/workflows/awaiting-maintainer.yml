@@ -1,9 +1,26 @@
 # The maintainer queue flag. Triggers are declared here because a reusable
 # cannot declare its caller's; the behaviour lives in the spec repo. OPS-R26, OPS-R27.
+#
+# The list below is also the wait list. The flag only goes up once every check
+# `main` requires has passed, and the reusable reads this same list back out of
+# this file to know what it must see finish first — so a workflow missing from it
+# is a workflow the gate never waits for and never re-evaluates on. `main`
+# requires eleven checks here and they come from two workflows:
+#
+#   ci       spec-check / spec-check, dco / dco, commitlint / commitlint,
+#            hygiene / {actionlint, invite, links, markdown, typos},
+#            security / {gitleaks, osv-scanner}
+#   sonar    gate / gate
+#
+# `SonarCloud Code Analysis` is required too and is posted by the SonarCloud app
+# rather than by a workflow, so it cannot be waited for by name; `gate / gate`
+# reads that summary and cannot succeed before it exists.
+#
+# Add a workflow to branch protection and it belongs here in the same change.
 name: awaiting-maintainer
 on:
   workflow_run:
-    workflows: [ci]
+    workflows: [ci, sonar]
     types: [completed]
   pull_request_review:
     types: [submitted]
@@ -19,6 +36,6 @@ jobs:
     permissions:
       contents: read
       pull-requests: write
-    uses: lemonfiber/spec/.github/workflows/awaiting-maintainer.yml@2eada7417e11209ebfa323e7d422b02d727da85e # main
+    uses: lemonfiber/spec/.github/workflows/awaiting-maintainer.yml@16ea93a65559ac2ab209940ebfd45fdb6885e635 # main
     secrets:
       DISCORD_MAINTAINERS_WEBHOOK: ${{ secrets.DISCORD_MAINTAINERS_WEBHOOK }}
