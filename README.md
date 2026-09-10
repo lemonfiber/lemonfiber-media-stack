@@ -91,7 +91,7 @@ proven to fail when broken by `scripts/test_validate_manifest.py`.
 | No `depends_on` across a profile | Any subset boots (`B1-R14`) |
 | Killswitch routing | Nothing shares Gluetun's profile without its namespace, so no client here is one lemonfiber must report as leaking (`C2-R12`) |
 | Pinned, non-floating tags | Nothing changes because time passed (`E1-R1`) |
-| Capabilities match the manifest | Only Gluetun holds `NET_ADMIN` (`C6`) |
+| Kernel capabilities match the manifest | Only Gluetun is granted `NET_ADMIN` (`C6`) |
 | OSI licence per service | Verified against a vendored SPDX list (`F2-R5`) |
 | Every form resolves | `docker compose config` per form (`REPO-R17`), dragging in nothing outside its profiles (`B1-R14`, `REPO-R19`) |
 | arm64 + amd64 per pin | Read from each registry's manifest list (`F2-R6`) |

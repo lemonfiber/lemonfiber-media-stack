@@ -7,7 +7,8 @@ Two halves:
               spec 20-architecture/contracts/stack-manifest.md.
 
   Parity      the *resolved* Compose model against the manifest — services,
-              images, profiles, mounts, bindings and capabilities.
+              images, profiles, mounts, bindings and the kernel capabilities a
+              service is granted.
 
 The parity half reads `docker compose config --format json` rather than parsing
 compose.yml. That is deliberate: the resolved model is what Docker will actually
@@ -55,7 +56,7 @@ KEY_SOURCES = {
 }
 MEDIA_TYPES = {"tv", "movies", "music", "books"}
 # Anything beyond this list is a privilege the stack has not justified (C6).
-ALLOWED_CAPABILITIES = {"NET_ADMIN"}
+ALLOWED_GRANTS = {"NET_ADMIN"}
 # Tags that move under you. A pin that means "whatever is newest" is not a pin.
 FLOATING_TAGS = {"latest", "stable", "edge", "nightly", "develop", "dev", "main", "master", "rolling"}
 
@@ -66,6 +67,17 @@ SERVICE_REQUIRED = (
 SEMVER = re.compile(r"^\d+\.\d+\.\d+(?:[-+].*)?$")
 ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 STACK_TOML = "stack.toml"
+
+
+def grants_of(service: dict) -> list:
+    """The kernel capabilities a service is granted, under either spelling.
+
+    The field was `capabilities` until 0.16.0 and the contract still accepts that
+    spelling, because a rename is not a reason to refuse to read somebody's own
+    stack description. A fork that has not renamed its manifest is validated the
+    same way this one is.
+    """
+    return service.get("grants", service.get("capabilities", []))
 
 
 class Report:
@@ -204,12 +216,12 @@ def validate_service_runtime(service: dict, where: str, report: Report) -> None:
         report.check(
             service["bind"] in BINDS, where, f"bind must be one of {sorted(BINDS)}", "C6"
         )
-    for capability in service.get("capabilities", []):
+    for granted in grants_of(service):
         report.check(
-            capability in ALLOWED_CAPABILITIES,
+            granted in ALLOWED_GRANTS,
             where,
-            f"capability {capability!r} is outside the allow-list "
-            f"{sorted(ALLOWED_CAPABILITIES)}",
+            f"kernel capability {granted!r} is outside the allow-list "
+            f"{sorted(ALLOWED_GRANTS)}",
             "C6",
         )
     for media_type in service.get("media_types", []):
@@ -443,7 +455,7 @@ def validate_parity(manifest: dict, model: dict, report: Report) -> None:
             )
 
         validate_mounts(sid, service, report)
-        validate_capabilities(sid, spec, service, report)
+        validate_grants(sid, spec, service, report)
 
     validate_bindings(declared, compose, gateway_of, report)
     validate_gateways(declared, compose, gateway_of, report)
@@ -494,8 +506,8 @@ def validate_mounts(sid: str, service: dict, report: Report) -> None:
         )
 
 
-def validate_capabilities(sid: str, spec: dict, service: dict, report: Report) -> None:
-    declared_caps = set(spec.get("capabilities", []))
+def validate_grants(sid: str, spec: dict, service: dict, report: Report) -> None:
+    declared_caps = set(grants_of(spec))
     compose_caps = set(service.get("cap_add") or [])
     report.check(
         declared_caps == compose_caps,
@@ -587,9 +599,9 @@ def validate_bindings(declared: dict, compose: dict, gateway_of: dict, report: R
 
 
 def validate_gateways(declared: dict, compose: dict, gateway_of: dict, report: Report) -> None:
-    """A service holding NET_ADMIN is a tunnel; its profile-mates must route through it."""
+    """A service granted NET_ADMIN is a tunnel; its profile-mates must route through it."""
     for gateway, spec in sorted(declared.items()):
-        if "NET_ADMIN" not in spec.get("capabilities", []):
+        if "NET_ADMIN" not in grants_of(spec):
             continue
         profile = spec.get("profile")
         for sid, other in sorted(declared.items()):

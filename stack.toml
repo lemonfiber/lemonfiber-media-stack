@@ -215,7 +215,7 @@ upstream = "https://github.com/qdm12/gluetun"
 last_release = "2026-02-11"
 describes = "Routes torrent traffic through your VPN and blocks it if the VPN drops"
 without_it = "Your home IP is visible to every peer"
-capabilities = ["NET_ADMIN"]
+grants = ["NET_ADMIN"]
 health = { kind = "container" }
 
 [[service]]

@@ -177,13 +177,21 @@ CASES = [
         "does not match the manifest",
     ),
     (
-        "C6 capability held by a service that never declared it",
+        "C6 kernel capability held by a service that never declared it",
         patch(
             "compose/tv.yml",
             "    profiles: [tv]",
             "    profiles: [tv]\n    cap_add: [NET_ADMIN]",
         ),
         "does not match the manifest's",
+    ),
+    (
+        # The field was `capabilities` until 0.16.0 and the contract still accepts
+        # that spelling. A fork that has not renamed its manifest is validated the
+        # same way this one is, rather than told its stack is wrong.
+        "a stack written before the rename still validates",
+        patch("stack.toml", 'grants = ["NET_ADMIN"]', 'capabilities = ["NET_ADMIN"]'),
+        None,
     ),
     (
         "C2-R12 torrent client escaping the tunnel",
