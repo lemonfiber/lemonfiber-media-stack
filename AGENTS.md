@@ -52,6 +52,12 @@ A service block in the matching `compose/<profile>.yml` + a `[[service]]` in
 `stack.toml` + add its profile to the relevant forms. No code (`REPO-R23`).
 Then `just ci`.
 
+The `[[service]]` says what the service reaches on the network and what it asks
+for there — `reaches` and `asks_for`, both or neither, `reaches = ""` for one
+that talks to nothing (`F2-R10`). That prose used to be a table compiled into
+lemonfiber, which meant a new service needed a lemonfiber release before anything
+could describe it; carrying it here is what makes `F1-R5` true.
+
 If the service is the first of a new profile, add a `compose/<profile>.yml` and
 an `include:` entry — with `project_directory: .`.
 

@@ -151,6 +151,8 @@ upstream = "https://github.com/Prowlarr/Prowlarr"
 last_release = "2026-07-22"
 describes = "Holds your indexer accounts in one place and shares them with everything else"
 without_it = "Every app needs indexers configured separately"
+reaches = "the indexers you configured"
+asks_for = "Runs the searches everything else asks for, and reads each indexer's capabilities and remaining allowance, authenticating with the keys you gave it."
 health = { kind = "http", path = "/ping", timeout_s = 60 }
 api = { kind = "servarr", key_source = "config-xml", path = "/config/config.xml", version = 1 }
 
@@ -168,6 +170,8 @@ upstream = "https://github.com/FlareSolverr/FlareSolverr"
 last_release = "2026-05-26"
 describes = "Gets past bot-protection on some indexers"
 without_it = "Those indexers return nothing"
+reaches = "the indexer sites that challenge it"
+asks_for = "Fetches a page through a headless browser when an indexer sits behind bot protection, which means it visits that indexer directly."
 health = { kind = "tcp", timeout_s = 60 }
 
 [[service]]
@@ -184,6 +188,8 @@ upstream = "https://github.com/theotherp/nzbhydra2"
 last_release = "2026-07-09"
 describes = "A search box across all your Usenet indexers at once"
 without_it = "Search one indexer at a time"
+reaches = "the Usenet indexers you configured"
+asks_for = "Searches several indexers at once and merges what they answer, with the keys you gave it."
 health = { kind = "http", path = "/", timeout_s = 60 }
 
 [[service]]
@@ -200,6 +206,8 @@ upstream = "https://github.com/sabnzbd/sabnzbd"
 last_release = "2026-06-11"
 describes = "Downloads from Usenet"
 without_it = "No Usenet downloads"
+reaches = "your Usenet provider"
+asks_for = "Signs in with your account and fetches the articles a download is made of."
 health = { kind = "http", path = "/api?mode=version", timeout_s = 60 }
 api = { kind = "sabnzbd", key_source = "config-ini", path = "/config/sabnzbd.ini" }
 
@@ -215,6 +223,8 @@ upstream = "https://github.com/qdm12/gluetun"
 last_release = "2026-02-11"
 describes = "Routes torrent traffic through your VPN and blocks it if the VPN drops"
 without_it = "Your home IP is visible to every peer"
+reaches = "your VPN provider's servers"
+asks_for = "Dials the tunnel everything torrent-shaped is routed through, and asks the provider for a forwarded port where you asked for one."
 grants = ["NET_ADMIN"]
 health = { kind = "container" }
 
@@ -232,6 +242,8 @@ upstream = "https://github.com/qbittorrent/qBittorrent"
 last_release = "2026-07-07"
 describes = "Downloads torrents"
 without_it = "No torrent downloads"
+reaches = "trackers and peers, through the tunnel"
+asks_for = "Announces to a torrent's trackers and exchanges data with peers, which is what a torrent client is; all of it inside gluetun's network, so it stops when the tunnel does."
 depends_on = ["gluetun"]
 health = { kind = "http", path = "/api/v2/app/version", timeout_s = 60 }
 api = { kind = "qbittorrent", key_source = "generated" }
@@ -250,6 +262,8 @@ upstream = "https://github.com/Sonarr/Sonarr"
 last_release = "2026-06-26"
 describes = "Watches for new episodes and fetches them"
 without_it = "Find and download episodes yourself"
+reaches = "television metadata providers"
+asks_for = "Reads series, season and episode information, artwork and air dates for what is in your library and what you add to it."
 media_types = ["tv"]
 health = { kind = "http", path = "/ping", timeout_s = 90 }
 api = { kind = "servarr", key_source = "config-xml", path = "/config/config.xml", version = 3 }
@@ -268,6 +282,8 @@ upstream = "https://github.com/Radarr/Radarr"
 last_release = "2026-07-12"
 describes = "Watches for films and fetches them"
 without_it = "Find and download films yourself"
+reaches = "film metadata providers"
+asks_for = "Reads titles, release dates and artwork for the films in your library and the ones you add."
 media_types = ["movies"]
 health = { kind = "http", path = "/ping", timeout_s = 90 }
 api = { kind = "servarr", key_source = "config-xml", path = "/config/config.xml", version = 3 }
@@ -286,6 +302,8 @@ upstream = "https://github.com/Lidarr/Lidarr"
 last_release = "2025-11-16"
 describes = "Watches for music and fetches it"
 without_it = "Find and download music yourself"
+reaches = "music metadata providers"
+asks_for = "Reads artist, album and track information for the music in your library."
 media_types = ["music"]
 health = { kind = "http", path = "/ping", timeout_s = 90 }
 api = { kind = "servarr", key_source = "config-xml", path = "/config/config.xml", version = 1 }
@@ -304,6 +322,8 @@ upstream = "https://github.com/vavallee/bindery"
 last_release = "2026-07-25"
 describes = "Watches for books and audiobooks and fetches them"
 without_it = "No book automation (Readarr is discontinued)"
+reaches = "book and audiobook metadata providers"
+asks_for = "Reads author, title and cover information for the books it watches for."
 media_types = ["books"]
 health = { kind = "http", path = "/", timeout_s = 90 }
 # Its key is one lemonfiber mints and this service adopts, rather than one it
@@ -326,6 +346,8 @@ upstream = "https://github.com/morpheus65535/bazarr"
 last_release = "2026-07-04"
 describes = "Finds and downloads subtitles"
 without_it = "No automatic subtitles"
+reaches = "the subtitle providers you enable"
+asks_for = "Searches for subtitles matching what is in your library, signing in where a provider requires an account."
 health = { kind = "http", path = "/", timeout_s = 90 }
 # Its key is in the file it writes, which is YAML — the one service here that
 # keeps it that way. The path is inside the container: its /config mount holds a
@@ -346,6 +368,8 @@ upstream = "https://github.com/jellyfin/jellyfin"
 last_release = "2026-06-06"
 describes = "Plays your library on TVs, phones and browsers"
 without_it = "Files on disk, no way to watch them"
+reaches = "metadata providers and its own plugin repository"
+asks_for = "Reads artwork and descriptions for what is in your library, and checks its plugin repository for updates unless you turn that off in its own settings."
 health = { kind = "http", path = "/health", timeout_s = 120 }
 api = { kind = "jellyfin", key_source = "generated" }
 
@@ -363,6 +387,8 @@ upstream = "https://github.com/seerr-team/seerr"
 last_release = "2026-06-02"
 describes = "Where the household asks for things"
 without_it = "Requests come to you in person"
+reaches = "the metadata provider it lists titles from"
+asks_for = "Reads the catalogue the household browses and requests from, and the artwork beside it."
 health = { kind = "http", path = "/api/v1/status", timeout_s = 90 }
 # Its key can be fetched over its own API, and it also writes it to this file,
 # which is the cheaper read and the one lemonfiber takes. The path is where the
@@ -384,6 +410,8 @@ upstream = "https://github.com/crocodilestick/Calibre-Web-Automated"
 last_release = "2026-02-04"
 describes = "Reading and organising your ebook library"
 without_it = "No ebook reader"
+reaches = "book metadata providers"
+asks_for = "Reads covers and descriptions for the ebooks in your library when you ask it to."
 health = { kind = "http", path = "/", timeout_s = 90 }
 
 [[service]]
@@ -400,6 +428,8 @@ upstream = "https://github.com/advplyr/audiobookshelf"
 last_release = "2026-05-28"
 describes = "Listening to audiobooks, with progress synced"
 without_it = "No audiobook player"
+reaches = "audiobook metadata providers"
+asks_for = "Reads covers, chapters and descriptions for the audiobooks in your library when you ask it to."
 health = { kind = "http", path = "/healthcheck", timeout_s = 90 }
 # It starts with no account at all and refuses everything until one exists, so
 # lemonfiber makes the first one — the same shape as the media server's. The token
@@ -419,6 +449,8 @@ upstream = "https://github.com/recyclarr/recyclarr"
 last_release = "2026-08-07"
 describes = "Keeps quality settings in line with community guidance"
 without_it = "Tune quality profiles by hand"
+reaches = "the community quality-guide repository"
+asks_for = "Syncs the quality profiles on its own schedule — its own errand, not one anything else here sets off."
 health = { kind = "container" }
 
 [[service]]
@@ -433,6 +465,8 @@ upstream = "https://github.com/Unpackerr/unpackerr"
 last_release = "2026-03-08"
 describes = "Extracts archived releases so they can be imported"
 without_it = "Some downloads never import"
+reaches = ""
+asks_for = "Nothing. It watches the download directories and extracts archived releases where it finds them, entirely on this machine."
 health = { kind = "container" }
 
 [[service]]
@@ -449,6 +483,8 @@ upstream = "https://github.com/gethomepage/homepage"
 last_release = "2026-06-09"
 describes = "One page linking everything, with live status"
 without_it = "Remember a dozen URLs and ports"
+reaches = ""
+asks_for = "Nothing beyond this machine. It reads the other services' own APIs over the stack's internal network to draw their status."
 health = { kind = "http", path = "/", timeout_s = 60 }
 
 [[service]]
@@ -465,6 +501,8 @@ upstream = "https://github.com/caddyserver/caddy"
 last_release = "2026-06-03"
 describes = "Friendly hostnames instead of ports"
 without_it = "Use localhost:8989 and friends"
+reaches = ""
+asks_for = "Nothing. It answers names on this machine and forwards to the services beside it; no certificate is fetched, because nothing here is published to the internet."
 health = { kind = "tcp", timeout_s = 30 }
 
 # ─────────────────────────── Removed (1) ─────────────────────────────────────

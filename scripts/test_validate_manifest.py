@@ -38,6 +38,21 @@ def patch(path: str, old: str, new: str):
     return apply
 
 
+def strip_lines(path: str, prefixes: tuple[str, ...]):
+    """A mutation that removes every line in `path` starting with one of `prefixes`."""
+
+    def apply(root: pathlib.Path) -> None:
+        target = root / path
+        kept = [
+            line
+            for line in target.read_text(encoding="utf-8").splitlines(keepends=True)
+            if not line.startswith(prefixes)
+        ]
+        target.write_text("".join(kept), encoding="utf-8")
+
+    return apply
+
+
 def append(path: str, text: str):
     def apply(root: pathlib.Path) -> None:
         with (root / path).open("a", encoding="utf-8") as handle:
@@ -254,6 +269,67 @@ CASES = [
         "manifest references a profile that was never declared",
         patch("stack.toml", 'profile = "subs"', 'profile = "subtitles"'),
         "unknown profile",
+    ),
+    (
+        "F2-R10 a service that says where it goes and not what for",
+        patch(
+            "stack.toml",
+            'reaches = "music metadata providers"\n'
+            'asks_for = "Reads artist, album and track information for the music in your library."\n',
+            'reaches = "music metadata providers"\n',
+        ),
+        "declares 'reaches' without 'asks_for'",
+    ),
+    (
+        "F2-R10 a service that says what it asks for and not of whom",
+        patch(
+            "stack.toml",
+            'reaches = "music metadata providers"\n'
+            'asks_for = "Reads artist, album and track information for the music in your library."\n',
+            'asks_for = "Reads artist, album and track information for the music in your library."\n',
+        ),
+        "declares 'asks_for' without 'reaches'",
+    ),
+    (
+        # The three services that reach nothing say so with an empty value, so
+        # an empty one is an answer. A rule reading it as a missing field would
+        # refuse the very entries it exists to collect.
+        "F2-R10 a service that reaches nothing is not a service missing a value",
+        patch(
+            "stack.toml",
+            'reaches = "music metadata providers"',
+            'reaches = ""',
+        ),
+        None,
+    ),
+    (
+        "F2-R10 a service whose errand says nothing at all",
+        patch(
+            "stack.toml",
+            'asks_for = "Reads artist, album and track information for the music in your library."',
+            'asks_for = "  "',
+        ),
+        "asks_for must say what it asks for",
+    ),
+    (
+        # Half a manifest is the case worth refusing: lemonfiber falls back to
+        # what it was compiled with for whatever the manifest does not answer,
+        # so a service left out reads as one the binary already knew about.
+        "F2-R10 a manifest that answers for some services and not others",
+        patch(
+            "stack.toml",
+            'reaches = "music metadata providers"\n'
+            'asks_for = "Reads artist, album and track information for the music in your library."\n',
+            "",
+        ),
+        "says nothing about what it reaches",
+    ),
+    (
+        # Optional at the schema level: a stack that has written none of this
+        # down still parses, here and in lemonfiber.
+        "F2-R10 a manifest that answers for no service at all",
+        strip_lines("stack.toml", ("reaches = ", "asks_for = ")),
+        None,
     ),
     (
         # The table is the one part of the manifest a stack may legitimately not

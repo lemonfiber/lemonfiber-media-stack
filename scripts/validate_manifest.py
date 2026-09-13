@@ -230,6 +230,77 @@ def validate_service_runtime(service: dict, where: str, report: Report) -> None:
         )
 
 
+def validate_service_errand(service: dict, where: str, report: Report) -> None:
+    """Where a service reaches when it runs, and what it asks for when it gets there.
+
+    One answer in two halves, so it is both fields or neither: a service saying
+    where it goes without saying what for would be reported as half an errand,
+    and one saying what it asks for without saying of whom attributes the errand
+    to nobody.
+
+    An empty `reaches` is an answer rather than a missing value — it is how a
+    service that talks to nothing says so, and the three that do still say what
+    they do instead. That is why `asks_for` is the half that may not be blank:
+    there is no case where saying nothing is the way to say nothing.
+    """
+    present = [field for field in ("reaches", "asks_for") if field in service]
+    if not present:
+        return
+    if len(present) == 1:
+        missing = "asks_for" if present[0] == "reaches" else "reaches"
+        report.fail(
+            where,
+            f"declares {present[0]!r} without {missing!r}; where a service reaches and what it "
+            "asks for there are one answer, and half of it is attributed to nobody",
+            "F2-R10",
+        )
+    for field in present:
+        report.check(
+            isinstance(service[field], str), where, f"{field} must be a string", "F2-R10"
+        )
+    if "asks_for" in service:
+        report.check(
+            bool(str(service["asks_for"]).strip()),
+            where,
+            "asks_for must say what it asks for, including where the answer is that it asks "
+            "nothing; an empty reaches already says it goes nowhere",
+            "F2-R10",
+        )
+
+
+def validate_errands(services: list, report: Report) -> None:
+    """Either this manifest says what its services reach, or it does not.
+
+    The pair is optional, so a stack that has written none of it down still
+    validates and lemonfiber answers from what it was compiled with. A manifest
+    that answers for some services and not others is the worse case, and the one
+    refused here: silence about a service cannot be told from a service that
+    reaches nothing, and the fallback quietly answers for whichever services the
+    binary happened to know about when it was built. That is the drift this
+    whole pair exists to end.
+    """
+    answered = {
+        str(service.get("id", "<unnamed>"))
+        for service in services
+        if "reaches" in service or "asks_for" in service
+    }
+    if not answered:
+        return
+    silent = sorted(
+        str(service.get("id", "<unnamed>"))
+        for service in services
+        if str(service.get("id", "<unnamed>")) not in answered
+    )
+    for sid in silent:
+        report.fail(
+            f"service {sid}",
+            "says nothing about what it reaches, in a manifest where other services do; "
+            "a service nobody has written this down for cannot be told from one that "
+            "reaches nothing",
+            "F2-R10",
+        )
+
+
 def validate_service_health(service: dict, where: str, report: Report) -> None:
     health = service.get("health")
     if health is None:
@@ -317,6 +388,7 @@ def validate_service(service: dict, profile_ids: set[str], licences: set[str],
         "F2-R4",
     )
     validate_last_release(service, where, report)
+    validate_service_errand(service, where, report)
     validate_service_runtime(service, where, report)
     validate_service_health(service, where, report)
     validate_service_api(service, where, report)
@@ -426,6 +498,7 @@ def validate_manifest(manifest: dict, report: Report) -> None:
     for service in services:
         validate_service(service, profile_ids, licences, service_ids, profile_of, report)
     validate_dependencies(services, service_ids, profile_of, report)
+    validate_errands(services, report)
     validate_orphans(profile_ids, forms, services, report)
     validate_removals(manifest.get("removed", []), service_ids, report)
 

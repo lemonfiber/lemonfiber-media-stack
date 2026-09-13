@@ -100,6 +100,22 @@ Then three data edits, no code: a service block in the right
 the relevant forms. Then `just ci`. See spec
 [`30-repos/lemonfiber-media-stack.md`](https://github.com/lemonfiber/spec/blob/main/30-repos/lemonfiber-media-stack.md).
 
+Among the `[[service]]` fields are the two that say what the service does on the
+network when it runs — where it reaches, and what it asks for when it gets there:
+
+```toml
+reaches  = "the subtitle providers you enable"
+asks_for = "Searches for subtitles matching what is in your library, signing in where a provider requires an account."
+```
+
+Both or neither, and `reaches = ""` where a service talks to nothing at all —
+three of them do, and each still says what it does instead. This is what lets a
+service be added with no lemonfiber change and no lemonfiber release: the prose
+an operator reads about a new service arrives with the service, in the manifest,
+rather than being compiled into the binary a release at a time. A manifest that
+answers for some services and not others is refused, because a service nobody
+wrote this down for cannot be told from one that reaches nothing.
+
 ## Bumping a pin
 
 Moving a `tag` is a review of the service, not an edit to a string, and two
@@ -149,6 +165,7 @@ proven to fail when broken by `scripts/test_validate_manifest.py`.
 | Pinned, non-floating tags | Nothing changes because time passed (`E1-R1`) |
 | Kernel capabilities match the manifest | Only Gluetun is granted `NET_ADMIN` (`C6`) |
 | OSI licence per service | Verified against a vendored SPDX list (`F2-R5`) |
+| What each service reaches | `reaches` and `asks_for` together, for every service or for none (`F2-R10`, `F1-R5`) |
 | Upstream licence, where a pin moves | Read from the forge; still OSI-approved (`F2-R12`) |
 | A bumped pin carries a reviewed date | `last_release` moves with the tag, or the commit re-affirms it (`F2-R14`) |
 | A removal says why | `[[removed]]` names the reason and any replacement (`F2-R13`) |
