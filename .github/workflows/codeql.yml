@@ -23,3 +23,36 @@ jobs:
         with:
           languages: actions
       - uses: github/codeql-action/analyze@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v3
+        with:
+          # Named, because GitHub builds the category from the *matrix* and there
+          # is none here: a single-language job with no `category:` is recorded
+          # as `.github/workflows/codeql.yml:analyze`, with no language in it at
+          # all. The gate below compares what was analysed against what this file
+          # says is meant to be, and a category naming no language answers for no
+          # language.
+          category: "/language:actions"
+
+  # The analysis finding something is not the same as anything stopping it. The
+  # check GitHub raises beside it compares the configurations a pull request
+  # produced against every one seen on `main`, and the supply-chain scan uploads
+  # three that only ever run on `main` — so it is neutral on every pull request,
+  # whatever the analysis found, and gates nothing. This asks the question that
+  # was meant: is there an open alert against what this branch proposes.
+  #
+  # `!cancelled()` rather than `always()`, and rather than `needs:` alone: a
+  # `needs:` dependency that fails makes this job vanish, and a skipped required
+  # check satisfies branch protection — so the one gate that refuses an alert
+  # would be absent in exactly the case where the analysis went wrong. A
+  # cancelled run is somebody pressing stop, and finishing the job they stopped
+  # serves nobody. The gate refuses a commit it has no analysis of, by language
+  # and by name, so running it after a failed analysis says what is missing
+  # rather than passing on an empty list.
+  alerts:
+    needs: analyze
+    if: ${{ !cancelled() }}
+    permissions:
+      contents: read
+      security-events: read
+    uses: lemonfiber/spec/.github/workflows/codeql-alerts.yml@2b5fd77c3c6c04ab2e21fbf157c54a7c1f72a872 # main
+    with:
+      analysis: ${{ needs.analyze.result }}

@@ -19,8 +19,13 @@
 # Add a workflow to branch protection and it belongs here in the same change.
 name: awaiting-maintainer
 on:
+  # `codeql` is in this list because of what its `alerts` job now does. The list
+  # is what re-asks the question when a workflow finishes; a gating workflow left
+  # out of it can be the last one to go green, with nothing afterwards to notice
+  # that the pull request became mergeable. The flag then never goes up and
+  # nothing says why.
   workflow_run:
-    workflows: [ci, sonar]
+    workflows: [ci, sonar, codeql]
     types: [completed]
   pull_request_review:
     types: [submitted]
