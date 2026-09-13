@@ -84,6 +84,25 @@ def platforms(reference: str) -> tuple[set[tuple[str, str]], str]:
     return read(*_inspect(reference))
 
 
+def reference_problems() -> list[str]:
+    """What may be handed to docker as a reference, driven both ways.
+
+    The reference reaches a command line, and one of the two callers takes it
+    from `--image` on one of its own. Refused before docker sees it, and refused
+    in the shape a docker failure arrives in, so the reading below is the same
+    reading either way — which is why this drives `_inspect` rather than the
+    pattern, and why it needs no registry to do it.
+    """
+    problems = []
+    for refused in ("--output=/tmp/owned", "-x", "", "caddy:2.8.4 --push", "$(whoami)"):
+        if _inspect(refused)[0] == 0:
+            problems.append(f"{refused!r} would have been handed to docker")
+    for allowed in ("caddy:2.8.4", "lscr.io/linuxserver/sonarr:4.0.15", "ghcr.io/hotio/unpackerr:release-0.14.5"):
+        if not REFERENCE.match(allowed):
+            problems.append(f"{allowed!r} is a pin this manifest carries, and was refused")
+    return problems
+
+
 def self_test() -> int:
     """Each of the four answers `read` gives, driven against a reply it did not fetch.
 
@@ -112,19 +131,7 @@ def self_test() -> int:
         ("a failure that said nothing", (1, "", ""), set(), "inspect failed"),
     )
 
-    # The reference reaches a command line, and one of the two callers takes it
-    # from `--image` on one. Refused before docker sees it, and refused in the
-    # shape a docker failure arrives in, which is what the reading above expects.
-    for refused in ("--output=/tmp/owned", "-x", "", "caddy:2.8.4 --push", "$(whoami)"):
-        if _inspect(refused)[0] == 0:
-            print(f"::error::self-test: {refused!r} would have been handed to docker")
-            return 1
-    for allowed in ("caddy:2.8.4", "lscr.io/linuxserver/sonarr:4.0.15", "ghcr.io/hotio/unpackerr:release-0.14.5"):
-        if not REFERENCE.match(allowed):
-            print(f"::error::self-test: {allowed!r} is a pin in this manifest, and was refused")
-            return 1
-
-    problems = []
+    problems = reference_problems()
     for said, reply, wanted, because in cases:
         found, problem = read(*reply)
         if found != wanted:
