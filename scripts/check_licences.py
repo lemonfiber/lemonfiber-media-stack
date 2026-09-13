@@ -55,7 +55,7 @@ import pathlib
 import sys
 import tomllib
 
-from check_manifest_change import bumped, git, pins
+from check_manifest_change import bumped, pins, read_at
 from forge import NOT_FOUND, get_json, repo_of, safe
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
@@ -205,7 +205,7 @@ def gated_services(base: str, all_of_them: bool, manifest_text: str) -> tuple[se
     """The services this run gates, and how it decided. Empty is a legitimate answer."""
     if all_of_them:
         return set(pins(manifest_text)), "every service, asked for"
-    found, base_manifest = git("show", f"{base}:stack.toml")
+    found, base_manifest = read_at(base, "manifest")
     if not found:
         return set(), ""
     return bumped(pins(base_manifest), pins(manifest_text)), f"pins moved since {base}"

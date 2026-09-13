@@ -53,8 +53,16 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 STACK_TOML = "stack.toml"
 
 # One trailer per line, and a line may name several services. Matched
-# case-insensitively at the start of a line, the way git reads a trailer.
-REAFFIRMED = re.compile(r"^[ \t]*Pin-reviewed:[ \t]*(.+)$", re.IGNORECASE | re.MULTILINE)
+# case-insensitively at the start of a line, the way git reads a trailer. The
+# capture starts at a non-space so that it cannot overlap the run of spaces
+# before it — which is both an ambiguity a regular expression engine pays for
+# and the reason a trailer naming nothing at all used to match.
+REAFFIRMED = re.compile(r"^[ \t]*Pin-reviewed:[ \t]*(\S.*)$", re.IGNORECASE | re.MULTILINE)
+
+# What may be interpolated into a git argument. Letters or digits first, so
+# nothing that begins with a dash can reach a command line as an option, and
+# nothing outside the characters a ref is spelled with can reach it at all.
+BASE_REF = re.compile(r"\A[0-9A-Za-z][0-9A-Za-z._/-]{0,254}\Z")
 
 
 def pins(text: str) -> dict[str, dict[str, str]]:
@@ -146,7 +154,31 @@ def reaffirmations(messages: str) -> set[str]:
     return named
 
 
-def git(*arguments: str) -> tuple[bool, str]:
+def read_at(base: str, wanted: str) -> tuple[bool, str]:
+    """What git says about `base` — the manifest there, or the messages since.
+
+    The base comes from a command line: this is run by hand and by `just
+    changes` as well as by a workflow, so the workflow checking the shape of its
+    own event data protects nothing here. The check is therefore in this
+    function, directly above the call it guards and not in a helper or an
+    import, for the reason the same check carries in the specification
+    repository's own gates: an analysis reading this call cannot follow a
+    pattern defined elsewhere, so a shared one gets a guarded call reported as
+    unguarded — and a second caller can always forget to make the call.
+
+    A refusal is a failure and never a skip. The two things git is asked for are
+    built here from that one value and literals, so a base that got past this
+    would be the only way an argument could arrive.
+    """
+    if not BASE_REF.match(base):
+        return False, (
+            f"{base!r} is not a base this will hand to git: a commit or a ref name, letters or "
+            "digits first — anything that could be read as an option is refused rather than passed on"
+        )
+    arguments = {
+        "manifest": ["show", f"{base}:{STACK_TOML}"],
+        "messages": ["log", "--format=%B", f"{base}..HEAD"],
+    }[wanted]
     result = subprocess.run(["git", *arguments], cwd=ROOT, capture_output=True, text=True, check=False)
     return result.returncode == 0, (result.stdout if result.returncode == 0 else result.stderr.strip())
 
@@ -268,6 +300,26 @@ def self_test() -> int:
         elif not any(because in fault for fault in faults):
             problems.append(f"{said}: said {faults}, which does not mention {because!r}")
 
+    # A base reaches a command line, so what may be one is a judgement this
+    # makes rather than something a caller is trusted to have made. Every
+    # refusal below is a string somebody could put after `--base`.
+    for refused in (
+        "",
+        "-n",
+        "--upload-pack=touch /tmp/owned",
+        "--output=/etc/passwd",
+        "origin/main; rm -rf /",
+        "$(whoami)",
+        "origin/main main",
+        "origin/main\nHEAD",
+        ".hidden",
+    ):
+        if BASE_REF.match(refused):
+            problems.append(f"{refused!r} would have been handed to git as a base")
+    for allowed in ("origin/main", "HEAD", "884c0a7", "0" * 40, "release/1.2.x", "v0.15.0"):
+        if not BASE_REF.match(allowed):
+            problems.append(f"{allowed!r} is a base somebody would reasonably pass, and was refused")
+
     # The trailer is the escape hatch, so a trailer nobody wrote must not open
     # it: this reads the form out of a whole commit message, beside the two
     # trailers every commit here already carries.
@@ -281,6 +333,8 @@ def self_test() -> int:
         problems.append(f"a trailer naming two services read as {reaffirmations(message)}")
     if reaffirmations("fix: something\n\nSpec: F2-R14\n"):
         problems.append("a message carrying no trailer was read as re-affirming something")
+    if reaffirmations("fix: something\n\nPin-reviewed:   \n"):
+        problems.append("a trailer naming nothing was read as re-affirming something")
 
     for problem in problems:
         print(f"::error::self-test: {problem}")
@@ -300,7 +354,7 @@ def main() -> int:
     if args.self_test:
         return self_test()
 
-    found, base_manifest = git("show", f"{args.base}:{STACK_TOML}")
+    found, base_manifest = read_at(args.base, "manifest")
     if not found:
         print(
             f"::error::cannot read {STACK_TOML} as of {args.base}: {base_manifest}\n"
@@ -311,7 +365,7 @@ def main() -> int:
         )
         return 2
 
-    logged, messages = git("log", "--format=%B", f"{args.base}..HEAD")
+    logged, messages = read_at(args.base, "messages")
     if not logged:
         print(f"::error::cannot read the commits since {args.base}: {messages}", file=sys.stderr)
         return 2

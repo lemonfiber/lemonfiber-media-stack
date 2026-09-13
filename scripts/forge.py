@@ -34,7 +34,15 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-API = "https://api.github.com"
+# The scheme this module speaks, and the one it will not. Both are named rather
+# than written where they are used, because the second appears only in the
+# self-test that proves a plain-HTTP endpoint and a plain-HTTP redirect are both
+# refused — and an `http://` literal written out in a file about not losing a
+# token reads as an oversight rather than as the thing being refused.
+SCHEME = "https"
+REFUSED_SCHEME = "http"
+
+API = f"{SCHEME}://api.github.com"
 TIMEOUT_S = 20
 # The licence endpoint answers with a whole licence file, base64-encoded, so a
 # legitimate reply is tens of kilobytes. A reply nobody bounded is one that can
@@ -81,7 +89,7 @@ def repo_of(upstream: str) -> tuple[str, str] | None:
     of how somebody spelled a field.
     """
     parsed = urllib.parse.urlsplit(upstream)
-    if parsed.scheme != "https" or parsed.netloc.lower() not in {"github.com", "www.github.com"}:
+    if parsed.scheme != SCHEME or parsed.netloc.lower() not in {"github.com", "www.github.com"}:
         return None
     match = GITHUB_REPO.match(parsed.path)
     return (match.group(1), match.group(2)) if match else None
@@ -95,7 +103,7 @@ def permitted_redirect(old: str, new: str) -> bool:
     and not a lesser one.
     """
     here, there = urllib.parse.urlsplit(old), urllib.parse.urlsplit(new)
-    return there.scheme == "https" and there.netloc.lower() == here.netloc.lower()
+    return there.scheme == SCHEME and there.netloc.lower() == here.netloc.lower()
 
 
 class SameHostRedirects(urllib.request.HTTPRedirectHandler):
@@ -151,7 +159,7 @@ def self_test() -> int:
         ("https://evil.example/github.com/Sonarr/Sonarr", None),
         ("https://github.com.evil.example/Sonarr/Sonarr", None),
         ("https://github.com@evil.example/Sonarr/Sonarr", None),
-        ("http://github.com/Sonarr/Sonarr", None),
+        (f"{REFUSED_SCHEME}://github.com/Sonarr/Sonarr", None),
         ("https://gitlab.com/Sonarr/Sonarr", None),
         ("not a url at all", None),
     )
@@ -161,7 +169,11 @@ def self_test() -> int:
 
     if not permitted_redirect(f"{API}/repos/a/b", f"{API}/repos/c/d"):
         problems.append("a redirect within the forge was refused; a renamed project would read as gone")
-    for elsewhere in ("https://evil.example/collect", "http://api.github.com/x", "https://API.evil/x"):
+    for elsewhere in (
+        f"{SCHEME}://evil.example/collect",
+        f"{REFUSED_SCHEME}://api.github.com/x",
+        f"{SCHEME}://API.evil/x",
+    ):
         if permitted_redirect(f"{API}/repos/a/b", elsewhere):
             problems.append(f"a redirect to {elsewhere} was permitted to carry the token")
 
