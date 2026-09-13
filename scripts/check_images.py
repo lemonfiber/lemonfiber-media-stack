@@ -23,17 +23,29 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 REQUIRED = {("linux", "amd64"), ("linux", "arm64")}
 
 
-def platforms(reference: str) -> tuple[set[tuple[str, str]], str]:
-    """Platforms a reference publishes, read from its manifest list."""
+def _inspect(reference: str) -> tuple[int, str, str]:
+    """What the registry says about a reference, as docker reports it."""
     result = subprocess.run(
         ["docker", "buildx", "imagetools", "inspect", "--raw", reference],
         capture_output=True, text=True, check=False,
     )
-    if result.returncode != 0:
-        return set(), result.stderr.strip().splitlines()[-1] if result.stderr.strip() else "inspect failed"
+    return result.returncode, result.stdout, result.stderr
+
+
+def read(code: int, stdout: str, stderr: str) -> tuple[set[tuple[str, str]], str]:
+    """Platforms a manifest list publishes, or why none could be read.
+
+    Apart from the call that fetches it so the four judgements below can be
+    driven without a registry: a reference nobody can inspect, a reply that is
+    not JSON, a list carrying attestations beside its images, and a plain image
+    manifest — which is not an empty list but a single-architecture publish, and
+    the distinction is the whole point of the check.
+    """
+    if code != 0:
+        return set(), stderr.strip().splitlines()[-1] if stderr.strip() else "inspect failed"
 
     try:
-        document = json.loads(result.stdout)
+        document = json.loads(stdout)
     except json.JSONDecodeError:
         return set(), "registry returned something that is not JSON"
 
@@ -50,10 +62,73 @@ def platforms(reference: str) -> tuple[set[tuple[str, str]], str]:
     return found, ""
 
 
+def platforms(reference: str) -> tuple[set[tuple[str, str]], str]:
+    """Platforms a reference publishes, read from its manifest list."""
+    return read(*_inspect(reference))
+
+
+def self_test() -> int:
+    """Each of the four answers `read` gives, driven against a reply it did not fetch.
+
+    Nothing here needs the network, which is the point: this check is the one
+    that does, so its judgements are the ones least likely to be exercised by
+    anybody before CI runs them against a registry.
+    """
+    both = json.dumps({"manifests": [
+        {"platform": {"os": "linux", "architecture": "amd64"}},
+        {"platform": {"os": "linux", "architecture": "arm64"}},
+    ]})
+    attested = json.dumps({"manifests": [
+        {"platform": {"os": "linux", "architecture": "amd64"}},
+        {"platform": {"os": "linux", "architecture": "arm64"}},
+        {"platform": {"os": "unknown", "architecture": "unknown"}},
+    ]})
+    one_arch = json.dumps({"manifests": [{"platform": {"os": "linux", "architecture": "amd64"}}]})
+
+    cases = (
+        ("both architectures", (0, both, ""), REQUIRED, ""),
+        ("an attestation beside them", (0, attested, ""), REQUIRED, ""),
+        ("one architecture", (0, one_arch, ""), {("linux", "amd64")}, ""),
+        ("a plain image manifest", (0, json.dumps({"config": {}}), ""), set(), "single-architecture"),
+        ("a reply that is not JSON", (0, "<html>", ""), set(), "not JSON"),
+        ("a reference nobody can inspect", (1, "", "denied: requested access"), set(), "denied"),
+        ("a failure that said nothing", (1, "", ""), set(), "inspect failed"),
+    )
+
+    problems = []
+    for said, reply, wanted, because in cases:
+        found, problem = read(*reply)
+        if found != wanted:
+            problems.append(f"{said}: read {sorted(found)}, wanted {sorted(wanted)}")
+        if because not in problem:
+            problems.append(f"{said}: said {problem!r}, which does not mention {because!r}")
+
+    # The other half, and the one that matters: a miss has to be a miss. An
+    # attestation counted as a platform, or a single-architecture publish read as
+    # an empty list, would each let an image through that runs under emulation.
+    for said, reply in (("a plain image manifest", (0, json.dumps({"config": {}}), "")),
+                        ("one architecture", (0, one_arch, ""))):
+        found, _ = read(*reply)
+        if not REQUIRED - found:
+            problems.append(f"{said}: was read as publishing both architectures")
+
+    for problem in problems:
+        print(f"::error::self-test: {problem}")
+    if problems:
+        print("\nA check that cannot tell a manifest list from an image is not a check.")
+        return 1
+    print(f"self-test: all {len(cases)} replies were read as they should be")
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--only", help="check one service id")
+    parser.add_argument("--self-test", action="store_true", help="prove the reading, without a registry")
     args = parser.parse_args()
+
+    if args.self_test:
+        return self_test()
 
     manifest = tomllib.loads((ROOT / "stack.toml").read_text(encoding="utf-8"))
     services = [s for s in manifest["service"] if not args.only or s["id"] == args.only]

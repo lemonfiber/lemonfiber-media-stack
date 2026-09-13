@@ -28,8 +28,11 @@ docs:
 test:
     python3 scripts/test_validate_manifest.py
 
-# Every pinned image publishes linux/amd64 and linux/arm64. Networked.
+# Every pinned image publishes linux/amd64 and linux/arm64. Networked — but the
+# self-test is not, and runs first for that reason: the reading it proves is the
+# one least likely to have been exercised by anybody before a registry answers.
 images:
+    python3 scripts/check_images.py --self-test
     python3 scripts/check_images.py
 
 # Shipped config templates parse in the service that reads them. Networked.
