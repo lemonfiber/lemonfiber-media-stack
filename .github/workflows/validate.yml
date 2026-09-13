@@ -12,6 +12,14 @@ jobs:
         with:
           persist-credentials: false
 
+      # The scripts below are the gate, and nothing read them. Four carry a
+      # `--self-test` that drives their judgements against replies they did not
+      # fetch, which is the harder half; this is the easier half and it was
+      # missing. First, because an undefined name in one of these reads as a
+      # broken manifest rather than as a broken checker.
+      - name: The gate scripts themselves
+        run: pipx run ruff==0.16.4 check scripts/
+
       # stack.toml against the contract, and the resolved Compose model held in
       # parity with it — services, images, profiles, mounts, bindings and
       # capabilities (REPO-R18, REPO-R19).
