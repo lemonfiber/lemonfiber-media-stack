@@ -211,6 +211,64 @@ def gated_services(base: str, all_of_them: bool, manifest_text: str) -> tuple[se
     return bumped(pins(base_manifest), pins(manifest_text)), f"pins moved since {base}"
 
 
+def survey(services: list, gated: set[str], osi: set[str]) -> tuple[list[str], list[str], dict[str, int]]:
+    """Ask about each service, say what came back, and separate the failures from the notes.
+
+    The asking and the judging are apart — `stated_licence` fetches and `assess`
+    decides — and this is the third thing, which is saying. What it fails is
+    only ever a gated service, which is the whole design of the check.
+    """
+    failures, noted, tally = [], [], {}
+    for service in services:
+        sid, recorded = service["id"], str(service.get("license", ""))
+        verdict, detail = assess(recorded, *stated_licence(str(service.get("upstream", ""))), osi)
+        tally[verdict] = tally.get(verdict, 0) + 1
+        gate = sid in gated
+        failed = gate and verdict in FAILS_WHEN_GATED
+        marker = "ok  " if verdict == "agrees" else "note"
+        print(f"  {'FAIL' if failed else marker} {sid:<22} {'[bumped] ' if gate else ''}{detail}")
+
+        if failed:
+            failures.append(f"{sid}: {detail} (F2-R12)")
+        elif verdict != "agrees":
+            noted.append(sid)
+    return failures, noted, tally
+
+
+def counted(tally: dict[str, int]) -> str:
+    """What was asked and what came back, rather than a count of services.
+
+    Every one of these is a question that can go unanswered, and a closing line
+    saying nineteen licences were read would be wrong on the run where a rate
+    limit answered all nineteen.
+    """
+    return ", ".join(f"{count} {verdict}" for verdict, count in sorted(tally.items()))
+
+
+def settled(gated: set[str]) -> str:
+    """What the gate decided, including the common case where it had nothing to decide."""
+    if not gated:
+        return "nothing was gated, because this change moves no pin"
+    return f"every one of the {len(gated)} gated is OSI-approved"
+
+
+def refuse(failures: list[str]) -> None:
+    """Say what was refused and why, where a gated service could not be cleared."""
+    print()
+    print("\n".join(f"::error::{failure}" for failure in failures))
+    print(
+        "\nA pin bump is where a licence is established. A service whose licence has left the "
+        "OSI list, or could not be read at all, does not get to be bumped.",
+        file=sys.stderr,
+    )
+    if any("403" in failure for failure in failures):
+        print(
+            "A 403 here is the unauthenticated rate limit — sixty requests an hour, and this asks "
+            "one per service. Set GITHUB_TOKEN and run it again.",
+            file=sys.stderr,
+        )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--base", default="origin/main", help="the commit this change is measured against")
@@ -233,54 +291,16 @@ def main() -> int:
         )
         return 2
 
-    osi = osi_keys()
-    failures, noted, tally = [], [], {}
-
-    for service in manifest["service"]:
-        sid, recorded = service["id"], str(service.get("license", ""))
-        verdict, detail = assess(recorded, *stated_licence(str(service.get("upstream", ""))), osi)
-        tally[verdict] = tally.get(verdict, 0) + 1
-        gate = sid in gated
-        failed = gate and verdict in FAILS_WHEN_GATED
-        marker = "ok  " if verdict == "agrees" else "note"
-        print(f"  {'FAIL' if failed else marker} {sid:<22} {'[bumped] ' if gate else ''}{detail}")
-
-        if failed:
-            failures.append(f"{sid}: {detail} (F2-R12)")
-        elif verdict != "agrees":
-            noted.append(sid)
-
+    failures, noted, tally = survey(manifest["service"], gated, osi_keys())
     print(f"\ngated: {len(gated)} service(s) — {how}")
     if noted:
         print(f"reported, not failed: {', '.join(noted)}")
         print("A service nothing here touched is reported now and gated when its pin next moves.")
 
     if failures:
-        print()
-        print("\n".join(f"::error::{failure}" for failure in failures))
-        print(
-            "\nA pin bump is where a licence is established. A service whose licence has left the "
-            "OSI list, or could not be read at all, does not get to be bumped.",
-            file=sys.stderr,
-        )
-        if any("403" in failure for failure in failures):
-            print(
-                "A 403 here is the unauthenticated rate limit — sixty requests an hour, and this "
-                "asks one per service. Set GITHUB_TOKEN and run it again.",
-                file=sys.stderr,
-            )
+        refuse(failures)
         return 1
-    # What was asked and what came back, rather than a count of services — every
-    # one of these is a question that can go unanswered, and a closing line
-    # saying nineteen licences were read would be wrong on the run where a rate
-    # limit answered all nineteen.
-    counted = ", ".join(f"{count} {verdict}" for verdict, count in sorted(tally.items()))
-    settled = (
-        f"every one of the {len(gated)} gated is OSI-approved"
-        if gated
-        else "nothing was gated, because this change moves no pin"
-    )
-    print(f"\n{len(manifest['service'])} upstream(s) asked — {counted}; {settled}.")
+    print(f"\n{len(manifest['service'])} upstream(s) asked — {counted(tally)}; {settled(gated)}.")
     return 0
 
 

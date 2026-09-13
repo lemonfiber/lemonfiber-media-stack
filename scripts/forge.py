@@ -147,10 +147,13 @@ def get_json(path: str) -> tuple[object | None, str]:
         return None, "forge answered with something that is not JSON"
 
 
-def self_test() -> int:
-    """The three properties above, none of which needs a forge to prove."""
-    problems = []
+def addressing_problems() -> list[str]:
+    """Where a project URL is read as pointing, driven against every shape that lies.
 
+    The host is the whole of it. A URL that merely contains `github.com` is not
+    one on github.com, and the difference is a request carrying a token.
+    """
+    problems = []
     addressing = (
         ("https://github.com/Sonarr/Sonarr", ("Sonarr", "Sonarr")),
         ("https://github.com/Sonarr/Sonarr/", ("Sonarr", "Sonarr")),
@@ -166,20 +169,39 @@ def self_test() -> int:
     for upstream, wanted in addressing:
         if repo_of(upstream) != wanted:
             problems.append(f"{upstream} was read as {repo_of(upstream)}, wanted {wanted}")
+    return problems
 
+
+def redirect_problems() -> list[str]:
+    """What a redirect may do while the request carries a token.
+
+    One of them has to be permitted or a renamed project reads as gone; the
+    rest would hand the token to whoever answered, the last of them in clear on
+    the host it was meant for.
+    """
+    problems = []
     if not permitted_redirect(f"{API}/repos/a/b", f"{API}/repos/c/d"):
         problems.append("a redirect within the forge was refused; a renamed project would read as gone")
     for elsewhere in (
         f"{SCHEME}://evil.example/collect",
-        f"{REFUSED_SCHEME}://api.github.com/x",
         f"{SCHEME}://API.evil/x",
+        f"{REFUSED_SCHEME}://api.github.com/x",
     ):
         if permitted_redirect(f"{API}/repos/a/b", elsewhere):
             problems.append(f"a redirect to {elsewhere} was permitted to carry the token")
+    return problems
 
+
+def reply_problems() -> list[str]:
+    """What a reply may be, and what may be echoed out of one.
+
+    Too much of it to be a reply is said as that rather than handed to a parser,
+    and nothing arriving from a network gets to be a line a workflow log reads
+    as an instruction.
+    """
+    problems = []
     if not oversize(b"x" * (MAX_REPLY + 1)).endswith("none of it was read"):
-        problem = oversize(b"x" * (MAX_REPLY + 1))
-        problems.append(f"a reply past the bound was not named as one: {problem!r}")
+        problems.append(f"a reply past the bound was not named as one: {oversize(b'x' * (MAX_REPLY + 1))!r}")
     if oversize(b'{"ok": true}'):
         problems.append("a reply within the bound was refused as too large")
 
@@ -193,13 +215,18 @@ def self_test() -> int:
             problems.append(f"{because} survived being printed: {printed!r}")
     if len(safe("x" * 500)) > 120:
         problems.append("a long reply was printed in full")
+    return problems
 
+
+def self_test() -> int:
+    """The three properties in the module docstring, none of which needs a forge."""
+    problems = addressing_problems() + redirect_problems() + reply_problems()
     for problem in problems:
         print(f"::error::self-test: {problem}")
     if problems:
         print("\nA request that can be aimed by a manifest is not a request this repository makes.")
         return 1
-    print(f"self-test: {len(addressing)} URLs read, redirects held to one host, replies made printable")
+    print("self-test: URLs read, redirects held to one host and one scheme, replies made printable")
     return 0
 
 

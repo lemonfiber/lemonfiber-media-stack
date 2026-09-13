@@ -62,75 +62,124 @@ def commit_dates(commits: list) -> list[datetime.date]:
     return sorted(date for date in dated if date)
 
 
-def own_history(owner: str, repo: str, project: dict) -> dict:
-    """How many commits are the project's own, over how many days, and how that was read.
+def unreadable(why: str) -> dict:
+    """A history nobody could read, said as a history rather than as a zero."""
+    return {"own_commits": 0, "at_least": False, "history_days": None, "history_read_from": why}
 
-    A fork inherits its parent's history, and counting it would credit a
-    three-day fork with the parent's decade. So a fork is compared against the
-    project it forked and only what is ahead counts — which is the same thing a
-    person does by eye when they open the fork's commit list and look for where
-    it diverges.
+
+def ahead_of_parent(owner: str, repo: str, project: dict, parent: dict) -> dict:
+    """What a fork has done since it forked, and nothing of what it inherited.
+
+    The same thing a person does by eye when they open a fork's commit list and
+    look for where it diverges. A comparison that cannot be made is unreadable
+    rather than answered from the commit listing, because that listing carries
+    the parent's decade and would credit a three-day fork with it.
     """
-    parent = project.get("parent") or {}
-    if parent.get("full_name"):
-        parent_owner = (parent.get("owner") or {}).get("login", "")
-        head, base = (
-            f"{owner}:{project.get('default_branch')}",
-            f"{parent_owner}:{parent.get('default_branch')}",
-        )
-        document, problem = get_json(f"/repos/{owner}/{repo}/compare/{base}...{head}")
-        if problem:
-            # Falling through to the commit listing here would count the parent's
-            # history as the fork's, which is the one mistake this function
-            # exists to avoid. Unreadable is the honest answer.
-            return {
-                "own_commits": 0,
-                "at_least": False,
-                "history_days": None,
-                "history_read_from": f"could not be compared with {safe(parent['full_name'])} ({problem})",
-            }
-        commits = (document or {}).get("commits") or []
-        dates = commit_dates(commits)
-        return {
-            "own_commits": int((document or {}).get("ahead_by") or len(commits)),
-            "at_least": False,
-            "history_days": (dates[-1] - dates[0]).days if dates else 0,
-            "history_read_from": f"commits ahead of {safe(parent['full_name'])}",
-        }
+    of = safe(parent["full_name"])
+    head = f"{owner}:{project.get('default_branch')}"
+    base = f"{(parent.get('owner') or {}).get('login', '')}:{parent.get('default_branch')}"
+    document, problem = get_json(f"/repos/{owner}/{repo}/compare/{base}...{head}")
+    if problem:
+        return unreadable(f"could not be compared with {of} ({problem})")
 
+    commits = (document or {}).get("commits") or []
+    dates = commit_dates(commits)
+    return {
+        "own_commits": int((document or {}).get("ahead_by") or len(commits)),
+        "at_least": False,
+        "history_days": (dates[-1] - dates[0]).days if dates else 0,
+        "history_read_from": f"commits ahead of {of}",
+    }
+
+
+def whole_history(owner: str, repo: str, project: dict) -> dict:
+    """How long a project that forked nothing has been at it, from its own commits."""
     document, problem = get_json(f"/repos/{owner}/{repo}/commits?per_page=100")
     if problem:
-        return {
-            "own_commits": 0,
-            "at_least": False,
-            "history_days": None,
-            "history_read_from": f"commit history unreadable ({problem})",
-        }
+        return unreadable(f"commit history unreadable ({problem})")
+
     commits = document if isinstance(document, list) else []
     dates = commit_dates(commits)
     if not dates:
-        return {
-            "own_commits": 0,
-            "at_least": False,
-            "history_days": None,
-            "history_read_from": "no dated commits",
-        }
-    if len(commits) >= 100:
-        # A full page is a floor, not a count, and the span it covers is the
-        # latest hundred commits rather than the project's life. The repository's
-        # own age is the honest figure for how long it has been at this.
-        created = date_of(project.get("created_at"))
+        return unreadable("no dated commits")
+
+    span = (dates[-1] - dates[0]).days
+    if len(commits) < 100:
         return {
             "own_commits": len(commits),
-            "at_least": True,
-            "history_days": (dates[-1] - created).days if created else (dates[-1] - dates[0]).days,
-            "history_read_from": "the latest 100 commits, over the repository's age",
+            "at_least": False,
+            "history_days": span,
+            "history_read_from": "every commit it has",
         }
+
+    # A full page is a floor, not a count, and the span it covers is the latest
+    # hundred commits rather than the project's life. The repository's own age is
+    # the honest figure for how long it has been at this.
+    created = date_of(project.get("created_at"))
     return {
         "own_commits": len(commits),
-        "at_least": False,
-        "history_days": (dates[-1] - dates[0]).days,
-        "history_read_from": "every commit it has",
+        "at_least": True,
+        "history_days": (dates[-1] - created).days if created else span,
+        "history_read_from": "the latest 100 commits, over the repository's age",
+    }
+
+
+def own_history(owner: str, repo: str, project: dict) -> dict:
+    """How much of this project's history is its own, read whichever way applies."""
+    parent = project.get("parent") or {}
+    if parent.get("full_name"):
+        return ahead_of_parent(owner, repo, project, parent)
+    return whole_history(owner, repo, project)
+
+
+def released(owner: str, name: str) -> tuple[list[datetime.date] | None, str]:
+    """When this project has published a release, or why that could not be read.
+
+    Ten, not a hundred. A release carries its whole changelog with it, and a
+    hundred of them from a long-lived project is past what `forge` will read —
+    which is how a project with hundreds of releases came back as one with none.
+    Nothing here counts past "any at all" and "the latest", so ten is the
+    question being asked.
+    """
+    releases, problem = get_json(f"/repos/{owner}/{name}/releases?per_page=10")
+    if problem:
+        return None, problem
+    dated = (date_of(one.get("published_at")) for one in (releases or []))
+    return [date for date in dated if date], ""
+
+
+def tagged(owner: str, name: str) -> int:
+    """How many versions this project has tagged.
+
+    A project that cuts no release may still publish versions — several
+    long-established ones tag and never use the releases feature — so the absence
+    of releases alone says nothing. The weaker signal, and read as one: something
+    to pin, with no dated history behind it.
+    """
+    tags, problem = get_json(f"/repos/{owner}/{name}/tags?per_page=100")
+    if problem or not isinstance(tags, list):
+        return 0
+    return len(tags)
+
+
+def image_evidence(image: str | None) -> dict:
+    """Whether the image a candidate offers exists, and on which architectures.
+
+    `image_published` is None where no image was offered: not checked is not the
+    same answer as not published, and the judgement turns on which it is.
+    """
+    if not image:
+        return {"image": None, "image_published": None, "image_detail": "", "missing_platforms": []}
+    try:
+        found, problem = platforms(image)
+    except FileNotFoundError:
+        found, problem = set(), "docker is not on PATH"
+    where = ", ".join(f"{os_}/{arch}" for os_, arch in sorted(found))
+    return {
+        "image": image,
+        "image_published": bool(found) and not problem,
+        "image_detail": f"publishes {where}" if found else problem,
+        "missing_platforms": sorted(REQUIRED - found),
     }
 
 
@@ -146,42 +195,15 @@ def gather(upstream: str, image: str | None) -> tuple[dict | None, str]:
         return None, f"{owner}/{name}: {problem}"
     project = project if isinstance(project, dict) else {}
 
-    # Ten, not a hundred. A release carries its whole changelog, and a hundred of
-    # them from a long-lived project is past what `forge` will read — which is
-    # how a project with hundreds of releases came back as one with none. Nothing
-    # below counts past "any at all" and "the latest", so ten is the question.
-    releases, release_problem = get_json(f"/repos/{owner}/{name}/releases?per_page=10")
-    published = (
-        None
-        if release_problem
-        else [date for date in (date_of(r.get("published_at")) for r in (releases or [])) if date]
-    )
-
-    history = own_history(owner, name, project)
-
-    # A project that cuts no GitHub release may still publish versions — several
-    # long-established ones tag and never use the releases feature — so the
-    # absence of releases alone says nothing. Tags are the weaker signal and are
-    # read as one: something to pin, with no dated history behind it.
-    tags, tag_problem = get_json(f"/repos/{owner}/{name}/tags?per_page=100")
-
-    found: set[tuple[str, str]] = set()
-    how_image = ""
-    image_published = None
-    if image:
-        try:
-            found, image_problem = platforms(image)
-        except FileNotFoundError:
-            found, image_problem = set(), "docker is not on PATH"
-        image_published = bool(found) and not image_problem
-        how_image = "publishes " + ", ".join(f"{o}/{a}" for o, a in sorted(found)) if found else image_problem
+    published, release_problem = released(owner, name)
 
     return {
-        **history,
+        **own_history(owner, name, project),
+        **image_evidence(image),
         "archived": bool(project.get("archived")),
         "fork": bool(project.get("fork")),
         "parent": (project.get("parent") or {}).get("full_name"),
-        "tags": 0 if tag_problem else len(tags if isinstance(tags, list) else []),
+        "tags": tagged(owner, name),
         # None where the list could not be read, which is a different thing from
         # a project that has never released: one is a question that went
         # unanswered and the other is evidence.
@@ -193,13 +215,87 @@ def gather(upstream: str, image: str | None) -> tuple[dict | None, str]:
         "counts_capped": published is not None and len(published) >= 10,
         "latest_release": max(published) if published else None,
         "last_activity": date_of(project.get("pushed_at")),
-        "image": image,
-        "image_published": image_published,
-        "image_detail": how_image,
-        "missing_platforms": sorted(REQUIRED - found) if image else [],
         # Read, shown, and never judged on. See the module docstring.
         "self_description": safe(str(project.get("description") or ""), 200),
     }, ""
+
+
+def publication(evidence: dict) -> list[tuple[str, str]]:
+    """What a candidate has actually shipped, and what that is worth.
+
+    Releases are the strongest answer, tags the weaker one, an image the last:
+    a project may cut no release and still publish versions somebody can pin.
+    Only the absence of all three says nothing it has made is installable — and
+    a release list that could not be read says nothing at all, which is a
+    different answer again.
+    """
+    if evidence.get("releases") is None:
+        return [
+            (
+                "disqualifying",
+                "its release history could not be read, so nothing about how it ships is established",
+            )
+        ]
+    if evidence.get("releases"):
+        return []
+    if evidence.get("tags"):
+        return [
+            (
+                "caution",
+                (
+                    f"no release published, though it carries {evidence['tags']} tag(s): there is a "
+                    "version to pin, and no dated release history to read behind it"
+                ),
+            )
+        ]
+    if evidence.get("image_published") is True:
+        return [("caution", "no release and no tag; the image is the only thing to pin")]
+    if evidence.get("image_published") is False:
+        return [
+            (
+                "disqualifying",
+                "no release, no tag and no published image: nothing it has made is installable",
+            )
+        ]
+    return [
+        (
+            "disqualifying",
+            "no release and no tag, and no image was offered to check; pass --image to settle it",
+        )
+    ]
+
+
+def activity(evidence: dict, today: datetime.date) -> list[tuple[str, str]]:
+    """How long ago this project last did anything, by the two clocks that show it.
+
+    Going quiet is a judgement to record rather than a fault — the stack already
+    carries one slow-moving service deliberately — until the silence is long
+    enough that "mature and finished" stops being the likelier reading.
+    """
+    findings = []
+
+    last = evidence.get("last_activity")
+    if last is None:
+        findings.append(("disqualifying", "the forge reports no activity date at all"))
+    else:
+        quiet = (today - last).days
+        if quiet > ABANDONED_DAYS:
+            findings.append(("disqualifying", f"nothing pushed since {last}, {quiet} days ago"))
+        elif quiet > QUIET_DAYS:
+            findings.append(("caution", f"nothing pushed since {last}, {quiet} days ago"))
+
+    latest = evidence.get("latest_release")
+    if latest is not None and (today - latest).days > QUIET_DAYS:
+        findings.append(
+            (
+                "caution",
+                (
+                    f"latest release {latest}, {(today - latest).days} days ago; slow-moving is a "
+                    "judgement to record, not a fault"
+                ),
+            )
+        )
+    return findings
 
 
 def judge(evidence: dict, today: datetime.date) -> tuple[str, list[tuple[str, str]]]:
@@ -229,62 +325,8 @@ def judge(evidence: dict, today: datetime.date) -> tuple[str, list[tuple[str, st
             )
         )
 
-    if evidence.get("releases") is None:
-        findings.append(
-            (
-                "disqualifying",
-                "its release history could not be read, so nothing about how it ships is established",
-            )
-        )
-    elif not evidence.get("releases"):
-        if evidence.get("tags"):
-            findings.append(
-                (
-                    "caution",
-                    (
-                        f"no release published, though it carries {evidence['tags']} tag(s): there is a "
-                        "version to pin, and no dated release history to read behind it"
-                    ),
-                )
-            )
-        elif evidence.get("image_published") is True:
-            findings.append(("caution", "no release and no tag; the image is the only thing to pin"))
-        elif evidence.get("image_published") is False:
-            findings.append(
-                (
-                    "disqualifying",
-                    "no release, no tag and no published image: nothing it has made is installable",
-                )
-            )
-        else:
-            findings.append(
-                (
-                    "disqualifying",
-                    "no release and no tag, and no image was offered to check; pass --image to settle it",
-                )
-            )
-
-    last = evidence.get("last_activity")
-    if last is None:
-        findings.append(("disqualifying", "the forge reports no activity date at all"))
-    else:
-        quiet = (today - last).days
-        if quiet > ABANDONED_DAYS:
-            findings.append(("disqualifying", f"nothing pushed since {last}, {quiet} days ago"))
-        elif quiet > QUIET_DAYS:
-            findings.append(("caution", f"nothing pushed since {last}, {quiet} days ago"))
-
-    latest = evidence.get("latest_release")
-    if latest is not None and (today - latest).days > QUIET_DAYS:
-        findings.append(
-            (
-                "caution",
-                (
-                    f"latest release {latest}, {(today - latest).days} days ago; slow-moving is a "
-                    "judgement to record, not a fault"
-                ),
-            )
-        )
+    findings += publication(evidence)
+    findings += activity(evidence, today)
 
     if evidence.get("fork"):
         findings.append(
@@ -424,7 +466,16 @@ def self_test() -> int:
     return 0
 
 
-def report(upstream: str, evidence: dict, verdict: str, findings: list[tuple[str, str]]) -> None:
+def released_row(evidence: dict) -> str:
+    """The release figure as a person should read it, unread said as unread."""
+    if evidence["releases"] is None:
+        return f"unreadable ({evidence.get('releases_problem')})"
+    floor = "+" if evidence.get("counts_capped") else ""
+    latest = f", latest {evidence['latest_release']}" if evidence["latest_release"] else ""
+    return f"{evidence['releases']}{floor}{latest}"
+
+
+def report(upstream: str, evidence: dict, findings: list[tuple[str, str]]) -> None:
     print(f"{upstream}\n")
     rows = (
         (
@@ -434,16 +485,7 @@ def report(upstream: str, evidence: dict, verdict: str, findings: list[tuple[str
                 f"{evidence['history_days']} day(s)  [{evidence['history_read_from']}]"
             ),
         ),
-        (
-            "releases",
-            (
-                f"unreadable ({evidence.get('releases_problem')})"
-                if evidence["releases"] is None
-                else f"{evidence['releases']}{'+' if evidence.get('counts_capped') else ''}"
-                + (f", latest {evidence['latest_release']}" if evidence["latest_release"] else "")
-            )
-            + f"  ({evidence['tags']} tag(s))",
-        ),
+        ("releases", f"{released_row(evidence)}  ({evidence['tags']} tag(s))"),
         ("last activity", f"{evidence['last_activity']}"),
         ("fork of", f"{evidence['parent']}" if evidence["fork"] else "not a fork"),
         ("archived", "yes" if evidence["archived"] else "no"),
@@ -491,7 +533,7 @@ def main() -> int:
         return 2
 
     verdict, findings = judge(evidence, datetime.date.today())
-    report(args.upstream, evidence, verdict, findings)
+    report(args.upstream, evidence, findings)
 
     closing = {
         "reject": "Rejected on its history. Say so in the pull request that proposed it, and record it "

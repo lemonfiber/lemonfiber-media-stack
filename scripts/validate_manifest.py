@@ -65,6 +65,10 @@ SERVICE_REQUIRED = (
     "criticality", "license", "upstream", "last_release", "describes", "without_it",
 )
 SEMVER = re.compile(r"^\d+\.\d+\.\d+(?:[-+].*)?$")
+# What an entry is called in a report when it has not said what it is called.
+# Every rule here names a location, and an entry missing the field that would
+# name it still has to be findable in the file.
+UNNAMED = "<unnamed>"
 ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 STACK_TOML = "stack.toml"
 
@@ -157,7 +161,7 @@ def validate_profiles(profiles: list, report: Report) -> set[str]:
     profile_ids: set[str] = set()
     claimed_protocols: dict[str, str] = {}
     for profile in profiles:
-        where = f"profile {profile.get('id', '<unnamed>')}"
+        where = f"profile {profile.get('id', UNNAMED)}"
         for field in ("id", "name", "description"):
             report.check(field in profile, where, f"missing required field {field!r}")
         pid = profile.get("id")
@@ -188,7 +192,7 @@ def validate_profiles(profiles: list, report: Report) -> set[str]:
 def validate_forms(forms: list, profile_ids: set[str], report: Report) -> None:
     form_ids: set[str] = set()
     for form in forms:
-        where = f"form {form.get('id', '<unnamed>')}"
+        where = f"form {form.get('id', UNNAMED)}"
         for field in ("id", "name", "description", "profiles"):
             report.check(field in form, where, f"missing required field {field!r}")
         fid = form.get("id")
@@ -280,16 +284,16 @@ def validate_errands(services: list, report: Report) -> None:
     whole pair exists to end.
     """
     answered = {
-        str(service.get("id", "<unnamed>"))
+        str(service.get("id", UNNAMED))
         for service in services
         if "reaches" in service or "asks_for" in service
     }
     if not answered:
         return
     silent = sorted(
-        str(service.get("id", "<unnamed>"))
+        str(service.get("id", UNNAMED))
         for service in services
-        if str(service.get("id", "<unnamed>")) not in answered
+        if str(service.get("id", UNNAMED)) not in answered
     )
     for sid in silent:
         report.fail(
@@ -341,7 +345,7 @@ def validate_service_api(service: dict, where: str, report: Report) -> None:
 
 def validate_service(service: dict, profile_ids: set[str], licences: set[str],
                      service_ids: set[str], profile_of: dict[str, str], report: Report) -> None:
-    sid = service.get("id", "<unnamed>")
+    sid = service.get("id", UNNAMED)
     where = f"service {sid}"
     for field in SERVICE_REQUIRED:
         report.check(field in service, where, f"missing required field {field!r}")
@@ -398,7 +402,7 @@ def validate_dependencies(services: list, service_ids: set[str],
                           profile_of: dict[str, str], report: Report) -> None:
     # depends_on needs every id known, so it runs after the first pass.
     for service in services:
-        sid = service.get("id", "<unnamed>")
+        sid = service.get("id", UNNAMED)
         for dep in service.get("depends_on", []):
             where = f"service {sid}"
             if not report.check(dep in service_ids, where, f"depends_on unknown service {dep!r}"):
@@ -438,7 +442,7 @@ def validate_removals(removals: list, service_ids: set[str], report: Report) -> 
     """
     removed_ids: set[str] = set()
     for entry in removals:
-        rid = str(entry.get("id", "<unnamed>"))
+        rid = str(entry.get("id", UNNAMED))
         where = f"removed {rid}"
         for field in ("id", "removed_in", "reason"):
             report.check(field in entry, where, f"missing required field {field!r}", "F2-R13")
@@ -468,7 +472,7 @@ def validate_removals(removals: list, service_ids: set[str], report: Report) -> 
     for entry in removals:
         if "replaced_by" not in entry:
             continue
-        rid, replacement = str(entry.get("id", "<unnamed>")), entry["replaced_by"]
+        rid, replacement = str(entry.get("id", UNNAMED)), entry["replaced_by"]
         where = f"removed {rid}"
         report.check(
             replacement != rid,

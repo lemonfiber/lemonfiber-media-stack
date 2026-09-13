@@ -183,6 +183,72 @@ def read_at(base: str, wanted: str) -> tuple[bool, str]:
     return result.returncode == 0, (result.stdout if result.returncode == 0 else result.stderr.strip())
 
 
+def judged_wrongly(cases: tuple) -> list[str]:
+    """Every case the rule got wrong, by what it said rather than by whether it spoke."""
+    problems = []
+    for said, before, after, removed, reaffirmed, because in cases:
+        faults = judge(before, after, removed, reaffirmed)
+        if because is None:
+            if faults:
+                problems.append(f"{said}: was refused — {faults}")
+        elif not faults:
+            problems.append(f"{said}: was accepted")
+        elif not any(because in fault for fault in faults):
+            problems.append(f"{said}: said {faults}, which does not mention {because!r}")
+    return problems
+
+
+def base_refusals() -> list[str]:
+    """What may be handed to git as a base, driven both ways.
+
+    A base reaches a command line, so what counts as one is a judgement this
+    makes rather than something a caller is trusted to have made first. Every
+    string below is one somebody could put after `--base`, and a guard that
+    refused the six at the end would be a guard nobody could use.
+    """
+    problems = []
+    for refused in (
+        "",
+        "-n",
+        "--upload-pack=touch /tmp/owned",
+        "--output=/etc/passwd",
+        "origin/main; rm -rf /",
+        "$(whoami)",
+        "origin/main main",
+        "origin/main\nHEAD",
+        ".hidden",
+    ):
+        if BASE_REF.match(refused):
+            problems.append(f"{refused!r} would have been handed to git as a base")
+    for allowed in ("origin/main", "HEAD", "884c0a7", "0" * 40, "release/1.2.x", "v0.15.0"):
+        if not BASE_REF.match(allowed):
+            problems.append(f"{allowed!r} is a base somebody would reasonably pass, and was refused")
+    return problems
+
+
+def trailer_readings() -> list[str]:
+    """The escape hatch, read out of whole commit messages.
+
+    A trailer nobody wrote must not open it, and one naming nothing is a trailer
+    nobody wrote. Read here beside the two trailers every commit in this
+    repository already carries, because that is the company it will keep.
+    """
+    problems = []
+    message = (
+        "fix(lidarr): take the tag the registry re-cut\n\n"
+        "Pin-reviewed: lidarr, sonarr\n"
+        "Signed-off-by: A Maintainer <m@example.com>\n"
+        "Spec: F2-R14\n"
+    )
+    if reaffirmations(message) != {"lidarr", "sonarr"}:
+        problems.append(f"a trailer naming two services read as {reaffirmations(message)}")
+    if reaffirmations("fix: something\n\nSpec: F2-R14\n"):
+        problems.append("a message carrying no trailer was read as re-affirming something")
+    if reaffirmations("fix: something\n\nPin-reviewed:   \n"):
+        problems.append("a trailer naming nothing was read as re-affirming something")
+    return problems
+
+
 def self_test() -> int:
     """Each verdict, driven against a change no repository contains.
 
@@ -289,52 +355,7 @@ def self_test() -> int:
         ),
     )
 
-    problems = []
-    for said, before, after, removed, reaffirmed, because in cases:
-        faults = judge(before, after, removed, reaffirmed)
-        if because is None:
-            if faults:
-                problems.append(f"{said}: was refused — {faults}")
-        elif not faults:
-            problems.append(f"{said}: was accepted")
-        elif not any(because in fault for fault in faults):
-            problems.append(f"{said}: said {faults}, which does not mention {because!r}")
-
-    # A base reaches a command line, so what may be one is a judgement this
-    # makes rather than something a caller is trusted to have made. Every
-    # refusal below is a string somebody could put after `--base`.
-    for refused in (
-        "",
-        "-n",
-        "--upload-pack=touch /tmp/owned",
-        "--output=/etc/passwd",
-        "origin/main; rm -rf /",
-        "$(whoami)",
-        "origin/main main",
-        "origin/main\nHEAD",
-        ".hidden",
-    ):
-        if BASE_REF.match(refused):
-            problems.append(f"{refused!r} would have been handed to git as a base")
-    for allowed in ("origin/main", "HEAD", "884c0a7", "0" * 40, "release/1.2.x", "v0.15.0"):
-        if not BASE_REF.match(allowed):
-            problems.append(f"{allowed!r} is a base somebody would reasonably pass, and was refused")
-
-    # The trailer is the escape hatch, so a trailer nobody wrote must not open
-    # it: this reads the form out of a whole commit message, beside the two
-    # trailers every commit here already carries.
-    message = (
-        "fix(lidarr): take the tag the registry re-cut\n\n"
-        "Pin-reviewed: lidarr, sonarr\n"
-        "Signed-off-by: A Maintainer <m@example.com>\n"
-        "Spec: F2-R14\n"
-    )
-    if reaffirmations(message) != {"lidarr", "sonarr"}:
-        problems.append(f"a trailer naming two services read as {reaffirmations(message)}")
-    if reaffirmations("fix: something\n\nSpec: F2-R14\n"):
-        problems.append("a message carrying no trailer was read as re-affirming something")
-    if reaffirmations("fix: something\n\nPin-reviewed:   \n"):
-        problems.append("a trailer naming nothing was read as re-affirming something")
+    problems = judged_wrongly(cases) + base_refusals() + trailer_readings()
 
     for problem in problems:
         print(f"::error::self-test: {problem}")
