@@ -9,7 +9,12 @@ hooks:
 
 # Everything CI runs bar the image check, which needs the network — and the hooks
 # turned on if they are not already, this being the command run before a push.
-ci: hooks validate forms docs test
+ci: hooks lint validate forms docs test
+
+# The gate scripts themselves, read by ruff. First, because a name that does not
+# exist is a failure every check below would report as its own.
+lint:
+    uvx ruff@0.16.4 check scripts/
 
 # stack.toml against the contract, and compose.yml held in parity with it.
 validate:

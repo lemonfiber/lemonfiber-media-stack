@@ -25,7 +25,7 @@ COUNTED = re.compile(r"\b(\d+)\s+services\b")
 SPELLED = re.compile(
     r"\b(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|"
     r"fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty)\s+services\b",
-    re.I,
+    re.IGNORECASE,
 )
 WORDS = [
     "zero", "one", "two", "three", "four", "five", "six", "seven", "eight",
