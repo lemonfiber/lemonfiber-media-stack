@@ -45,6 +45,13 @@ jobs:
         with:
           persist-credentials: false
 
+      # A check nobody has watched fail is a check nobody knows works, and this
+      # one's judgements are reachable only when a registry answers. The
+      # self-test drives all four against replies it did not fetch, and needs no
+      # network, so it runs before the job that does.
+      - name: The reading is proved before a registry is asked
+        run: python3 scripts/check_images.py --self-test
+
       - name: Every pin publishes linux/amd64 and linux/arm64
         run: python3 scripts/check_images.py
 
