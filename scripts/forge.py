@@ -54,6 +54,20 @@ GITHUB_REPO = re.compile(r"^/([A-Za-z0-9._-]+)/([A-Za-z0-9._-]+?)(?:\.git)?/?$")
 PRINTABLE = re.compile(r"[^A-Za-z0-9 .,;/+_()-]")
 
 
+def oversize(body: bytes) -> str:
+    """Why a reply was not read, where there was too much of it to be one.
+
+    The bound is a defence and stays one, but a reply cut off at it is not a
+    reply that was malformed, and saying so is the difference between "the forge
+    sent junk" and "you asked for more than you needed". A release listing
+    asked a hundred at a time is how this was found: the truncated half read as
+    a project that had never released anything.
+    """
+    if len(body) > MAX_REPLY:
+        return f"forge answered with more than {MAX_REPLY // 1024} KiB, so none of it was read"
+    return ""
+
+
 def safe(text: str, limit: int = 120) -> str:
     """One line of a network reply, fit to print into a workflow log."""
     return PRINTABLE.sub("?", str(text).strip().replace("\n", " "))[:limit]
@@ -109,7 +123,12 @@ def get_json(path: str) -> tuple[object | None, str]:
     request = urllib.request.Request(f"{API}{path}", headers=headers)
     try:
         with urllib.request.build_opener(SameHostRedirects).open(request, timeout=TIMEOUT_S) as reply:
-            return json.loads(reply.read(MAX_REPLY)), ""
+            # One byte past the bound, so that reaching it is a fact this can
+            # report rather than a truncation the parser reports as bad JSON.
+            body = reply.read(MAX_REPLY + 1)
+        if problem := oversize(body):
+            return None, problem
+        return json.loads(body), ""
     except urllib.error.HTTPError as error:
         if error.code == 404:
             return None, NOT_FOUND
@@ -145,6 +164,12 @@ def self_test() -> int:
     for elsewhere in ("https://evil.example/collect", "http://api.github.com/x", "https://API.evil/x"):
         if permitted_redirect(f"{API}/repos/a/b", elsewhere):
             problems.append(f"a redirect to {elsewhere} was permitted to carry the token")
+
+    if not oversize(b"x" * (MAX_REPLY + 1)).endswith("none of it was read"):
+        problem = oversize(b"x" * (MAX_REPLY + 1))
+        problems.append(f"a reply past the bound was not named as one: {problem!r}")
+    if oversize(b'{"ok": true}'):
+        problems.append("a reply within the bound was refused as too large")
 
     for hostile, because in (
         ("::error::owned", "a workflow command"),

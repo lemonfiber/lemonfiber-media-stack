@@ -146,9 +146,13 @@ def gather(upstream: str, image: str | None) -> tuple[dict | None, str]:
         return None, f"{owner}/{name}: {problem}"
     project = project if isinstance(project, dict) else {}
 
-    releases, release_problem = get_json(f"/repos/{owner}/{name}/releases?per_page=100")
+    # Ten, not a hundred. A release carries its whole changelog, and a hundred of
+    # them from a long-lived project is past what `forge` will read — which is
+    # how a project with hundreds of releases came back as one with none. Nothing
+    # below counts past "any at all" and "the latest", so ten is the question.
+    releases, release_problem = get_json(f"/repos/{owner}/{name}/releases?per_page=10")
     published = (
-        []
+        None
         if release_problem
         else [date for date in (date_of(r.get("published_at")) for r in (releases or [])) if date]
     )
@@ -178,11 +182,15 @@ def gather(upstream: str, image: str | None) -> tuple[dict | None, str]:
         "fork": bool(project.get("fork")),
         "parent": (project.get("parent") or {}).get("full_name"),
         "tags": 0 if tag_problem else len(tags if isinstance(tags, list) else []),
-        "releases": len(published),
-        # Both lists are asked for a page at a time, so a full page is a floor
-        # rather than a total. Nothing below turns on which it is, but the figure
-        # is printed for a person to read and should not overstate itself.
-        "counts_capped": len(published) >= 100,
+        # None where the list could not be read, which is a different thing from
+        # a project that has never released: one is a question that went
+        # unanswered and the other is evidence.
+        "releases": None if published is None else len(published),
+        "releases_problem": release_problem,
+        # Asked a page at a time, so a full page is a floor rather than a total.
+        # Nothing below turns on which it is, but the figure is printed for a
+        # person to read and should not overstate itself.
+        "counts_capped": published is not None and len(published) >= 10,
         "latest_release": max(published) if published else None,
         "last_activity": date_of(project.get("pushed_at")),
         "image": image,
@@ -221,7 +229,14 @@ def judge(evidence: dict, today: datetime.date) -> tuple[str, list[tuple[str, st
             )
         )
 
-    if not evidence.get("releases"):
+    if evidence.get("releases") is None:
+        findings.append(
+            (
+                "disqualifying",
+                "its release history could not be read, so nothing about how it ships is established",
+            )
+        )
+    elif not evidence.get("releases"):
         if evidence.get("tags"):
             findings.append(
                 (
@@ -371,6 +386,12 @@ def self_test() -> int:
             ["the image is the only thing to pin"],
         ),
         (
+            "a candidate whose release history could not be read",
+            {**lidarr, "releases": None, "latest_release": None},
+            "reject",
+            ["release history could not be read"],
+        ),
+        (
             "a candidate whose history could not be read",
             {**lidarr, "history_days": None},
             "reject",
@@ -415,8 +436,12 @@ def report(upstream: str, evidence: dict, verdict: str, findings: list[tuple[str
         ),
         (
             "releases",
-            f"{evidence['releases']}{'+' if evidence.get('counts_capped') else ''}"
-            + (f", latest {evidence['latest_release']}" if evidence["latest_release"] else "")
+            (
+                f"unreadable ({evidence.get('releases_problem')})"
+                if evidence["releases"] is None
+                else f"{evidence['releases']}{'+' if evidence.get('counts_capped') else ''}"
+                + (f", latest {evidence['latest_release']}" if evidence["latest_release"] else "")
+            )
             + f"  ({evidence['tags']} tag(s))",
         ),
         ("last activity", f"{evidence['last_activity']}"),
