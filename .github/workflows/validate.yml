@@ -21,7 +21,9 @@ jobs:
       # Every form is a valid project on its own and drags in nothing outside
       # its own profiles (REPO-R17, B1-R14).
       - name: Every form and overlay resolves
-        run: python3 scripts/check_forms.py
+        run: |
+          python3 scripts/check_forms.py --self-test
+          python3 scripts/check_forms.py
 
       # `19 services` is restated in this repo's prose and in documents outside
       # it. stack.toml is the only place that knows.
