@@ -34,13 +34,19 @@ import sys
 
 from check_images import REQUIRED, platforms
 from check_releases import STALE_DAYS
-from forge import get_json, repo_of, safe
+from forge import NOT_FOUND, get_json, repo_of, safe
 
 # The shortest window in which a project can show a pattern rather than a burst.
 # Under it there is nothing to read: a fork three days old is not badly
 # maintained, it is unestablished, and admitting it is a bet rather than a
 # judgement.
 MIN_HISTORY_DAYS = 30
+# How many commits are asked for at a time. A commit carries its whole message,
+# and a hundred of them from a busy project is half a megabyte — past what
+# `forge` will read, which turns a fifteen-year-old project into one with no
+# history at all. Thirty is more than enough to tell a burst from a record, and
+# where the page fills up the repository's own age answers the question instead.
+PAGE = 30
 # Quiet, and then abandoned. The first is check_releases.py's figure, calibrated
 # against the slowest-moving service already in the stack, and it means the same
 # thing here: worth a look, not a fault. A year is the point at which "mature
@@ -78,23 +84,37 @@ def ahead_of_parent(owner: str, repo: str, project: dict, parent: dict) -> dict:
     of = safe(parent["full_name"])
     head = f"{owner}:{project.get('default_branch')}"
     base = f"{(parent.get('owner') or {}).get('login', '')}:{parent.get('default_branch')}"
-    document, problem = get_json(f"/repos/{owner}/{repo}/compare/{base}...{head}")
+    document, problem = get_json(f"/repos/{owner}/{repo}/compare/{base}...{head}?per_page={PAGE}")
     if problem:
         return unreadable(f"could not be compared with {of} ({problem})")
 
     commits = (document or {}).get("commits") or []
     dates = commit_dates(commits)
+    ahead = int((document or {}).get("ahead_by") or len(commits))
+    if ahead <= len(commits):
+        return {
+            "own_commits": ahead,
+            "at_least": False,
+            "history_days": (dates[-1] - dates[0]).days if dates else 0,
+            "history_read_from": f"commits ahead of {of}",
+        }
+
+    # Further ahead than one page shows. The span of the page would be the span
+    # of its newest commits, and a fork years ahead would read as a burst — so
+    # the date it was forked answers instead, which is where its own history
+    # starts by definition.
+    forked = date_of(project.get("created_at"))
     return {
-        "own_commits": int((document or {}).get("ahead_by") or len(commits)),
-        "at_least": False,
-        "history_days": (dates[-1] - dates[0]).days if dates else 0,
-        "history_read_from": f"commits ahead of {of}",
+        "own_commits": len(commits),
+        "at_least": True,
+        "history_days": (dates[-1] - forked).days if forked and dates else 0,
+        "history_read_from": f"the latest {PAGE} commits ahead of {of}, over its age as a fork",
     }
 
 
 def whole_history(owner: str, repo: str, project: dict) -> dict:
     """How long a project that forked nothing has been at it, from its own commits."""
-    document, problem = get_json(f"/repos/{owner}/{repo}/commits?per_page=100")
+    document, problem = get_json(f"/repos/{owner}/{repo}/commits?per_page={PAGE}")
     if problem:
         return unreadable(f"commit history unreadable ({problem})")
 
@@ -104,7 +124,7 @@ def whole_history(owner: str, repo: str, project: dict) -> dict:
         return unreadable("no dated commits")
 
     span = (dates[-1] - dates[0]).days
-    if len(commits) < 100:
+    if len(commits) < PAGE:
         return {
             "own_commits": len(commits),
             "at_least": False,
@@ -113,14 +133,14 @@ def whole_history(owner: str, repo: str, project: dict) -> dict:
         }
 
     # A full page is a floor, not a count, and the span it covers is the latest
-    # hundred commits rather than the project's life. The repository's own age is
-    # the honest figure for how long it has been at this.
+    # few dozen commits rather than the project's life. The repository's own age
+    # is the honest figure for how long it has been at this.
     created = date_of(project.get("created_at"))
     return {
         "own_commits": len(commits),
         "at_least": True,
         "history_days": (dates[-1] - created).days if created else span,
-        "history_read_from": "the latest 100 commits, over the repository's age",
+        "history_read_from": f"the latest {PAGE} commits, over the repository's age",
     }
 
 
@@ -132,20 +152,26 @@ def own_history(owner: str, repo: str, project: dict) -> dict:
     return whole_history(owner, repo, project)
 
 
-def released(owner: str, name: str) -> tuple[list[datetime.date] | None, str]:
-    """When this project has published a release, or why that could not be read.
+def released(owner: str, name: str) -> tuple[datetime.date | None, int | None, str]:
+    """When this project last published a release, and whether it publishes them at all.
 
-    Ten, not a hundred. A release carries its whole changelog with it, and a
-    hundred of them from a long-lived project is past what `forge` will read —
-    which is how a project with hundreds of releases came back as one with none.
-    Nothing here counts past "any at all" and "the latest", so ten is the
-    question being asked.
+    One release, not a page of them. A release carries its whole changelog, and
+    a project that writes proper release notes answers a request for ten of them
+    with megabytes — past what `forge` will read, which is how a project with
+    hundreds of releases came back as one that had never released. The endpoint
+    for the latest alone answers both questions asked here, in a reply the size
+    of one changelog.
+
+    Prereleases and drafts are not "latest" to that endpoint, so a project
+    publishing only those reads as having none. That is what the tag count
+    beside it is for, and why none of this disqualifies anything on its own.
     """
-    releases, problem = get_json(f"/repos/{owner}/{name}/releases?per_page=10")
+    document, problem = get_json(f"/repos/{owner}/{name}/releases/latest")
+    if problem == NOT_FOUND:
+        return None, 0, ""
     if problem:
-        return None, problem
-    dated = (date_of(one.get("published_at")) for one in (releases or []))
-    return [date for date in dated if date], ""
+        return None, None, problem
+    return date_of((document or {}).get("published_at")), 1, ""
 
 
 def tagged(owner: str, name: str) -> int:
@@ -195,7 +221,7 @@ def gather(upstream: str, image: str | None) -> tuple[dict | None, str]:
         return None, f"{owner}/{name}: {problem}"
     project = project if isinstance(project, dict) else {}
 
-    published, release_problem = released(owner, name)
+    latest, releases, release_problem = released(owner, name)
 
     return {
         **own_history(owner, name, project),
@@ -204,16 +230,12 @@ def gather(upstream: str, image: str | None) -> tuple[dict | None, str]:
         "fork": bool(project.get("fork")),
         "parent": (project.get("parent") or {}).get("full_name"),
         "tags": tagged(owner, name),
-        # None where the list could not be read, which is a different thing from
-        # a project that has never released: one is a question that went
+        # None where it could not be read, which is a different thing from a
+        # project that has never released: one is a question that went
         # unanswered and the other is evidence.
-        "releases": None if published is None else len(published),
+        "releases": releases,
         "releases_problem": release_problem,
-        # Asked a page at a time, so a full page is a floor rather than a total.
-        # Nothing below turns on which it is, but the figure is printed for a
-        # person to read and should not overstate itself.
-        "counts_capped": published is not None and len(published) >= 10,
-        "latest_release": max(published) if published else None,
+        "latest_release": latest,
         "last_activity": date_of(project.get("pushed_at")),
         # Read, shown, and never judged on. See the module docstring.
         "self_description": safe(str(project.get("description") or ""), 200),
@@ -467,12 +489,17 @@ def self_test() -> int:
 
 
 def released_row(evidence: dict) -> str:
-    """The release figure as a person should read it, unread said as unread."""
+    """What this project has published, as a person should read it.
+
+    Unread is said as unread rather than as none: the two answers lead opposite
+    ways and only one of them is about the project.
+    """
     if evidence["releases"] is None:
         return f"unreadable ({evidence.get('releases_problem')})"
-    floor = "+" if evidence.get("counts_capped") else ""
+    if not evidence["releases"]:
+        return "none published"
     latest = f", latest {evidence['latest_release']}" if evidence["latest_release"] else ""
-    return f"{evidence['releases']}{floor}{latest}"
+    return f"published{latest}"
 
 
 def report(upstream: str, evidence: dict, findings: list[tuple[str, str]]) -> None:
