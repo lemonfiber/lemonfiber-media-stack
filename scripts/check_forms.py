@@ -12,6 +12,7 @@ not define is valid YAML and a broken stack.
 
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import pathlib
@@ -74,7 +75,89 @@ def resolve(profiles: list[str], files: list[str], settings: dict) -> tuple[bool
     return True, "", json.loads(result.stdout)
 
 
+def judge(
+    form: str,
+    profiles: list[str],
+    ok: bool,
+    message: str,
+    model: dict,
+    profile_of: dict[str, str],
+) -> str | None:
+    """What is wrong with one resolved form, where anything is.
+
+    Apart from the call that resolves it, so the three verdicts can be driven
+    without Compose. Each is a different failure: a project that does not build,
+    one that builds and starts nothing, and one that builds and starts more than
+    the form asked for.
+    """
+    if not ok:
+        return f"form {form}: does not resolve:\n{message}"
+
+    started = set(model.get("services", {}))
+
+    if not started:
+        return f"form {form}: activates {profiles} but starts no services"
+
+    # Nothing outside the form's profiles may be dragged in — that would mean a
+    # dependency crossed a boundary and the subset is not really a subset.
+    strays = {s for s in started if profile_of.get(s) not in profiles}
+
+    if strays:
+        return f"form {form}: pulls in {sorted(strays)}, outside its profiles {profiles}"
+
+    return None
+
+
+def self_test() -> int:
+    """Each verdict `judge` gives, driven against a project it did not resolve.
+
+    Every one of them needs Compose and a manifest to reach, which is why none of
+    them had ever been driven — and the last is the one worth the most: a stray
+    is how a form stops being a subset, and it is the failure that looks like a
+    working stack right up until somebody starts one form on its own.
+    """
+    profile_of = {"sonarr": "tv", "radarr": "film", "gluetun": "vpn"}
+    started = {"services": {"sonarr": {}}}
+
+    cases = (
+        ("a project that does not build", ["tv"], False, "no such profile", {}, "does not resolve"),
+        ("a form that starts nothing", ["tv"], True, "", {"services": {}}, "starts no services"),
+        ("a form pulling in another profile", ["tv"], True, "",
+         {"services": {"sonarr": {}, "gluetun": {}}}, "pulls in ['gluetun']"),
+        ("a service no profile claims", ["tv"], True, "",
+         {"services": {"sonarr": {}, "orphan": {}}}, "pulls in ['orphan']"),
+    )
+
+    problems = []
+
+    for said, profiles, ok, message, model, because in cases:
+        verdict = judge("x", profiles, ok, message, model, profile_of)
+        if verdict is None:
+            problems.append(f"{said}: was judged sound")
+        elif because not in verdict:
+            problems.append(f"{said}: said {verdict!r}, which does not mention {because!r}")
+
+    # The other side. A rule refusing everything is as useless as one refusing
+    # nothing, and only this says which of the two this is.
+    if judge("x", ["tv"], True, "", started, profile_of) is not None:
+        problems.append("a form starting exactly its own profile was refused")
+
+    for problem in problems:
+        print(f"::error::self-test: {problem}")
+    if problems:
+        print("\nA check that cannot tell a subset from a stack is not a check.")
+        return 1
+    print(f"self-test: all {len(cases)} broken forms were named, and the sound one was not")
+    return 0
+
+
 def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--self-test", action="store_true", help="prove the verdicts, without Compose")
+
+    if parser.parse_args().self_test:
+        return self_test()
+
     manifest = tomllib.loads((ROOT / "stack.toml").read_text(encoding="utf-8"))
     profile_of = {s["id"]: s["profile"] for s in manifest["service"]}
     errors: list[str] = []
@@ -82,22 +165,13 @@ def main() -> int:
     for form in manifest["form"]:
         profiles = form["profiles"]
         ok, message, model = resolve(profiles, ["compose.yml"], FORM_ENV)
-        if not ok:
-            errors.append(f"form {form['id']}: does not resolve:\n{message}")
+        wrong = judge(form["id"], profiles, ok, message, model, profile_of)
+
+        if wrong is not None:
+            errors.append(wrong)
             continue
 
         started = set(model.get("services", {}))
-        if not started:
-            errors.append(f"form {form['id']}: activates {profiles} but starts no services")
-            continue
-
-        # Nothing outside the form's profiles may be dragged in — that would mean
-        # a dependency crossed a boundary and the subset is not really a subset.
-        strays = {s for s in started if profile_of.get(s) not in profiles}
-        if strays:
-            errors.append(
-                f"form {form['id']}: pulls in {sorted(strays)}, outside its profiles {profiles}"
-            )
         print(f"  ok   form {form['id']:<8} {len(started):>2} services  {','.join(profiles)}")
 
     for overlay in OVERLAYS:

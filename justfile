@@ -17,6 +17,7 @@ validate:
 
 # Every form and overlay resolves to a valid project.
 forms:
+    python3 scripts/check_forms.py --self-test
     python3 scripts/check_forms.py
 
 # The service count the docs state matches the one stack.toml defines.
@@ -41,7 +42,13 @@ configs:
     python3 scripts/check_configs.py --self-test
 
 # Recorded upstream release dates still agree with upstream. Networked.
+#
+# The self-test was written with this check and only CI ran it, so `just
+# releases` from a shell answered with less than the same check answers in CI —
+# which is the wrong way round, because a shell is where somebody reproduces
+# what CI said.
 releases:
+    python3 scripts/check_releases.py --self-test
     python3 scripts/check_releases.py
 
 # Raw Compose validity, no manifest involved.
