@@ -256,6 +256,60 @@ CASES = [
         "unknown profile",
     ),
     (
+        # The table is the one part of the manifest a stack may legitimately not
+        # have: most have removed nothing. A rule that insisted on it would
+        # refuse every fork on its first day.
+        "F2-R13 a stack that has removed nothing",
+        patch(
+            "stack.toml",
+            '[[removed]]\nid = "readarr"\nremoved_in = "0.1.0"\n'
+            'reason = "Discontinued upstream in 2025. Its repository is archived, '
+            'so the pin could only ever age."\nreplaced_by = "bindery"\n',
+            "",
+        ),
+        None,
+    ),
+    (
+        "F2-R13 a removal that does not say why",
+        patch(
+            "stack.toml",
+            'reason = "Discontinued upstream in 2025. Its repository is archived, '
+            'so the pin could only ever age."\n',
+            "",
+        ),
+        "missing required field 'reason'",
+    ),
+    (
+        "F2-R13 a removal whose reason is empty",
+        patch(
+            "stack.toml",
+            'reason = "Discontinued upstream in 2025. Its repository is archived, '
+            'so the pin could only ever age."',
+            'reason = "   "',
+        ),
+        "an empty one records nothing",
+    ),
+    (
+        "F2-R13 a removal naming a service the stack still runs",
+        patch("stack.toml", 'id = "readarr"\nremoved_in', 'id = "bazarr"\nremoved_in'),
+        "still declares",
+    ),
+    (
+        "F2-R13 a replacement the stack does not have",
+        patch("stack.toml", 'replaced_by = "bindery"', 'replaced_by = "papyrus"'),
+        "neither a service this stack declares nor a removal it records",
+    ),
+    (
+        "F2-R13 a removal replaced by itself",
+        patch("stack.toml", 'replaced_by = "bindery"', 'replaced_by = "readarr"'),
+        "which is the service that was removed",
+    ),
+    (
+        "F2-R13 a removal that does not say which version it went in",
+        patch("stack.toml", 'removed_in = "0.1.0"', 'removed_in = "before Bindery"'),
+        "removed_in must be the stack version",
+    ),
+    (
         "a profile no service claims",
         patch(
             "stack.toml",

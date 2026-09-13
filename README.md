@@ -62,7 +62,7 @@ CI rejects it. See spec
 
 | File | What |
 |------|------|
-| `stack.toml` | The manifest Lemonfiber consumes — services, profiles, forms |
+| `stack.toml` | The manifest Lemonfiber consumes — services, profiles, forms, removals |
 | `compose.yml` | Stitches the fragments together; no services of its own |
 | `compose/` | One fragment per profile — `tv.yml`, `media.yml`, `torrent.yml`, … |
 | `compose/_common.yml` | Shared service defaults, reached via `extends:` |
@@ -73,10 +73,66 @@ CI rejects it. See spec
 
 ## Adding a service
 
-Three data edits, no code: a service block in the right `compose/<profile>.yml`,
-a `[[service]]` in `stack.toml`, and its profile added to the relevant forms. Then
-`just ci`. See spec
+The judgement comes before the edits. A service enters only if it is open source
+under an OSI-approved licence, publishes native `linux/arm64` and `linux/amd64`
+images, is actively maintained, does something nothing here already does, and
+works without a paid tier.
+
+**Maintenance is established from the candidate's own history, never from what it
+says about itself.** Every project's README says it is actively maintained. The
+one this catalogue investigated and rejected presented itself as the successor to
+a service in the stack, and had two days of commits, no release and no published
+image behind it. Read the history instead:
+
+```
+just candidate https://github.com/owner/project --image ghcr.io/owner/project:v1.2.3
+```
+
+It reports commits of its own (a fork is measured against what it forked, not
+credited with it), releases and tags, last activity, and whether the image
+exists — then says `admit`, `watch` or `reject`. Put its answer in the pull
+request that proposes the service: `watch` is admissible with that judgement
+recorded against it, `reject` belongs in the spec's notable exclusions rather
+than in `stack.toml`.
+
+Then three data edits, no code: a service block in the right
+`compose/<profile>.yml`, a `[[service]]` in `stack.toml`, and its profile added to
+the relevant forms. Then `just ci`. See spec
 [`30-repos/lemonfiber-media-stack.md`](https://github.com/lemonfiber/spec/blob/main/30-repos/lemonfiber-media-stack.md).
+
+## Bumping a pin
+
+Moving a `tag` is a review of the service, not an edit to a string, and two
+checks hold it to that. Both read the diff against the base branch, so neither
+says anything about a service the change did not touch.
+
+- **`last_release` moves with the tag** — refreshed to what upstream has
+  published now. A pin that moves while the date stays put leaves a record
+  describing the *previous* review, and no single revision of the file can show
+  it. Where a bump genuinely needs no new date, say so on the commit that makes
+  it: `Pin-reviewed: <service-id>`.
+- **the upstream licence is read from the forge**, and has to still be
+  OSI-approved. A licence that could not be read at all fails the same way — a
+  pin bump is where a licence is established, not where it is assumed. Recorded
+  identifiers that merely differ from upstream's are reported, not failed.
+
+## Removing a service
+
+Delete its block from `compose/<profile>.yml` and its `[[service]]` from
+`stack.toml`; if it was the only service in its profile, remove the profile and
+every form reference to it too. Then record why it went:
+
+```toml
+[[removed]]
+id = "readarr"
+removed_in = "0.1.0"     # the stack version whose catalogue no longer carries it
+reason = "Discontinued upstream in 2025. Its repository is archived, so the pin could only ever age."
+replaced_by = "bindery"  # omit where nothing took the job over
+```
+
+A service that leaves takes its description with it, and a manifest that simply
+stops mentioning it cannot say whether it was replaced, renamed or abandoned. CI
+refuses a service that disappears without one of these entries.
 
 ## What CI enforces
 
@@ -93,6 +149,9 @@ proven to fail when broken by `scripts/test_validate_manifest.py`.
 | Pinned, non-floating tags | Nothing changes because time passed (`E1-R1`) |
 | Kernel capabilities match the manifest | Only Gluetun is granted `NET_ADMIN` (`C6`) |
 | OSI licence per service | Verified against a vendored SPDX list (`F2-R5`) |
+| Upstream licence, where a pin moves | Read from the forge; still OSI-approved (`F2-R12`) |
+| A bumped pin carries a reviewed date | `last_release` moves with the tag, or the commit re-affirms it (`F2-R14`) |
+| A removal says why | `[[removed]]` names the reason and any replacement (`F2-R13`) |
 | Every form resolves | `docker compose config` per form (`REPO-R17`), dragging in nothing outside its profiles (`B1-R14`, `REPO-R19`) |
 | arm64 + amd64 per pin | Read from each registry's manifest list (`F2-R6`) |
 

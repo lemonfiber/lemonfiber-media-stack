@@ -3,7 +3,7 @@
 # decides whether every pinned image runs on a Raspberry Pi, and `check_forms`
 # decides whether a form is a project somebody can start. Nothing read them.
 #
-# Four of the eight carry a `--self-test` that drives their judgements against
+# Most of them carry a `--self-test` that drives their judgements against
 # replies they did not fetch, which is the harder half. This is the easy half
 # and it was missing: a name that does not exist, an `except` that swallows what
 # it was meant to report, an import left behind by a rewrite.

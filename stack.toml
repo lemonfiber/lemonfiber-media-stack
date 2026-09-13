@@ -466,3 +466,21 @@ last_release = "2026-06-03"
 describes = "Friendly hostnames instead of ports"
 without_it = "Use localhost:8989 and friends"
 health = { kind = "tcp", timeout_s = 30 }
+
+# ─────────────────────────── Removed (1) ─────────────────────────────────────
+# What the catalogue used to carry, why it went, and what took the job over. A
+# service that leaves takes its description with it, and what is left is a
+# manifest that no longer mentions it — which says nothing about whether it was
+# replaced, renamed or abandoned. The operator who asks "didn't something here do
+# books?" deserves an answer that outlives the entry.
+#
+# `removed_in` is the stack version whose catalogue no longer carries the
+# service, which is why Readarr names 0.1.0: upstream discontinued it while the
+# first stack was being assembled, so it never shipped in a published one. The
+# value is not a claim that it did.
+
+[[removed]]
+id = "readarr"
+removed_in = "0.1.0"
+reason = "Discontinued upstream in 2025. Its repository is archived, so the pin could only ever age."
+replaced_by = "bindery"

@@ -352,6 +352,67 @@ def validate_orphans(profile_ids: set[str], forms: list, services: list, report:
         report.fail(f"profile {pid}", "no form activates this profile")
 
 
+def validate_removals(removals: list, service_ids: set[str], report: Report) -> None:
+    """What left the stack, why, and what took the job over.
+
+    The table is optional — a stack that has removed nothing has nothing to
+    declare — but an entry in it is not optional about its own fields. A removal
+    recorded without a reason is the same silence as no record at all, read by a
+    later operator as a service that simply stopped existing.
+
+    `replaced_by` may name another removal as well as a live service: a
+    replacement can itself be replaced, and an entry about the past should not
+    have to be rewritten when that happens.
+    """
+    removed_ids: set[str] = set()
+    for entry in removals:
+        rid = str(entry.get("id", "<unnamed>"))
+        where = f"removed {rid}"
+        for field in ("id", "removed_in", "reason"):
+            report.check(field in entry, where, f"missing required field {field!r}", "F2-R13")
+        report.check(rid not in removed_ids, where, "duplicate removal id", "F2-R13")
+        removed_ids.add(rid)
+        report.check(
+            rid not in service_ids,
+            where,
+            "names a service this stack still declares; a service is present or removed, not both",
+            "F2-R13",
+        )
+        version = entry.get("removed_in")
+        report.check(
+            isinstance(version, str) and bool(SEMVER.match(version)),
+            where,
+            f"removed_in must be the stack version it went in, as semver; got {version!r}",
+            "F2-R13",
+        )
+        reason = entry.get("reason")
+        report.check(
+            isinstance(reason, str) and bool(reason.strip()),
+            where,
+            "reason must say why it went; an empty one records nothing",
+            "F2-R13",
+        )
+
+    for entry in removals:
+        if "replaced_by" not in entry:
+            continue
+        rid, replacement = str(entry.get("id", "<unnamed>")), entry["replaced_by"]
+        where = f"removed {rid}"
+        report.check(
+            replacement != rid,
+            where,
+            f"replaced_by names {replacement!r}, which is the service that was removed",
+            "F2-R13",
+        )
+        report.check(
+            replacement in service_ids or replacement in removed_ids,
+            where,
+            f"replaced_by {replacement!r} is neither a service this stack declares nor a "
+            "removal it records",
+            "F2-R13",
+        )
+
+
 def validate_manifest(manifest: dict, report: Report) -> None:
     licences = osi_licences()
     validate_versions(manifest, report)
@@ -366,6 +427,7 @@ def validate_manifest(manifest: dict, report: Report) -> None:
         validate_service(service, profile_ids, licences, service_ids, profile_of, report)
     validate_dependencies(services, service_ids, profile_of, report)
     validate_orphans(profile_ids, forms, services, report)
+    validate_removals(manifest.get("removed", []), service_ids, report)
 
 
 # ── parity with the resolved Compose model ──────────────────────────────────
@@ -648,7 +710,9 @@ def main() -> int:
         len(manifest.get("service", [])),
     )
     scope = "manifest + compose parity" if checked_parity else "manifest only"
-    print(f"{scope} valid: {counts[0]} profiles, {counts[1]} forms, {counts[2]} services")
+    removals = len(manifest.get("removed", []))
+    recorded = f", {removals} removal(s) recorded" if removals else ""
+    print(f"{scope} valid: {counts[0]} profiles, {counts[1]} forms, {counts[2]} services{recorded}")
     return 0
 
 
