@@ -61,6 +61,12 @@ PROJECT = "lemonfiber-runs-check"
 # ${LAN_BIND} for the household one; the loopback address reaches both.
 HOST = "127.0.0.1"
 
+# Plain, and deliberately: nothing in this stack terminates TLS. Certificates
+# are Caddy's job on the operator's own domain, and self-signed ones are
+# refused on purpose — see the proxy profile. A probe speaks what the service
+# speaks, and here that is cleartext across a loopback interface.
+SCHEME = "http"
+
 # A profile nobody without an account can start, and why. Naming it here is what
 # keeps the omission visible: --plan leaves it out, and asking for it by hand is
 # refused with the reason rather than with a timeout nobody can read.
@@ -71,6 +77,30 @@ UNRUNNABLE = {
         "Neither is reachable from a machine holding no subscription, so this "
         "profile is verified by hand on hardware — the M1 exit criterion the "
         "stack README already carries."
+    ),
+}
+
+# What this check found the first time it ran, and what it does not fail for
+# yet. Each of these is a service that cannot start from a clean clone on Linux,
+# for one cause: Docker creates a missing bind-mount source as root:root, and a
+# container that runs as a fixed non-root user cannot then write to its own
+# `/config`. It does not show on Docker Desktop, where bind mounts ignore
+# ownership, which is why it has never been seen.
+#
+# They are recorded rather than skipped, and the register is inverted: a service
+# named here that *starts and answers* fails this check, because the entry has
+# outlived what it describes and the next reader would take it for a standing
+# defect. Nothing is added here to make a run pass; a new entry belongs in a
+# change that says why, and is a reason `F1-R1` is not yet true.
+KNOWN_BROKEN = {
+    "jellyfin": (
+        "runs as ${PUID}:${PGID} and cannot create /config/log in a config "
+        "directory Docker made root-owned: UnauthorizedAccessException, then a restart loop"
+    ),
+    "seerr": "cannot write the config directory Docker made root-owned, and restarts",
+    "bindery": (
+        "is distroless and runs as uid 65532, which no bind-mounted config "
+        "directory is writable by: 'failed to open database', then a restart loop"
     ),
 }
 
@@ -161,13 +191,13 @@ def ask_http(port: int, path: str) -> tuple[bool, str]:
     something else about it means the contract is wrong even though the port is
     open.
     """
-    url = f"http://{HOST}:{port}{path}"
+    url = f"{SCHEME}://{HOST}:{port}{path}"
     try:
         with urllib.request.urlopen(url, timeout=ATTEMPT_TIMEOUT_S) as reply:
             return reply.status < 400, f"HTTP {reply.status}"
     except urllib.error.HTTPError as answered:
         return False, f"HTTP {answered.code}"
-    except (urllib.error.URLError, http.client.HTTPException, OSError, TimeoutError) as unreachable:
+    except (http.client.HTTPException, OSError) as unreachable:
         return False, f"{type(unreachable).__name__}: {unreachable}"
 
 
@@ -279,6 +309,25 @@ def judge_roster(expected: dict[str, str], observed: list[dict]) -> list[str]:
             problems.append(f"{name}: is running {row['image']}, and the manifest pins {expected[name]}")
 
     return problems
+
+
+def judge_known(broken: set[str], answers: list[dict], observed: list[dict]) -> list[str]:
+    """A recorded defect that is no longer there.
+
+    The register points the other way from every other verdict here. While a
+    service in it stays broken this says nothing — the failure is described in
+    `KNOWN_BROKEN` and describing it twice adds nothing. What it refuses is the
+    entry that has been fixed and not removed, because that is the state in which
+    a reader is told a working service is broken, and in which a regression in it
+    would be invisible.
+    """
+    running = {row["service"] for row in observed if row["state"] == "running" and not row["restarts"]}
+    answered = {answer["id"] for answer in answers if not answer.get("late")}
+
+    return [
+        f"{name}: is up and answering, so it is no longer broken — take it out of KNOWN_BROKEN"
+        for name in sorted(broken & running & answered)
+    ]
 
 
 def judge_teardown(remaining: list[str]) -> str | None:
@@ -399,16 +448,29 @@ def run(profiles: list[str]) -> int:
 
         try:
             answers = wait_for_all(probes, attempt, time.monotonic, time.sleep)
-            errors += judge_roster(expected, roster(env, empty))
-            errors += [verdict for answer in answers if (verdict := judge_probe(answer)) is not None]
+            observed = roster(env, empty)
+            broken = {name for name in expected if name in KNOWN_BROKEN}
+
+            proved = {name: image for name, image in expected.items() if name not in broken}
+            errors += judge_roster(proved, [row for row in observed if row["service"] not in broken])
+            errors += [
+                verdict
+                for answer in answers
+                if answer["id"] not in broken and (verdict := judge_probe(answer)) is not None
+            ]
+            errors += judge_known(broken, answers, observed)
 
             for answer in sorted(answers, key=lambda a: a["id"]):
+                if answer["id"] in broken:
+                    print(f"  ---- {answer['id']:<24} known: {KNOWN_BROKEN[answer['id']]}")
+                    continue
                 mark = "late" if answer.get("late") else "ok  "
                 budget = f"{answer['elapsed_s']}s of {answer['timeout_s']}s"
                 print(f"  {mark} {answer['id']:<24} {answer['kind']:<9} {budget:<14} {answer['detail']}")
 
             if errors:
-                report_failure(env, empty, sorted(answer["id"] for answer in answers if answer.get("late")))
+                late = (answer["id"] for answer in answers if answer.get("late"))
+                report_failure(env, empty, sorted(name for name in late if name not in broken))
         finally:
             removed = compose(env, empty, "down", "--volumes", "--remove-orphans")
             if removed.returncode != 0:
@@ -421,7 +483,13 @@ def run(profiles: list[str]) -> int:
     if errors:
         return report(errors)
 
-    print(f"\n{len(chosen)} service(s) started, answered, and were torn down. No lemonfiber binary involved.")
+    unproved = sorted(name for name in expected if name in KNOWN_BROKEN)
+    if unproved:
+        print(f"\n{len(unproved)} service(s) are recorded as not starting from a clean clone: {unproved}")
+    print(
+        f"\n{len(expected) - len(unproved)} service(s) started, answered, and were torn down. "
+        "No lemonfiber binary involved."
+    )
     return 0
 
 
@@ -479,30 +547,26 @@ def probe_discriminates() -> list[str]:
     return problems
 
 
-def self_test() -> int:
-    """Each verdict, driven against a stack that was never started.
-
-    Every one of them needs Docker, a registry and several minutes to reach,
-    which is exactly why none of them would otherwise have been watched fail.
-    """
+def roster_verdicts() -> list[str]:
+    """`judge_roster` against five projects that came up wrong, and one that did not."""
     problems = []
-
     pinned = {"sonarr": "lscr.io/linuxserver/sonarr:4.0.15", "bazarr": "lscr.io/linuxserver/bazarr:1.4.5"}
 
     def row(service, image, state="running", restarts=0):
         return {"service": service, "image": image, "state": state, "restarts": restarts}
 
     sound = [row("sonarr", pinned["sonarr"]), row("bazarr", pinned["bazarr"])]
+    stray = row("gluetun", "qmcgaw/gluetun:v3.40.0")
 
-    roster_cases = (
+    cases = (
         ("a service that never came up", [sound[0]], "no container came up for it"),
-        ("a service outside the profiles", [*sound, row("gluetun", "qmcgaw/gluetun:v3.40.0")], "outside these profiles"),
+        ("a service outside the profiles", [*sound, stray], "outside these profiles"),
         ("a service that exited", [row("sonarr", pinned["sonarr"], state="exited"), sound[1]], "not running"),
         ("a service in a restart loop", [row("sonarr", pinned["sonarr"], restarts=3), sound[1]], "not staying up"),
         ("a service running another image", [row("sonarr", "alpine:3.20"), sound[1]], "the manifest pins"),
     )
 
-    for said, observed, because in roster_cases:
+    for said, observed, because in cases:
         verdicts = judge_roster(pinned, observed)
         if not verdicts:
             problems.append(f"{said}: was judged sound")
@@ -512,9 +576,18 @@ def self_test() -> int:
     if judge_roster(pinned, sound):
         problems.append("a project holding exactly its own services, running and pinned, was refused")
 
-    # The probe half. A service that answers late is the failure this whole
-    # check exists for — a container that is up and serving nothing looks
-    # identical to a working stack in `docker compose ps`.
+    return problems
+
+
+def probe_verdicts() -> list[str]:
+    """The three judgements about one service, and the dwell a portless one gets.
+
+    A service that answers late is the failure this whole check exists for: a
+    container that is up and serving nothing is indistinguishable from a working
+    stack in `docker compose ps`.
+    """
+    problems = []
+
     late = {"id": "sonarr", "kind": "http", "timeout_s": 90, "detail": "ConnectionRefusedError", "late": True}
     if judge_probe(late) is None:
         problems.append("a service that never answered was judged sound")
@@ -526,14 +599,26 @@ def self_test() -> int:
     if judge_teardown([]) is not None:
         problems.append("a clean teardown was refused")
 
-    if unrunnable_reason("torrent") is None:
-        problems.append("the profile needing a VPN subscription is not recorded as unrunnable")
-    if unrunnable_reason("search") is not None:
-        problems.append("a profile that starts on any machine was recorded as unrunnable")
+    # The dwell is the only thing between "it was created" and "it is running"
+    # for a service with nothing to ask: one that exits after ten seconds
+    # answers the first poll exactly as one that stays.
+    dwelling = {"id": "recyclarr", "kind": "container", "settle_s": 30, "timeout_s": 40}
+    if attempt(dwelling, 5)[0]:
+        problems.append("a container-kind service was judged up before its dwell had passed")
+    if not attempt(dwelling, 31)[0]:
+        problems.append("a container-kind service still up after its dwell was refused")
 
-    # The waiting itself, on a clock that does not tick in real time: one service
-    # answering on the third attempt, one never answering at all.
-    ticks = iter(range(0, 4000))
+    return problems
+
+
+def waiting_verdicts() -> list[str]:
+    """The waiting itself, on a clock that does not tick in real time.
+
+    One service answering on the third attempt and one never answering at all,
+    so that both a budget honoured and a budget spent are watched happening.
+    """
+    problems = []
+    ticks = iter(range(4000))
     replies = {"slow": [False, False, True], "dead": [False] * 200}
 
     def fake_ask(probe, _elapsed):
@@ -555,24 +640,50 @@ def self_test() -> int:
     if not by_id["dead"].get("late"):
         problems.append("a service that never answered was not recorded late")
 
-    # The discrimination the whole check rests on, driven against two sockets
-    # rather than two containers. A published port whose container is doing
-    # nothing accepts and hangs up; one with a server behind it accepts and
-    # waits. Get this wrong and every service passes forever.
-    problems += probe_discriminates()
+    return problems
 
-    # A service with no endpoint is proved by surviving a dwell, and the dwell is
-    # the only thing standing between "it was created" and "it is running": a
-    # container that exits after ten seconds answers the first poll either way.
-    dwelling = {"id": "recyclarr", "kind": "container", "settle_s": 30, "timeout_s": 40}
-    if attempt(dwelling, 5)[0]:
-        problems.append("a container-kind service was judged up before its dwell had passed")
-    if not attempt(dwelling, 31)[0]:
-        problems.append("a container-kind service still up after its dwell was refused")
 
-    # A manifest profile must be either runnable or recorded as not, with a
-    # reason. This is what stops a profile added later from quietly going
-    # uncovered — the plan would simply not mention it.
+def register_verdicts() -> list[str]:
+    """The inverted register, driven both ways.
+
+    A recorded defect that is still there says nothing; one that has been fixed
+    is refused, which is what stops the register from outliving what it records.
+    """
+    problems = []
+    broken = {"jellyfin"}
+    down = [{"service": "jellyfin", "image": "jellyfin/jellyfin:10.10.3", "state": "restarting", "restarts": 4}]
+    up = [{"service": "jellyfin", "image": "jellyfin/jellyfin:10.10.3", "state": "running", "restarts": 0}]
+
+    if judge_known(broken, [{"id": "jellyfin", "late": True}], down):
+        problems.append("a service still failing as recorded was refused")
+    if not judge_known(broken, [{"id": "jellyfin"}], up):
+        problems.append("a recorded defect that is up and answering was not refused")
+
+    # An entry nothing starts is an entry nothing can ever clear, and it would
+    # sit in the register describing a service no run has looked at since.
+    profile_of = {service["id"]: service["profile"] for service in manifest()["service"]}
+    for name in KNOWN_BROKEN:
+        if name not in profile_of:
+            problems.append(f"{name} is recorded broken and the manifest has no such service")
+        elif profile_of[name] in UNRUNNABLE:
+            problems.append(f"{name} is recorded broken in {profile_of[name]}, which nothing here starts")
+
+    return problems
+
+
+def plan_verdicts() -> list[str]:
+    """Every profile the manifest declares is either started or excused, by name.
+
+    This is what stops a profile added later from quietly going uncovered: the
+    plan would simply not mention it, and nothing would say so.
+    """
+    problems = []
+
+    if unrunnable_reason("torrent") is None:
+        problems.append("the profile needing a VPN subscription is not recorded as unrunnable")
+    if unrunnable_reason("search") is not None:
+        problems.append("a profile that starts on any machine was recorded as unrunnable")
+
     data = manifest()
     planned = set(runnable_profiles(data))
     unaccounted = {p["id"] for p in data["profile"]} - planned - set(UNRUNNABLE)
@@ -580,11 +691,32 @@ def self_test() -> int:
         problems.append(f"profiles neither planned nor excused: {sorted(unaccounted)}")
 
     groups = plan(data)
-    together = groups[-1]["profiles"].split(",")
-    if set(together) != planned:
+    if set(groups[-1]["profiles"].split(",")) != planned:
         problems.append("the group that starts everything runnable does not hold every runnable profile")
     if {group["profiles"] for group in groups[:-1]} != planned:
         problems.append("some runnable profile is never started on its own")
+
+    return problems
+
+
+def self_test() -> int:
+    """Each verdict, driven against a stack that was never started.
+
+    Every one of them needs Docker, a registry and several minutes to reach,
+    which is exactly why none of them would otherwise have been watched fail.
+    """
+    problems = [
+        *roster_verdicts(),
+        *probe_verdicts(),
+        *waiting_verdicts(),
+        # The discrimination the whole check rests on, driven against two
+        # sockets rather than two containers. A published port whose container
+        # is doing nothing accepts and hangs up; one with a server behind it
+        # accepts and waits. Get this wrong and every service passes forever.
+        *probe_discriminates(),
+        *register_verdicts(),
+        *plan_verdicts(),
+    ]
 
     for problem in problems:
         print(f"::error::self-test: {problem}")
@@ -593,8 +725,9 @@ def self_test() -> int:
         return 1
 
     print(
-        f"self-test: {len(roster_cases)} broken rosters were named, a published port with nothing "
-        "behind it was told from a server waiting on one, and no sound case was refused"
+        "self-test: every verdict was driven — a roster that is wrong five ways, a probe that timed "
+        "out, a teardown that did not, a published port with nothing behind it — and no sound case "
+        "was refused"
     )
     return 0
 

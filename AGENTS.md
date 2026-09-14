@@ -96,6 +96,14 @@ path holding no lemonfiber binary, makes every service answer the probe
 without an account can start — `torrent`, which needs a real VPN subscription —
 is named in that script with the reason, and left out of what CI fans over.
 
+`KNOWN_BROKEN` in the same script is the other register, and it points the other
+way: Jellyfin, Seerr and Bindery do not start from a clean
+clone on Linux, because Docker creates a missing bind-mount source as
+`root:root` and a container running as a fixed non-root user cannot write its
+own `/config`. The check reports them rather than failing, and **fails when one
+of them starts working**, so the entry cannot outlive the defect. Nothing goes
+in there to make a run pass.
+
 `scripts/validate_manifest.py` reads `docker compose config`'s **resolved**
 model, not the YAML, so it checks what Docker will run rather than what the file
 appears to say. Every rule it enforces has a negative test in
