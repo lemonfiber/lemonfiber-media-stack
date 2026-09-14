@@ -276,12 +276,16 @@ def validate_errands(services: list, report: Report) -> None:
     """Either this manifest says what its services reach, or it does not.
 
     The pair is optional, so a stack that has written none of it down still
-    validates and lemonfiber answers from what it was compiled with. A manifest
-    that answers for some services and not others is the worse case, and the one
-    refused here: silence about a service cannot be told from a service that
-    reaches nothing, and the fallback quietly answers for whichever services the
-    binary happened to know about when it was built. That is the drift this
-    whole pair exists to end.
+    validates; lemonfiber reports every one of its services as one nothing has
+    described, which is a true answer about a stack that described nothing.
+
+    A manifest that answers for some services and not others is the worse case,
+    and the one refused here: silence about a service cannot be told from a
+    service that reaches nothing, and the two are opposite claims about what
+    leaves somebody's machine. Nothing else answers now — the table lemonfiber
+    used to carry for the services it shipped is gone, which is what put this
+    prose here — so a service left out of a manifest that answers for the rest
+    is a service nobody will notice is undescribed.
     """
     answered = {
         str(service.get("id", UNNAMED))
