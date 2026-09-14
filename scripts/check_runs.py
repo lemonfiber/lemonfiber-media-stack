@@ -82,29 +82,18 @@ UNRUNNABLE = {
     ),
 }
 
-# What this check found the first time it ran, and what it does not fail for
-# yet. Each of these is a service that cannot start from a clean clone on Linux,
-# for one cause: Docker creates a missing bind-mount source as root:root, and a
-# container that runs as a fixed non-root user cannot then write to its own
-# `/config`. It does not show on Docker Desktop, where bind mounts ignore
-# ownership, which is why it has never been seen.
+# Services this check knows do not start, and does not fail for. Empty, and
+# deliberately kept: the first run of this check found three — Jellyfin, Seerr
+# and Bindery, none of which could write a `/config` Docker had created as root
+# — and the register is what proved the fix, by going red the moment all three
+# answered and asking to be emptied.
 #
-# They are recorded rather than skipped, and the register is inverted: a service
-# named here that *starts and answers* fails this check, because the entry has
-# outlived what it describes and the next reader would take it for a standing
-# defect. Nothing is added here to make a run pass; a new entry belongs in a
-# change that says why, and is a reason `F1-R1` is not yet true.
-KNOWN_BROKEN = {
-    "jellyfin": (
-        "runs as ${PUID}:${PGID} and cannot create /config/log in a config "
-        "directory Docker made root-owned: UnauthorizedAccessException, then a restart loop"
-    ),
-    "seerr": "cannot write the config directory Docker made root-owned, and restarts",
-    "bindery": (
-        "is distroless and runs as uid 65532, which no bind-mounted config "
-        "directory is writable by: 'failed to open database', then a restart loop"
-    ),
-}
+# The register is inverted. A service named here that starts and answers **fails**
+# this check, because the entry has outlived what it describes and the next
+# reader would take it for a standing defect. Nothing goes in here to make a run
+# pass: an entry is a reason `F1-R1` is not yet true, and belongs in a change
+# that says so.
+KNOWN_BROKEN: dict[str, str] = {}
 
 # A service whose declared health is `container` publishes no port and answers
 # no request, so the only runtime evidence available is that it is still there a

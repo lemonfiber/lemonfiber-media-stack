@@ -20,19 +20,18 @@
 
 ---
 
-> **Status: defined in full, started in CI, and three of them do not start.**
-> All 19 services are defined and every rule below is enforced in CI, which now
-> also starts the stack: each profile is brought up with plain `docker compose`
-> and every service is made to answer the probe `stack.toml` declares for it.
-> The first run of that check found **Jellyfin, Seerr and Bindery cannot start
-> from a clean clone on Linux** — Docker creates a missing bind-mount source as
+> **Status: seventeen of the nineteen are started in CI on every change.** All
+> 19 services are defined, every rule below is enforced, and CI now starts the
+> stack: each profile is brought up with plain `docker compose` and every
+> service is made to answer the probe `stack.toml` declares for it. The first
+> run of that check found Jellyfin, Seerr and Bindery could not start from a
+> clean clone on Linux — Docker creates a missing bind-mount source as
 > `root:root`, and a container running as a fixed non-root user cannot then
-> write its own `/config`. It does not happen on Docker Desktop, where bind
-> mounts ignore ownership, which is why it was never seen. The three are named
-> in `KNOWN_BROKEN` in `scripts/check_runs.py`, and that register fails when one
-> of them starts working, so it cannot outlive the defect. Still verified only
-> by hand: a hardlink import end to end, the VPN killswitch, and the torrent
-> profile itself, which needs a real VPN subscription to come up at all. See the
+> write its own `/config`. It never showed on Docker Desktop, where bind mounts
+> ignore ownership. All three are fixed and started. What is still verified only
+> by hand is the torrent profile — Gluetun needs a real VPN subscription to
+> establish a tunnel at all — and with it the killswitch and a hardlink import
+> end to end. **Nobody has yet started Gluetun or qBittorrent.** See the
 > [spec](https://github.com/lemonfiber/spec) and
 > [roadmap](https://github.com/lemonfiber/spec/blob/main/00-overview/roadmap.md).
 
@@ -66,10 +65,11 @@ just runs search,usenet   # or several
 just runs-list            # what CI fans out over
 ```
 
-Three of them are recorded in that script as not starting from a clean clone,
-and the check reports rather than fails for them — see the status note above. It
-fails for everything else, and it fails for one of the three the moment it
-starts working, so the register cannot quietly become permanent.
+`KNOWN_BROKEN` in that script is the register for a service known not to start.
+It is empty, and kept: it is what proved the last three fixed, by going red the
+moment they answered and asking to be emptied. An entry there reports rather
+than fails — and **fails** as soon as that service works, so it cannot quietly
+become permanent.
 
 A connection to a published port is deliberately not what it accepts as an
 answer. Docker puts a proxy in front of every published port and that proxy
@@ -199,7 +199,7 @@ proven to fail when broken by `scripts/test_validate_manifest.py`.
 | A bumped pin carries a reviewed date | `last_release` moves with the tag, or the commit re-affirms it (`F2-R14`) |
 | A removal says why | `[[removed]]` names the reason and any replacement (`F2-R13`) |
 | Every form resolves | `docker compose config` per form (`REPO-R17`), dragging in nothing outside its profiles (`B1-R14`, `REPO-R19`) |
-| Every profile starts | Brought up with plain `docker compose`, every service answering its declared probe on its published port, then torn down — bar three recorded as broken, which fail the check if they start working (`F1-R1`) |
+| Every profile starts | Brought up with plain `docker compose`, every service answering its declared probe on its published port, then torn down. The torrent profile is excluded by name: it needs a VPN subscription (`F1-R1`) |
 | arm64 + amd64 per pin | Read from each registry's manifest list (`F2-R6`) |
 
 The parity checks read `docker compose config`'s resolved model rather than the
