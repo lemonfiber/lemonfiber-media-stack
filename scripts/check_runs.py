@@ -13,12 +13,14 @@ nothing but `docker compose`, then asks each of them the question the manifest
 itself declares — the `health` table, on the port the manifest publishes it on,
 inside the timeout the manifest gives it — and tears the project down again.
 
-Three things are asserted, and each fails for a different reason:
+Four things are asserted, and each fails for a different reason:
 
   * the project that came up holds exactly the services the manifest puts in
     those profiles, each running the pinned image and none of them restarting;
   * every service answers its declared probe within its declared timeout, which
     a container that merely exists cannot do;
+  * a service recorded in `KNOWN_BROKEN` is *still* broken — the register points
+    the other way, so an entry cannot outlive the defect it describes;
   * `down` leaves nothing behind.
 
 `--plan` prints the profiles this can be asked to run, which is what CI fans its
