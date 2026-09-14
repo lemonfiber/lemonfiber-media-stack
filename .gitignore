@@ -5,11 +5,19 @@
 # keys, session tokens.
 /config/*/
 
-# Four of those directories also hold templates we ship. Each is re-included,
-# then its contents are excluded again, then the template files are named one by
-# one. All three steps are needed: git cannot re-include a file whose parent
-# directory is excluded, and re-including the directory alone would admit
-# everything the service later writes into it.
+# Some of those directories are shipped anyway, for one of two reasons, and both
+# need the same three steps: re-include the directory, exclude its contents
+# again, then name what we keep. Git cannot re-include a file whose parent is
+# excluded, and re-including the directory alone would admit everything the
+# service later writes into it.
+#
+# The first reason is a template we ship. The second is subtler and cost three
+# services their first start: Docker creates a missing bind-mount source as
+# root:root, and a container that runs as a fixed non-root user cannot then
+# write its own /config. The LSIO images start as root and chown it, so they
+# never meet this. Jellyfin, Seerr and Bindery do not, so their directories have
+# to exist before Docker would make one — and a directory that exists in the
+# clone belongs to whoever cloned it, which is what PUID/PGID are set to.
 !/config/recyclarr/
 /config/recyclarr/*
 !/config/recyclarr/recyclarr.yml
@@ -30,6 +38,23 @@
 !/config/sabnzbd/
 /config/sabnzbd/*
 !/config/sabnzbd/sabnzbd.ini
+
+# Shipped empty, so that Docker never creates them as root. Nothing in them is
+# ours to track; the directory itself is the whole point.
+!/config/jellyfin/
+/config/jellyfin/*
+!/config/jellyfin/.gitkeep
+!/config/jellyfin/cache/
+/config/jellyfin/cache/*
+!/config/jellyfin/cache/.gitkeep
+
+!/config/seerr/
+/config/seerr/*
+!/config/seerr/.gitkeep
+
+!/config/bindery/
+/config/bindery/*
+!/config/bindery/.gitkeep
 
 .env
 .planning/

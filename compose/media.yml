@@ -33,6 +33,12 @@ services:
       service: defaults
     image: ghcr.io/seerr-team/seerr:v3.3.0
     profiles: [media]
+    # The image bakes in `node:node` and documents no PUID pair. That fixed uid
+    # owns nothing on the host, so its bind-mounted config is unwritable on
+    # Linux unless the operator happens to share it — which is why this runs as
+    # the operator instead. config/seerr/ is shipped for the same reason: Docker
+    # would otherwise create it as root and no non-root user could write it.
+    user: "${PUID:-1000}:${PGID:-1000}"
     environment:
       LOG_LEVEL: ${SEERR_LOG_LEVEL:-info}
     ports: ["${LAN_BIND:-0.0.0.0}:5055:5055"]

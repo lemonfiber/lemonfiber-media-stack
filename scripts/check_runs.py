@@ -346,16 +346,25 @@ def bare_environment(data_root: str) -> dict[str, str]:
     """The environment Compose is given, and nothing else.
 
     The same discipline `check_forms.py` applies for the same reason: what the
-    stack needs must not depend on whose machine is running it. `DATA_ROOT` is
-    supplied because a bind mount needs a source; everything else the stack
-    wants has a default in the Compose files, and a form that turns out to need
-    more than this is one an operator would be stuck on too.
+    stack needs must not depend on whose machine is running it. What is supplied
+    is exactly what `.env.example` tells an operator to set and no more — a data
+    root, because a bind mount needs a source, and the uid pair, because that
+    file defines it as `id -u` and `id -g` and every service that drops
+    privileges is started as it.
+
+    Leaving the pair at its default was this check's own first mistake. A runner
+    whose user is 1001 wrote a clone owned by 1001 and then started services as
+    1000, which is not a configuration any operator following the instructions
+    would have — and it made three services look broken for a reason that was
+    half the harness's.
     """
     return {
         "PATH": os.environ.get("PATH", ""),
         "HOME": os.environ.get("HOME", ""),
         "DOCKER_HOST": os.environ.get("DOCKER_HOST", ""),
         "DATA_ROOT": data_root,
+        "PUID": str(os.getuid()),
+        "PGID": str(os.getgid()),
     }
 
 
