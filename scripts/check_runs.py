@@ -401,23 +401,61 @@ def report_failure(env: dict[str, str], empty_env_file: str, names: list[str]) -
         print(logs.stdout.strip() or logs.stderr.strip() or "(no output)")
 
 
-def run(profiles: list[str]) -> int:
-    data = manifest()
-    declared = {p["id"] for p in data["profile"]}
+def refuse(profiles: list[str], declared: set[str]) -> str | None:
+    """Why this cannot be asked, where it cannot.
 
+    Ahead of any container, because each of these is a reason the answer would
+    mean nothing rather than a reason it would be no — and a binary on the path
+    is the one that would make the whole run worthless without failing it.
+    """
     for profile in profiles:
         if profile not in declared:
-            print(f"::error::no profile {profile!r} in stack.toml")
-            return 2
+            return f"no profile {profile!r} in stack.toml"
         reason = unrunnable_reason(profile)
         if reason is not None:
-            print(f"::error::profile {profile!r} cannot be started here: {reason}")
-            return 2
+            return f"profile {profile!r} cannot be started here: {reason}"
 
-    # The guarantee under test, asserted before anything is started rather than
-    # assumed: a binary on the path is a binary that could have been involved.
     if shutil.which("lemonfiber", path=os.environ.get("PATH", "")) is not None:
-        print("::error::a lemonfiber binary is on PATH; this proves nothing while it is")
+        return "a lemonfiber binary is on PATH; this proves nothing while it is"
+
+    return None
+
+
+def describe(answers: list[dict], broken: set[str]) -> None:
+    for answer in sorted(answers, key=lambda a: a["id"]):
+        if answer["id"] in broken:
+            print(f"  ---- {answer['id']:<24} known: {KNOWN_BROKEN[answer['id']]}")
+            continue
+        mark = "late" if answer.get("late") else "ok  "
+        budget = f"{answer['elapsed_s']}s of {answer['timeout_s']}s"
+        print(f"  {mark} {answer['id']:<24} {answer['kind']:<9} {budget:<14} {answer['detail']}")
+
+
+def judge_everything(expected: dict[str, str], answers: list[dict], observed: list[dict]) -> list[str]:
+    """Every verdict about one started project, with the recorded defects held apart.
+
+    A service in `KNOWN_BROKEN` is left out of the roster and probe verdicts —
+    both of which it would fail, for a reason already written down — and handed
+    to the register instead, which refuses it only once it works.
+    """
+    broken = {name for name in expected if name in KNOWN_BROKEN}
+    proved = {name: image for name, image in expected.items() if name not in broken}
+
+    errors = judge_roster(proved, [row for row in observed if row["service"] not in broken])
+    errors += [
+        verdict
+        for answer in answers
+        if answer["id"] not in broken and (verdict := judge_probe(answer)) is not None
+    ]
+    return errors + judge_known(broken, answers, observed)
+
+
+def run(profiles: list[str]) -> int:
+    data = manifest()
+
+    refusal = refuse(profiles, {p["id"] for p in data["profile"]})
+    if refusal is not None:
+        print(f"::error::{refusal}")
         return 2
 
     chosen = services_in(data, profiles)
@@ -448,25 +486,9 @@ def run(profiles: list[str]) -> int:
 
         try:
             answers = wait_for_all(probes, attempt, time.monotonic, time.sleep)
-            observed = roster(env, empty)
             broken = {name for name in expected if name in KNOWN_BROKEN}
-
-            proved = {name: image for name, image in expected.items() if name not in broken}
-            errors += judge_roster(proved, [row for row in observed if row["service"] not in broken])
-            errors += [
-                verdict
-                for answer in answers
-                if answer["id"] not in broken and (verdict := judge_probe(answer)) is not None
-            ]
-            errors += judge_known(broken, answers, observed)
-
-            for answer in sorted(answers, key=lambda a: a["id"]):
-                if answer["id"] in broken:
-                    print(f"  ---- {answer['id']:<24} known: {KNOWN_BROKEN[answer['id']]}")
-                    continue
-                mark = "late" if answer.get("late") else "ok  "
-                budget = f"{answer['elapsed_s']}s of {answer['timeout_s']}s"
-                print(f"  {mark} {answer['id']:<24} {answer['kind']:<9} {budget:<14} {answer['detail']}")
+            errors += judge_everything(expected, answers, roster(env, empty))
+            describe(answers, broken)
 
             if errors:
                 late = (answer["id"] for answer in answers if answer.get("late"))
