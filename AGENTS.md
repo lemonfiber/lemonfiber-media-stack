@@ -52,14 +52,40 @@ A service block in the matching `compose/<profile>.yml` + a `[[service]]` in
 `stack.toml` + add its profile to the relevant forms. No code (`REPO-R23`).
 Then `just ci`.
 
+The `[[service]]` says what the service reaches on the network and what it asks
+for there — `reaches` and `asks_for`, both or neither, `reaches = ""` for one
+that talks to nothing (`F2-R10`). That prose used to be a table compiled into
+lemonfiber, which meant a new service needed a lemonfiber release before anything
+could describe it; carrying it here is what makes `F1-R5` true.
+
 If the service is the first of a new profile, add a `compose/<profile>.yml` and
 an `include:` entry — with `project_directory: .`.
+
+Before any of that, establish that the candidate is maintained — from its commit
+and release history, never from its own description of itself (`F2-R15`). `just
+candidate <url> --image <ref>` reads the history and says `admit`, `watch` or
+`reject`; its answer belongs in the pull request. The full admission criteria are
+in [README.md](README.md#adding-a-service).
+
+## Bumping a pin, and removing a service
+
+Both are changes only a diff can judge, and `scripts/check_manifest_change.py`
+judges them against the pull request's base:
+
+- A moved `tag` (or `image`) has to carry a refreshed `last_release`, or a
+  `Pin-reviewed: <service-id>` trailer on the commit that moves it (`F2-R14`).
+  A moved pin also has its upstream licence read from the forge and held to the
+  OSI list (`F2-R12`) — that half is networked and lives in `just licences`.
+- A service that leaves the manifest has to gain a `[[removed]]` entry naming
+  the reason and any replacement (`F2-R13`).
 
 ## Checks
 
 ```
-just ci        # parity + every form + the validator's own tests
+just ci        # parity + every form + what the diff says + the validator's own tests
 just images    # arm64/amd64 for every pin (needs the network)
+just licences  # what each upstream licences itself as now (needs the network)
+just candidate <url>   # judge a candidate on its history (needs the network)
 ```
 
 `scripts/validate_manifest.py` reads `docker compose config`'s **resolved**

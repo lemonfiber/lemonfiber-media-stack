@@ -38,6 +38,21 @@ def patch(path: str, old: str, new: str):
     return apply
 
 
+def strip_lines(path: str, prefixes: tuple[str, ...]):
+    """A mutation that removes every line in `path` starting with one of `prefixes`."""
+
+    def apply(root: pathlib.Path) -> None:
+        target = root / path
+        kept = [
+            line
+            for line in target.read_text(encoding="utf-8").splitlines(keepends=True)
+            if not line.startswith(prefixes)
+        ]
+        target.write_text("".join(kept), encoding="utf-8")
+
+    return apply
+
+
 def append(path: str, text: str):
     def apply(root: pathlib.Path) -> None:
         with (root / path).open("a", encoding="utf-8") as handle:
@@ -254,6 +269,121 @@ CASES = [
         "manifest references a profile that was never declared",
         patch("stack.toml", 'profile = "subs"', 'profile = "subtitles"'),
         "unknown profile",
+    ),
+    (
+        "F2-R10 a service that says where it goes and not what for",
+        patch(
+            "stack.toml",
+            'reaches = "music metadata providers"\n'
+            'asks_for = "Reads artist, album and track information for the music in your library."\n',
+            'reaches = "music metadata providers"\n',
+        ),
+        "declares 'reaches' without 'asks_for'",
+    ),
+    (
+        "F2-R10 a service that says what it asks for and not of whom",
+        patch(
+            "stack.toml",
+            'reaches = "music metadata providers"\n'
+            'asks_for = "Reads artist, album and track information for the music in your library."\n',
+            'asks_for = "Reads artist, album and track information for the music in your library."\n',
+        ),
+        "declares 'asks_for' without 'reaches'",
+    ),
+    (
+        # The three services that reach nothing say so with an empty value, so
+        # an empty one is an answer. A rule reading it as a missing field would
+        # refuse the very entries it exists to collect.
+        "F2-R10 a service that reaches nothing is not a service missing a value",
+        patch(
+            "stack.toml",
+            'reaches = "music metadata providers"',
+            'reaches = ""',
+        ),
+        None,
+    ),
+    (
+        "F2-R10 a service whose errand says nothing at all",
+        patch(
+            "stack.toml",
+            'asks_for = "Reads artist, album and track information for the music in your library."',
+            'asks_for = "  "',
+        ),
+        "asks_for must say what it asks for",
+    ),
+    (
+        # Half a manifest is the case worth refusing: lemonfiber falls back to
+        # what it was compiled with for whatever the manifest does not answer,
+        # so a service left out reads as one the binary already knew about.
+        "F2-R10 a manifest that answers for some services and not others",
+        patch(
+            "stack.toml",
+            'reaches = "music metadata providers"\n'
+            'asks_for = "Reads artist, album and track information for the music in your library."\n',
+            "",
+        ),
+        "says nothing about what it reaches",
+    ),
+    (
+        # Optional at the schema level: a stack that has written none of this
+        # down still parses, here and in lemonfiber.
+        "F2-R10 a manifest that answers for no service at all",
+        strip_lines("stack.toml", ("reaches = ", "asks_for = ")),
+        None,
+    ),
+    (
+        # The table is the one part of the manifest a stack may legitimately not
+        # have: most have removed nothing. A rule that insisted on it would
+        # refuse every fork on its first day.
+        "F2-R13 a stack that has removed nothing",
+        patch(
+            "stack.toml",
+            '[[removed]]\nid = "readarr"\nremoved_in = "0.1.0"\n'
+            'reason = "Discontinued upstream in 2025. Its repository is archived, '
+            'so the pin could only ever age."\nreplaced_by = "bindery"\n',
+            "",
+        ),
+        None,
+    ),
+    (
+        "F2-R13 a removal that does not say why",
+        patch(
+            "stack.toml",
+            'reason = "Discontinued upstream in 2025. Its repository is archived, '
+            'so the pin could only ever age."\n',
+            "",
+        ),
+        "missing required field 'reason'",
+    ),
+    (
+        "F2-R13 a removal whose reason is empty",
+        patch(
+            "stack.toml",
+            'reason = "Discontinued upstream in 2025. Its repository is archived, '
+            'so the pin could only ever age."',
+            'reason = "   "',
+        ),
+        "an empty one records nothing",
+    ),
+    (
+        "F2-R13 a removal naming a service the stack still runs",
+        patch("stack.toml", 'id = "readarr"\nremoved_in', 'id = "bazarr"\nremoved_in'),
+        "still declares",
+    ),
+    (
+        "F2-R13 a replacement the stack does not have",
+        patch("stack.toml", 'replaced_by = "bindery"', 'replaced_by = "papyrus"'),
+        "neither a service this stack declares nor a removal it records",
+    ),
+    (
+        "F2-R13 a removal replaced by itself",
+        patch("stack.toml", 'replaced_by = "bindery"', 'replaced_by = "readarr"'),
+        "which is the service that was removed",
+    ),
+    (
+        "F2-R13 a removal that does not say which version it went in",
+        patch("stack.toml", 'removed_in = "0.1.0"', 'removed_in = "before Bindery"'),
+        "removed_in must be the stack version",
     ),
     (
         "a profile no service claims",

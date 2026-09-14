@@ -65,6 +65,10 @@ SERVICE_REQUIRED = (
     "criticality", "license", "upstream", "last_release", "describes", "without_it",
 )
 SEMVER = re.compile(r"^\d+\.\d+\.\d+(?:[-+].*)?$")
+# What an entry is called in a report when it has not said what it is called.
+# Every rule here names a location, and an entry missing the field that would
+# name it still has to be findable in the file.
+UNNAMED = "<unnamed>"
 ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 STACK_TOML = "stack.toml"
 
@@ -157,7 +161,7 @@ def validate_profiles(profiles: list, report: Report) -> set[str]:
     profile_ids: set[str] = set()
     claimed_protocols: dict[str, str] = {}
     for profile in profiles:
-        where = f"profile {profile.get('id', '<unnamed>')}"
+        where = f"profile {profile.get('id', UNNAMED)}"
         for field in ("id", "name", "description"):
             report.check(field in profile, where, f"missing required field {field!r}")
         pid = profile.get("id")
@@ -188,7 +192,7 @@ def validate_profiles(profiles: list, report: Report) -> set[str]:
 def validate_forms(forms: list, profile_ids: set[str], report: Report) -> None:
     form_ids: set[str] = set()
     for form in forms:
-        where = f"form {form.get('id', '<unnamed>')}"
+        where = f"form {form.get('id', UNNAMED)}"
         for field in ("id", "name", "description", "profiles"):
             report.check(field in form, where, f"missing required field {field!r}")
         fid = form.get("id")
@@ -227,6 +231,77 @@ def validate_service_runtime(service: dict, where: str, report: Report) -> None:
     for media_type in service.get("media_types", []):
         report.check(
             media_type in MEDIA_TYPES, where, f"unknown media type {media_type!r}"
+        )
+
+
+def validate_service_errand(service: dict, where: str, report: Report) -> None:
+    """Where a service reaches when it runs, and what it asks for when it gets there.
+
+    One answer in two halves, so it is both fields or neither: a service saying
+    where it goes without saying what for would be reported as half an errand,
+    and one saying what it asks for without saying of whom attributes the errand
+    to nobody.
+
+    An empty `reaches` is an answer rather than a missing value — it is how a
+    service that talks to nothing says so, and the three that do still say what
+    they do instead. That is why `asks_for` is the half that may not be blank:
+    there is no case where saying nothing is the way to say nothing.
+    """
+    present = [field for field in ("reaches", "asks_for") if field in service]
+    if not present:
+        return
+    if len(present) == 1:
+        missing = "asks_for" if present[0] == "reaches" else "reaches"
+        report.fail(
+            where,
+            f"declares {present[0]!r} without {missing!r}; where a service reaches and what it "
+            "asks for there are one answer, and half of it is attributed to nobody",
+            "F2-R10",
+        )
+    for field in present:
+        report.check(
+            isinstance(service[field], str), where, f"{field} must be a string", "F2-R10"
+        )
+    if "asks_for" in service:
+        report.check(
+            bool(str(service["asks_for"]).strip()),
+            where,
+            "asks_for must say what it asks for, including where the answer is that it asks "
+            "nothing; an empty reaches already says it goes nowhere",
+            "F2-R10",
+        )
+
+
+def validate_errands(services: list, report: Report) -> None:
+    """Either this manifest says what its services reach, or it does not.
+
+    The pair is optional, so a stack that has written none of it down still
+    validates and lemonfiber answers from what it was compiled with. A manifest
+    that answers for some services and not others is the worse case, and the one
+    refused here: silence about a service cannot be told from a service that
+    reaches nothing, and the fallback quietly answers for whichever services the
+    binary happened to know about when it was built. That is the drift this
+    whole pair exists to end.
+    """
+    answered = {
+        str(service.get("id", UNNAMED))
+        for service in services
+        if "reaches" in service or "asks_for" in service
+    }
+    if not answered:
+        return
+    silent = sorted(
+        str(service.get("id", UNNAMED))
+        for service in services
+        if str(service.get("id", UNNAMED)) not in answered
+    )
+    for sid in silent:
+        report.fail(
+            f"service {sid}",
+            "says nothing about what it reaches, in a manifest where other services do; "
+            "a service nobody has written this down for cannot be told from one that "
+            "reaches nothing",
+            "F2-R10",
         )
 
 
@@ -270,7 +345,7 @@ def validate_service_api(service: dict, where: str, report: Report) -> None:
 
 def validate_service(service: dict, profile_ids: set[str], licences: set[str],
                      service_ids: set[str], profile_of: dict[str, str], report: Report) -> None:
-    sid = service.get("id", "<unnamed>")
+    sid = service.get("id", UNNAMED)
     where = f"service {sid}"
     for field in SERVICE_REQUIRED:
         report.check(field in service, where, f"missing required field {field!r}")
@@ -317,6 +392,7 @@ def validate_service(service: dict, profile_ids: set[str], licences: set[str],
         "F2-R4",
     )
     validate_last_release(service, where, report)
+    validate_service_errand(service, where, report)
     validate_service_runtime(service, where, report)
     validate_service_health(service, where, report)
     validate_service_api(service, where, report)
@@ -326,7 +402,7 @@ def validate_dependencies(services: list, service_ids: set[str],
                           profile_of: dict[str, str], report: Report) -> None:
     # depends_on needs every id known, so it runs after the first pass.
     for service in services:
-        sid = service.get("id", "<unnamed>")
+        sid = service.get("id", UNNAMED)
         for dep in service.get("depends_on", []):
             where = f"service {sid}"
             if not report.check(dep in service_ids, where, f"depends_on unknown service {dep!r}"):
@@ -352,6 +428,67 @@ def validate_orphans(profile_ids: set[str], forms: list, services: list, report:
         report.fail(f"profile {pid}", "no form activates this profile")
 
 
+def validate_removals(removals: list, service_ids: set[str], report: Report) -> None:
+    """What left the stack, why, and what took the job over.
+
+    The table is optional — a stack that has removed nothing has nothing to
+    declare — but an entry in it is not optional about its own fields. A removal
+    recorded without a reason is the same silence as no record at all, read by a
+    later operator as a service that simply stopped existing.
+
+    `replaced_by` may name another removal as well as a live service: a
+    replacement can itself be replaced, and an entry about the past should not
+    have to be rewritten when that happens.
+    """
+    removed_ids: set[str] = set()
+    for entry in removals:
+        rid = str(entry.get("id", UNNAMED))
+        where = f"removed {rid}"
+        for field in ("id", "removed_in", "reason"):
+            report.check(field in entry, where, f"missing required field {field!r}", "F2-R13")
+        report.check(rid not in removed_ids, where, "duplicate removal id", "F2-R13")
+        removed_ids.add(rid)
+        report.check(
+            rid not in service_ids,
+            where,
+            "names a service this stack still declares; a service is present or removed, not both",
+            "F2-R13",
+        )
+        version = entry.get("removed_in")
+        report.check(
+            isinstance(version, str) and bool(SEMVER.match(version)),
+            where,
+            f"removed_in must be the stack version it went in, as semver; got {version!r}",
+            "F2-R13",
+        )
+        reason = entry.get("reason")
+        report.check(
+            isinstance(reason, str) and bool(reason.strip()),
+            where,
+            "reason must say why it went; an empty one records nothing",
+            "F2-R13",
+        )
+
+    for entry in removals:
+        if "replaced_by" not in entry:
+            continue
+        rid, replacement = str(entry.get("id", UNNAMED)), entry["replaced_by"]
+        where = f"removed {rid}"
+        report.check(
+            replacement != rid,
+            where,
+            f"replaced_by names {replacement!r}, which is the service that was removed",
+            "F2-R13",
+        )
+        report.check(
+            replacement in service_ids or replacement in removed_ids,
+            where,
+            f"replaced_by {replacement!r} is neither a service this stack declares nor a "
+            "removal it records",
+            "F2-R13",
+        )
+
+
 def validate_manifest(manifest: dict, report: Report) -> None:
     licences = osi_licences()
     validate_versions(manifest, report)
@@ -365,7 +502,9 @@ def validate_manifest(manifest: dict, report: Report) -> None:
     for service in services:
         validate_service(service, profile_ids, licences, service_ids, profile_of, report)
     validate_dependencies(services, service_ids, profile_of, report)
+    validate_errands(services, report)
     validate_orphans(profile_ids, forms, services, report)
+    validate_removals(manifest.get("removed", []), service_ids, report)
 
 
 # ── parity with the resolved Compose model ──────────────────────────────────
@@ -648,7 +787,9 @@ def main() -> int:
         len(manifest.get("service", [])),
     )
     scope = "manifest + compose parity" if checked_parity else "manifest only"
-    print(f"{scope} valid: {counts[0]} profiles, {counts[1]} forms, {counts[2]} services")
+    removals = len(manifest.get("removed", []))
+    recorded = f", {removals} removal(s) recorded" if removals else ""
+    print(f"{scope} valid: {counts[0]} profiles, {counts[1]} forms, {counts[2]} services{recorded}")
     return 0
 
 

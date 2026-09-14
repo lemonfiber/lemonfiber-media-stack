@@ -11,8 +11,12 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          # Two of the rules below compare this manifest against the one at the
+          # base commit. A default checkout is one commit deep, which leaves the
+          # base out of the clone entirely and the comparison impossible.
+          fetch-depth: 0
 
-      # The scripts below are the gate, and nothing read them. Four carry a
+      # The scripts below are the gate, and nothing read them. Most carry a
       # `--self-test` that drives their judgements against replies they did not
       # fetch, which is the harder half; this is the easier half and it was
       # missing. First, because an undefined name in one of these reads as a
@@ -25,6 +29,31 @@ jobs:
       # capabilities (REPO-R18, REPO-R19).
       - name: Manifest contract and compose parity
         run: python3 scripts/validate_manifest.py
+
+      # Where a request may be addressed, and what may be echoed out of a
+      # reply. Offline, and ahead of everything that reaches a forge, because
+      # this is the one whose failure is a token going somewhere it should not.
+      - name: A forge is asked in one way, or not at all
+        run: python3 scripts/forge.py --self-test
+
+      # A pin that moved and a date that did not are both well-formed values, and
+      # a service that left the stack leaves a manifest that simply no longer
+      # mentions it. Only a diff can see either (F2-R13, F2-R14).
+      - name: The change itself is judged before its verdicts are
+        run: python3 scripts/check_manifest_change.py --self-test
+
+      - name: A bumped pin was reviewed, and a removal recorded
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          # Event data through the environment, never interpolated into the
+          # shell. A base that is not a commit means the comparison cannot be
+          # made, which is a failure and not a quiet pass.
+          printf '%s' "$BASE_SHA" | grep -Eq '^[0-9a-f]{40}$' || {
+            echo "::error::no base commit on this event; there is nothing to compare against"
+            exit 1
+          }
+          python3 scripts/check_manifest_change.py --base "$BASE_SHA"
 
       # Every form is a valid project on its own and drags in nothing outside
       # its own profiles (REPO-R17, B1-R14).
@@ -54,6 +83,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          # The licence gate asks which pins this change moved, and that is a
+          # question about the manifest at the base commit.
+          fetch-depth: 0
 
       # A check nobody has watched fail is a check nobody knows works, and this
       # one's judgements are reachable only when a registry answers. The
@@ -82,3 +114,25 @@ jobs:
 
       - name: The release check can fail
         run: python3 scripts/check_releases.py --self-test
+
+      # The recorded licence is checked against a vendored list in the offline
+      # job above, and nothing there asks the project. This does — and it fails
+      # only for a service whose pin this change moves, because that is where the
+      # requirement puts the disqualification and because failing an untouched
+      # service would turn unrelated pull requests red on upstream's schedule.
+      # Offline first: these verdicts are reachable only when a forge answers.
+      - name: The licence verdicts are proved before a forge is asked
+        run: python3 scripts/check_licences.py --self-test
+
+      - name: Upstream licences, gated where this change moves a pin
+        env:
+          # Read-only, repository-scoped, and used for the API rate limit rather
+          # than for access: everything asked about here is public.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          printf '%s' "$BASE_SHA" | grep -Eq '^[0-9a-f]{40}$' || {
+            echo "::error::no base commit on this event; which pins moved cannot be established"
+            exit 1
+          }
+          python3 scripts/check_licences.py --base "$BASE_SHA"

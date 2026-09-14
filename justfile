@@ -9,7 +9,7 @@ hooks:
 
 # Everything CI runs bar the image check, which needs the network — and the hooks
 # turned on if they are not already, this being the command run before a push.
-ci: hooks lint validate forms docs test
+ci: hooks lint validate changes forms docs test forge
 
 # The gate scripts themselves, read by ruff. First, because a name that does not
 # exist is a failure every check below would report as its own.
@@ -34,6 +34,20 @@ docs:
 test:
     python3 scripts/test_validate_manifest.py
 
+# What a *change* to the manifest has to carry, which no single revision of it
+# shows: a pin that moved with its release date reviewed, a service that left
+# with its reason recorded. Needs git, and answers about this branch rather than
+# about this file — so it is run with the same base CI uses.
+changes base="origin/main":
+    python3 scripts/check_manifest_change.py --self-test
+    python3 scripts/check_manifest_change.py --base {{base}}
+
+# Where the networked checks may address a request, and what they may echo out
+# of a reply. Offline, and the one whose failure would be a token going
+# somewhere it should not.
+forge:
+    python3 scripts/forge.py --self-test
+
 # Every pinned image publishes linux/amd64 and linux/arm64. Networked — but the
 # self-test is not, and runs first for that reason: the reading it proves is the
 # one least likely to have been exercised by anybody before a registry answers.
@@ -55,6 +69,22 @@ configs:
 releases:
     python3 scripts/check_releases.py --self-test
     python3 scripts/check_releases.py
+
+# What each service's upstream licences itself as *now*, rather than what the
+# manifest says it did when somebody last looked. Networked. Fails only for a
+# service whose pin this branch moves; everything else is reported.
+licences base="origin/main":
+    python3 scripts/check_licences.py --self-test
+    python3 scripts/check_licences.py --base {{base}}
+
+# Judge a candidate service on its commit and release history rather than on
+# what its README says about itself. Networked, run by hand, and not a gate: a
+# candidate has no manifest entry to gate. e.g.
+#
+#   just candidate https://github.com/owner/project --image ghcr.io/owner/project:v1.2.3
+candidate url *flags:
+    python3 scripts/check_candidate.py --self-test
+    python3 scripts/check_candidate.py {{url}} {{flags}}
 
 # Raw Compose validity, no manifest involved.
 config:

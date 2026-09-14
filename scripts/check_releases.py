@@ -13,6 +13,15 @@ deserve different treatment:
             arise from time passing, so the value was guessed rather than looked
             up. Failed.
 
+  unknown   Nothing could be read. Reported, because a question that went
+            unanswered is not a record that is wrong. A project that publishes
+            versions as tags and never uses its forge's releases feature — of
+            which the stack already holds several — answers this way every time,
+            and there is a decision behind that rather than an oversight: a tag
+            carries its commit's date and not a release's, and `ahead` is a
+            verdict that fails a build. Deriving one from the other would fail
+            somebody's pull request on a date this guessed.
+
 Needs the network. Set GITHUB_TOKEN to avoid the unauthenticated rate limit.
 
     python3 scripts/check_releases.py
@@ -23,14 +32,11 @@ from __future__ import annotations
 
 import argparse
 import datetime
-import json
-import os
 import pathlib
-import re
 import sys
 import tomllib
-import urllib.error
-import urllib.request
+
+from forge import get_json, repo_of
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 # Six months of upstream silence is worth a look. Calibrated against the one
@@ -52,24 +58,21 @@ def assess(recorded: datetime.date, actual: datetime.date | None) -> tuple[str, 
 
 
 def github_latest(upstream: str) -> datetime.date | None:
-    repo = re.sub(r"^https://github\.com/", "", upstream).rstrip("/")
-    headers = {"Accept": "application/vnd.github+json", "User-Agent": "lemonfiber-media-stack"}
-    token = os.environ.get("GITHUB_TOKEN")
-    if token:
-        headers["Authorization"] = f"Bearer {token}"
+    """The date of upstream's latest release, or None where that cannot be read.
 
-    for url, pick in (
-        (f"https://api.github.com/repos/{repo}/releases/latest", lambda d: d.get("published_at")),
-        (f"https://api.github.com/repos/{repo}/tags", lambda d: None),
-    ):
-        try:
-            with urllib.request.urlopen(urllib.request.Request(url, headers=headers), timeout=20) as r:
-                published = pick(json.load(r))
-        except (urllib.error.URLError, json.JSONDecodeError):
-            continue
-        if published:
-            return datetime.date.fromisoformat(published[:10])
-    return None
+    Asked once. A second request went to the tags endpoint and dropped whatever
+    it answered, which read as a fallback and was a wasted request — see the
+    `unknown` verdict above for why it is not implemented rather than merely
+    absent.
+    """
+    repo = repo_of(upstream)
+    if repo is None:
+        return None
+    document, problem = get_json(f"/repos/{repo[0]}/{repo[1]}/releases/latest")
+    if problem:
+        return None
+    published = (document or {}).get("published_at")
+    return datetime.date.fromisoformat(str(published)[:10]) if published else None
 
 
 def main() -> int:

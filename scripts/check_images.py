@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 import json
 import pathlib
+import re
 import subprocess
 import sys
 import tomllib
@@ -22,9 +23,25 @@ import tomllib
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 REQUIRED = {("linux", "amd64"), ("linux", "arm64")}
 
+# What may be handed to docker as a reference. Letters or digits first, so
+# nothing beginning with a dash can arrive as a flag, and nothing outside what a
+# registry reference is spelled with can arrive at all. Written out here rather
+# than imported, beside the call it guards: a check an analysis cannot see next
+# to the call is one it reports as absent, and it would be right — the reference
+# reaches this from a manifest through one caller and from a command line
+# through another, and only one of those was ever anybody's own file.
+REFERENCE = re.compile(r"\A[A-Za-z0-9][A-Za-z0-9._/:@-]{0,255}\Z")
+
 
 def _inspect(reference: str) -> tuple[int, str, str]:
-    """What the registry says about a reference, as docker reports it."""
+    """What the registry says about a reference, as docker reports it.
+
+    A reference that is not one is refused here rather than passed on, in the
+    shape docker would have answered a failure in, so the reading below is the
+    same reading either way.
+    """
+    if not REFERENCE.match(reference):
+        return 1, "", f"{reference!r} is not a reference this will hand to docker"
     result = subprocess.run(
         ["docker", "buildx", "imagetools", "inspect", "--raw", reference],
         capture_output=True, text=True, check=False,
@@ -67,6 +84,25 @@ def platforms(reference: str) -> tuple[set[tuple[str, str]], str]:
     return read(*_inspect(reference))
 
 
+def reference_problems() -> list[str]:
+    """What may be handed to docker as a reference, driven both ways.
+
+    The reference reaches a command line, and one of the two callers takes it
+    from `--image` on one of its own. Refused before docker sees it, and refused
+    in the shape a docker failure arrives in, so the reading below is the same
+    reading either way — which is why this drives `_inspect` rather than the
+    pattern, and why it needs no registry to do it.
+    """
+    problems = []
+    for refused in ("--output=/tmp/owned", "-x", "", "caddy:2.8.4 --push", "$(whoami)"):
+        if _inspect(refused)[0] == 0:
+            problems.append(f"{refused!r} would have been handed to docker")
+    for allowed in ("caddy:2.8.4", "lscr.io/linuxserver/sonarr:4.0.15", "ghcr.io/hotio/unpackerr:release-0.14.5"):
+        if not REFERENCE.match(allowed):
+            problems.append(f"{allowed!r} is a pin this manifest carries, and was refused")
+    return problems
+
+
 def self_test() -> int:
     """Each of the four answers `read` gives, driven against a reply it did not fetch.
 
@@ -95,7 +131,7 @@ def self_test() -> int:
         ("a failure that said nothing", (1, "", ""), set(), "inspect failed"),
     )
 
-    problems = []
+    problems = reference_problems()
     for said, reply, wanted, because in cases:
         found, problem = read(*reply)
         if found != wanted:
