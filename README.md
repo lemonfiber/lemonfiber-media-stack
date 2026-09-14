@@ -20,10 +20,13 @@
 
 ---
 
-> **Status: complete, not yet run on hardware.** All 19 services are defined and
-> every rule below is enforced in CI. The remaining **M1** exit criteria are the
-> two things CI cannot check — a hardlink import verified end to end, and the VPN
-> killswitch verified by hand. See the
+> **Status: complete; started in CI, not yet exercised on hardware.** All 19
+> services are defined and every rule below is enforced in CI, which now also
+> starts the stack: each profile is brought up with plain `docker compose` and
+> every service is made to answer the probe `stack.toml` declares for it. What
+> is still verified only by hand are the three things no runner can reach — a
+> hardlink import end to end, the VPN killswitch, and the torrent profile
+> itself, which needs a real VPN subscription to come up at all. See the
 > [spec](https://github.com/lemonfiber/spec) and
 > [roadmap](https://github.com/lemonfiber/spec/blob/main/00-overview/roadmap.md).
 
@@ -46,7 +49,22 @@ just forms-list           # search, dl, hunt, tv, movies, music, books, …
 just up tv
 ```
 
-That's what makes adopting Lemonfiber a reversible decision.
+That's what makes adopting Lemonfiber a reversible decision — and it is checked
+rather than asserted. `scripts/check_runs.py` starts each profile on a runner
+with no `lemonfiber` binary on its path, waits for every service to answer the
+probe the manifest declares for it, and tears the project down again:
+
+```
+just runs search          # one profile
+just runs search,usenet   # or several
+just runs-list            # what CI fans out over
+```
+
+A connection to a published port is deliberately not what it accepts as an
+answer. Docker puts a proxy in front of every published port and that proxy
+accepts before it knows whether anything inside the container is listening, so a
+stack whose services were all replaced by `sleep infinity` passes a check that
+only connects. This one reads, and being hung up on is a failure.
 
 Requires Docker Compose **v2.20 or newer** — `compose.yml` uses `include:`.
 
@@ -170,6 +188,7 @@ proven to fail when broken by `scripts/test_validate_manifest.py`.
 | A bumped pin carries a reviewed date | `last_release` moves with the tag, or the commit re-affirms it (`F2-R14`) |
 | A removal says why | `[[removed]]` names the reason and any replacement (`F2-R13`) |
 | Every form resolves | `docker compose config` per form (`REPO-R17`), dragging in nothing outside its profiles (`B1-R14`, `REPO-R19`) |
+| Every profile starts | Brought up with plain `docker compose`, every service answering its declared probe on its published port, then torn down (`F1-R1`) |
 | arm64 + amd64 per pin | Read from each registry's manifest list (`F2-R6`) |
 
 The parity checks read `docker compose config`'s resolved model rather than the

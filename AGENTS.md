@@ -83,10 +83,18 @@ judges them against the pull request's base:
 
 ```
 just ci        # parity + every form + what the diff says + the validator's own tests
+just runs <profiles>   # start them for real and make them answer (needs Docker)
 just images    # arm64/amd64 for every pin (needs the network)
 just licences  # what each upstream licences itself as now (needs the network)
 just candidate <url>   # judge a candidate on its history (needs the network)
 ```
+
+`scripts/check_runs.py` is the one that starts something. Everything else here
+reads the project; that brings each profile up with plain `docker compose` on a
+path holding no lemonfiber binary, makes every service answer the probe
+`stack.toml` declares for it, and takes it down again. A profile no machine
+without an account can start — `torrent`, which needs a real VPN subscription —
+is named in that script with the reason, and left out of what CI fans over.
 
 `scripts/validate_manifest.py` reads `docker compose config`'s **resolved**
 model, not the YAML, so it checks what Docker will run rather than what the file
