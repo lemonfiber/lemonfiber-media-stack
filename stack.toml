@@ -136,7 +136,7 @@ name = "Proxy"
 description = "Friendly hostnames. Layers onto any other form."
 profiles = ["proxy"]
 
-# ─────────────────────────── Services (19) ───────────────────────────────────
+# ─────────────────────────── Services (20) ───────────────────────────────────
 [[service]]
 id = "prowlarr"
 name = "Prowlarr"
@@ -436,6 +436,24 @@ health = { kind = "http", path = "/healthcheck", timeout_s = 90 }
 # its dashboard panel uses is handed back on sign-in and is the same every time,
 # so what is kept is the password rather than the token.
 api = { kind = "audiobookshelf", key_source = "generated" }
+
+[[service]]
+id = "navidrome"
+name = "Navidrome"
+profile = "media"
+image = "ghcr.io/navidrome/navidrome"
+tag = "0.64.0"
+port = 4533
+bind = "lan"
+criticality = "enhancing"
+license = "GPL-3.0-only"
+upstream = "https://github.com/navidrome/navidrome"
+last_release = "2026-09-12"
+describes = "Plays your music library in a browser, on a phone, and in any Subsonic client"
+without_it = "Music arrives and only the thing that fetched it ever looks at it"
+reaches = "music metadata providers, and the background collection its sign-in page draws from"
+asks_for = "Reads artist images, biographies and similar-artist lists for the music in your library — Deezer and ListenBrainz, neither of which needs an account of yours. Its anonymous usage report is the one thing it would send about this machine, and the compose entry turns that off rather than leaving it on."
+health = { kind = "http", path = "/ping", timeout_s = 90 }
 
 [[service]]
 id = "recyclarr"

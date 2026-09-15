@@ -50,6 +50,15 @@
           url: http://audiobookshelf:80
           key: "{{HOMEPAGE_VAR_AUDIOBOOKSHELF_KEY}}"
 
+    # Link only. Homepage's Navidrome widget signs in with an account rather
+    # than an API key, and this service declares no `api` for seeding to write
+    # one from — a widget here would ask with an empty credential and be
+    # refused, which is the panel that shows nothing at all.
+    - Navidrome:
+        icon: navidrome.png
+        href: http://{{HOMEPAGE_VAR_LAN_HOST}}:4533
+        description: Music
+
 - Automation:
     - Sonarr:
         icon: sonarr.png
