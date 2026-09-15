@@ -9,7 +9,7 @@
 
 <p align="center">
   The Docker Compose stack Lemonfiber orchestrates: indexers, download clients,
-  the *arr automation apps, Jellyfin and Seerr &mdash; 19 services, all
+  the *arr automation apps, Jellyfin and Seerr &mdash; 20 services, all
   open-source, all pinned.
 </p>
 
@@ -20,8 +20,8 @@
 
 ---
 
-> **Status: seventeen of the nineteen are started in CI on every change.** All
-> 19 services are defined, every rule below is enforced, and CI now starts the
+> **Status: eighteen of the twenty are started in CI on every change.** All
+> 20 services are defined, every rule below is enforced, and CI now starts the
 > stack: each profile is brought up with plain `docker compose` and every
 > service is made to answer the probe `stack.toml` declares for it. The first
 > run of that check found Jellyfin, Seerr and Bindery could not start from a

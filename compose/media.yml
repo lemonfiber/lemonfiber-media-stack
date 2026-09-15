@@ -72,3 +72,32 @@ services:
       - ${DATA_ROOT:-./data}:/data
       - ./config/audiobookshelf:/config
       - ./config/audiobookshelf/metadata:/metadata
+
+  navidrome:
+    extends:
+      file: compose/_common.yml
+      service: defaults
+    image: ghcr.io/navidrome/navidrome:0.64.0
+    profiles: [media]
+    # No PUID/PGID pair is documented: the image takes a uid:gid instead, and
+    # runs as root when given neither. config/navidrome/ is shipped for the same
+    # reason Jellyfin's is — Docker would create the missing bind-mount source as
+    # root:root, and this process, which is not root, could not then write the
+    # database it keeps there.
+    user: "${PUID:-1000}:${PGID:-1000}"
+    environment:
+      # Both of these default to a path this project already uses for something
+      # else — ND_DATAFOLDER's own default is /data, which here is the library —
+      # so naming them is what keeps the one-mount rule from being broken by a
+      # default nobody wrote down.
+      ND_MUSICFOLDER: /data/media/music
+      ND_DATAFOLDER: /config
+      # On by default upstream: an anonymous report about this machine, every
+      # 24 hours, to Navidrome's own endpoint. Nothing here sends anything the
+      # operator did not ask for. The metadata agents stay on and stack.toml
+      # says what they fetch.
+      ND_ENABLEINSIGHTSCOLLECTOR: "false"
+    ports: ["${LAN_BIND:-0.0.0.0}:4533:4533"]
+    volumes:
+      - ${DATA_ROOT:-./data}:/data
+      - ./config/navidrome:/config

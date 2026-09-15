@@ -8,7 +8,7 @@ Guidance for any AI agent working in this repo.
 
 ## What this repo is
 
-The Docker Compose stack — 19 services — plus `stack.toml`, the manifest
+The Docker Compose stack — 20 services — plus `stack.toml`, the manifest
 lemonfiber consumes. Spec:
 [`30-repos/lemonfiber-media-stack.md`](https://github.com/lemonfiber/spec/blob/main/30-repos/lemonfiber-media-stack.md)
 and the

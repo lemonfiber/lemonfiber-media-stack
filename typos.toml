@@ -7,3 +7,6 @@ ratatui = "ratatui"
 Ratatui = "Ratatui"
 lemonfiber = "lemonfiber"
 Servarr = "Servarr"
+# Navidrome's environment prefix. Every one of its settings is ND_SOMETHING, and
+# the checker reads the prefix on its own as a misspelling of "AND".
+ND = "ND"
