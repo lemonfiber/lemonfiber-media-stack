@@ -312,9 +312,9 @@ CASES = [
         "asks_for must say what it asks for",
     ),
     (
-        # Half a manifest is the case worth refusing: lemonfiber falls back to
-        # what it was compiled with for whatever the manifest does not answer,
-        # so a service left out reads as one the binary already knew about.
+        # Half a manifest is the case worth refusing: the service left out is
+        # reported as one nothing has described, which sits in the same list as
+        # the services that said they reach nothing and cannot be told from them.
         "F2-R10 a manifest that answers for some services and not others",
         patch(
             "stack.toml",
@@ -326,7 +326,8 @@ CASES = [
     ),
     (
         # Optional at the schema level: a stack that has written none of this
-        # down still parses, here and in lemonfiber.
+        # down still parses, here and in lemonfiber, which reports every service
+        # in it as one nothing has described rather than refusing to read it.
         "F2-R10 a manifest that answers for no service at all",
         strip_lines("stack.toml", ("reaches = ", "asks_for = ")),
         None,
