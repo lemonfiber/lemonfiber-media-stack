@@ -52,6 +52,14 @@ A service block in the matching `compose/<profile>.yml` + a `[[service]]` in
 `stack.toml` + add its profile to the relevant forms. No code (`REPO-R23`).
 Then `just ci`.
 
+The `[[service]]` also says what the service can do — `provides`, in lemonfiber's
+published capability vocabulary — so that wiring can ask for a capability rather
+than name a service. That file is generated from this field, so a capability
+nothing here declares cannot be published. Recyclarr, Unpackerr, Homepage and
+Caddy declare nothing, because nothing asks them anything: the first two act on
+the filesystem and on other services' configuration, and the other two are
+configured by lemonfiber writing a file.
+
 The `[[service]]` says what the service reaches on the network and what it asks
 for there — `reaches` and `asks_for`, both or neither, `reaches = ""` for one
 that talks to nothing (`F2-R10`). That prose used to be a table compiled into

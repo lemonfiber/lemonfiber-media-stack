@@ -62,6 +62,13 @@ KEY_SOURCES = {
 # bundled declares it, because a set that admits only what is already bundled is
 # one a plugin cannot extend the library with.
 MEDIA_TYPES = {"tv", "movies", "music", "books", "comics"}
+# A core capability name: `area.verb`, lowercase, exactly one dot. A plugin's own
+# carries a colon instead and is that plugin's to declare, never a bundled
+# service's. Which names exist is lemonfiber's to say — it generates the
+# published vocabulary from this field and refuses a service naming one the
+# vocabulary does not carry. What is checked here is the shape, because a name
+# of the wrong shape is not a name the other side could ever recognise.
+CORE_CAPABILITY = re.compile(r"^[a-z][a-z0-9]*(?:-[a-z0-9]+)*\.[a-z][a-z0-9]*(?:-[a-z0-9]+)*$")
 # Anything beyond this list is a privilege the stack has not justified (C6).
 ALLOWED_GRANTS = {"NET_ADMIN"}
 # Tags that move under you. A pin that means "whatever is newest" is not a pin.
@@ -241,6 +248,37 @@ def validate_service_runtime(service: dict, where: str, report: Report) -> None:
         )
 
 
+def validate_service_provides(service: dict, where: str, report: Report) -> None:
+    """What this service can do, so that wiring can ask for it rather than name it.
+
+    Two bundled services declaring the same capability is not a collision and is
+    not checked for: it is what a vocabulary is for, and which of them fills it
+    is the operator's to choose. A service declaring the same name twice is a
+    typo, and is.
+    """
+    declared = service.get("provides")
+    if declared is None:
+        return
+    if not report.check(
+        isinstance(declared, list) and all(isinstance(name, str) for name in declared),
+        where,
+        "provides must be an array of capability names",
+    ):
+        return
+    seen: set[str] = set()
+    for name in declared:
+        report.check(
+            CORE_CAPABILITY.match(name) is not None,
+            where,
+            f"capability {name!r} is not a core name — those are `area.verb`, lowercase, "
+            "with exactly one dot; a name carrying a colon belongs to the plugin whose "
+            "id prefixes it",
+            "F4-R4",
+        )
+        report.check(name not in seen, where, f"capability {name!r} is declared twice")
+        seen.add(name)
+
+
 def validate_service_errand(service: dict, where: str, report: Report) -> None:
     """Where a service reaches when it runs, and what it asks for when it gets there.
 
@@ -404,6 +442,7 @@ def validate_service(service: dict, profile_ids: set[str], licences: set[str],
     )
     validate_last_release(service, where, report)
     validate_service_errand(service, where, report)
+    validate_service_provides(service, where, report)
     validate_service_runtime(service, where, report)
     validate_service_health(service, where, report)
     validate_service_api(service, where, report)

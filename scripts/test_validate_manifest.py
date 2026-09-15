@@ -73,13 +73,34 @@ CASES = [
         patch(
             "stack.toml",
             'media_types = ["tv"]\n'
+            'provides = ["library.curate"]\n'
             'health = { kind = "http", path = "/ping", timeout_s = 90 }\n'
             'api = { kind = "servarr", key_source = "config-xml", path = "/config/config.xml", version = 3 }',
             'media_types = ["tv"]\n'
+            'provides = ["library.curate"]\n'
             'health = { kind = "http", path = "/ping", timeout_s = 90 }\n'
             'api = { kind = "servarr", key_source = "config-xml", path = "/config/config.xml" }',
         ),
         "servarr api.version must be",
+    ),
+    (
+        "a capability in a plugin's namespace on a bundled service",
+        patch("stack.toml", 'provides = ["download.torrent"]', 'provides = ["qbittorrent:torrent"]'),
+        "is not a core name",
+    ),
+    (
+        "a capability name with no area",
+        patch("stack.toml", 'provides = ["subtitles.fetch"]', 'provides = ["fetch"]'),
+        "is not a core name",
+    ),
+    (
+        "the same capability declared twice by one service",
+        patch(
+            "stack.toml",
+            'provides = ["media.serve", "identity.source"]',
+            'provides = ["media.serve", "media.serve"]',
+        ),
+        "is declared twice",
     ),
     (
         "an api kind no client here implements",
