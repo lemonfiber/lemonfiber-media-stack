@@ -7,12 +7,18 @@ services:
   bindery:
     extends:
       file: compose/_common.yml
-      # Not `rootless`: the image is distroless and runs as a fixed non-root
-      # user, so PUID and PGID would be set and silently ignored. On Linux the
-      # data root must be writable by that user rather than by PUID.
+      # Not `rootless`: the image is distroless and reads no PUID pair, so
+      # setting those two would be a silent no-op that reads like a control.
       service: defaults
     image: ghcr.io/vavallee/bindery:v1.27.0
     profiles: [books]
+    # What the image does read is the uid Docker starts it as, and its own is
+    # 65532 — a user owning nothing on the host, so both mounts are unwritable
+    # on Linux. Running it as the operator is what makes the data root writable
+    # *and* keeps what it imports owned like everything else the stack writes.
+    # config/bindery/ is shipped for the other half: Docker creates a missing
+    # bind-mount source as root, and nothing here runs as root to fix it after.
+    user: "${PUID:-1000}:${PGID:-1000}"
     environment:
       # Bindery defaults these to /books and /downloads, which are not on the
       # single data mount — imports would land inside the container and vanish

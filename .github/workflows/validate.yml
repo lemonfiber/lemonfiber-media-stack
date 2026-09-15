@@ -136,3 +136,59 @@ jobs:
             exit 1
           }
           python3 scripts/check_licences.py --base "$BASE_SHA"
+
+  # Which groups the job below fans out over, read from the manifest rather than
+  # listed here. A profile added to `stack.toml` is started by the next run of
+  # this workflow; one that cannot be started by a machine holding no accounts is
+  # named in `check_runs.py` with the reason, and left out here by that name.
+  runnable:
+    runs-on: ubuntu-latest
+    outputs:
+      groups: ${{ steps.plan.outputs.groups }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - id: plan
+        run: |
+          printf 'groups=%s\n' "$(python3 scripts/check_runs.py --plan)" >> "$GITHUB_OUTPUT"
+
+  # The half that runs the stack, which until now nothing did. Every check in
+  # this repository read the project — `docker compose config` answers whether
+  # Compose can build a model, and a model that builds is not a stack that
+  # starts. This starts one with plain `docker compose`, with no lemonfiber
+  # binary on the path, and asks each service the question `stack.toml` declares
+  # for it on the port `stack.toml` publishes it on (F1-R1).
+  #
+  # One runner per group, so a profile boots on hardware of its own rather than
+  # competing with sixteen other services for four cores — and so a failure is
+  # named by the check that carries it.
+  runs:
+    needs: runnable
+    name: runs (${{ matrix.group.name }})
+    runs-on: ubuntu-latest
+    strategy:
+      # A profile that will not start says nothing about the others, and
+      # stopping at the first one would hide how much of the stack is affected.
+      fail-fast: false
+      matrix:
+        group: ${{ fromJSON(needs.runnable.outputs.groups) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Every verdict below needs Docker, a registry and several minutes to
+      # reach, which is why none of them would otherwise be watched fail. The
+      # one that matters most is the probe telling a server apart from a
+      # published port with nothing behind it: Docker's own proxy accepts a
+      # connection either way, so a check that only connects passes against a
+      # stack replaced by `sleep infinity`.
+      - name: The verdicts are proved before anything is started
+        run: python3 scripts/check_runs.py --self-test
+
+      - name: The stack starts, answers, and comes down
+        env:
+          PROFILES: ${{ matrix.group.profiles }}
+        run: python3 scripts/check_runs.py --profile "$PROFILES"

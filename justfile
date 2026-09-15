@@ -34,6 +34,23 @@ docs:
 test:
     python3 scripts/test_validate_manifest.py
 
+# Start profiles for real and make each service answer the probe stack.toml
+# declares for it, then take them down. Needs Docker and the network, and it is
+# the only check here that runs the stack rather than reading it — `just ci`
+# leaves it out for that reason. Services write into config/<service>/ while
+# they are up, which is runtime state git ignores everywhere but the four
+# templates this repo ships; expect sabnzbd.ini to come back modified.
+#
+#   just runs search
+#   just runs search,usenet
+runs profiles:
+    python3 scripts/check_runs.py --self-test
+    python3 scripts/check_runs.py --profile {{profiles}}
+
+# The groups CI starts, read from the manifest.
+runs-list:
+    @python3 scripts/check_runs.py --plan
+
 # What a *change* to the manifest has to carry, which no single revision of it
 # shows: a pin that moved with its release date reviewed, a service that left
 # with its reason recorded. Needs git, and answers about this branch rather than

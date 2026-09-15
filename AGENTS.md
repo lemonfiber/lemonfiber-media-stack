@@ -83,10 +83,31 @@ judges them against the pull request's base:
 
 ```
 just ci        # parity + every form + what the diff says + the validator's own tests
+just runs <profiles>   # start them for real and make them answer (needs Docker)
 just images    # arm64/amd64 for every pin (needs the network)
 just licences  # what each upstream licences itself as now (needs the network)
 just candidate <url>   # judge a candidate on its history (needs the network)
 ```
+
+`scripts/check_runs.py` is the one that starts something. Everything else here
+reads the project; that brings each profile up with plain `docker compose` on a
+path holding no lemonfiber binary, makes every service answer the probe
+`stack.toml` declares for it, and takes it down again. A profile no machine
+without an account can start — `torrent`, which needs a real VPN subscription —
+is named in that script with the reason, and left out of what CI fans over.
+
+`KNOWN_BROKEN` in the same script is the other register, and it points the other
+way. It is empty now; it held Jellyfin, Seerr and Bindery, which could not start
+from a clean clone on Linux because Docker creates a missing bind-mount source
+as `root:root` and a container running as a fixed non-root user cannot write its
+own `/config`. An entry there reports rather than fails — and **fails as soon as
+that service works**, which is what proved those three fixed. Nothing goes in
+there to make a run pass.
+
+The cure is worth knowing before adding a service: a config directory shipped in
+the repo belongs to whoever cloned it, and every service that drops privileges
+is started as `${PUID}:${PGID}`, so an image with a non-root user baked in gets
+a `user:` pair rather than the uid its author chose.
 
 `scripts/validate_manifest.py` reads `docker compose config`'s **resolved**
 model, not the YAML, so it checks what Docker will run rather than what the file
