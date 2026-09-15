@@ -54,7 +54,14 @@ KEY_SOURCES = {
     "generated",
     "none",
 }
-MEDIA_TYPES = {"tv", "movies", "music", "books"}
+# The media types a service may say it handles, which is what points it at the
+# part of the library it works on. Published in the stack manifest contract
+# rather than only here: this set is read by anything that describes a library,
+# including a plugin's manifest, and a vocabulary only its own validator can see
+# is one nothing outside can declare into. `comics` is in it although nothing
+# bundled declares it, because a set that admits only what is already bundled is
+# one a plugin cannot extend the library with.
+MEDIA_TYPES = {"tv", "movies", "music", "books", "comics"}
 # Anything beyond this list is a privilege the stack has not justified (C6).
 ALLOWED_GRANTS = {"NET_ADMIN"}
 # Tags that move under you. A pin that means "whatever is newest" is not a pin.

@@ -138,6 +138,11 @@ CASES = [
         "must be exactly ${DATA_ROOT}:/data",
     ),
     (
+        "a media type outside the published vocabulary",
+        patch("stack.toml", 'media_types = ["tv"]', 'media_types = ["telly"]'),
+        "unknown media type",
+    ),
+    (
         "E1-R1 floating tag",
         patch("stack.toml", 'tag = "4.0.15"', 'tag = "latest"'),
         "floating tag",
