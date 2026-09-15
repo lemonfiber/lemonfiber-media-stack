@@ -153,6 +153,7 @@ describes = "Holds your indexer accounts in one place and shares them with every
 without_it = "Every app needs indexers configured separately"
 reaches = "the indexers you configured"
 asks_for = "Runs the searches everything else asks for, and reads each indexer's capabilities and remaining allowance, authenticating with the keys you gave it."
+provides = ["indexer.search"]
 health = { kind = "http", path = "/ping", timeout_s = 60 }
 api = { kind = "servarr", key_source = "config-xml", path = "/config/config.xml", version = 1 }
 
@@ -172,6 +173,7 @@ describes = "Gets past bot-protection on some indexers"
 without_it = "Those indexers return nothing"
 reaches = "the indexer sites that challenge it"
 asks_for = "Fetches a page through a headless browser when an indexer sits behind bot protection, which means it visits that indexer directly."
+provides = ["indexer.proxy"]
 health = { kind = "tcp", timeout_s = 60 }
 
 [[service]]
@@ -190,6 +192,7 @@ describes = "A search box across all your Usenet indexers at once"
 without_it = "Search one indexer at a time"
 reaches = "the Usenet indexers you configured"
 asks_for = "Searches several indexers at once and merges what they answer, with the keys you gave it."
+provides = ["indexer.search"]
 health = { kind = "http", path = "/", timeout_s = 60 }
 
 [[service]]
@@ -208,6 +211,7 @@ describes = "Downloads from Usenet"
 without_it = "No Usenet downloads"
 reaches = "your Usenet provider"
 asks_for = "Signs in with your account and fetches the articles a download is made of."
+provides = ["download.usenet"]
 health = { kind = "http", path = "/api?mode=version", timeout_s = 60 }
 api = { kind = "sabnzbd", key_source = "config-ini", path = "/config/sabnzbd.ini" }
 
@@ -226,6 +230,7 @@ without_it = "Your home IP is visible to every peer"
 reaches = "your VPN provider's servers"
 asks_for = "Dials the tunnel everything torrent-shaped is routed through, and asks the provider for a forwarded port where you asked for one."
 grants = ["NET_ADMIN"]
+provides = ["network.egress-guard"]
 health = { kind = "container" }
 
 [[service]]
@@ -245,6 +250,7 @@ without_it = "No torrent downloads"
 reaches = "trackers and peers, through the tunnel"
 asks_for = "Announces to a torrent's trackers and exchanges data with peers, which is what a torrent client is; all of it inside gluetun's network, so it stops when the tunnel does."
 depends_on = ["gluetun"]
+provides = ["download.torrent"]
 health = { kind = "http", path = "/api/v2/app/version", timeout_s = 60 }
 api = { kind = "qbittorrent", key_source = "generated" }
 
@@ -265,6 +271,7 @@ without_it = "Find and download episodes yourself"
 reaches = "television metadata providers"
 asks_for = "Reads series, season and episode information, artwork and air dates for what is in your library and what you add to it."
 media_types = ["tv"]
+provides = ["library.curate"]
 health = { kind = "http", path = "/ping", timeout_s = 90 }
 api = { kind = "servarr", key_source = "config-xml", path = "/config/config.xml", version = 3 }
 
@@ -285,6 +292,7 @@ without_it = "Find and download films yourself"
 reaches = "film metadata providers"
 asks_for = "Reads titles, release dates and artwork for the films in your library and the ones you add."
 media_types = ["movies"]
+provides = ["library.curate"]
 health = { kind = "http", path = "/ping", timeout_s = 90 }
 api = { kind = "servarr", key_source = "config-xml", path = "/config/config.xml", version = 3 }
 
@@ -305,6 +313,7 @@ without_it = "Find and download music yourself"
 reaches = "music metadata providers"
 asks_for = "Reads artist, album and track information for the music in your library."
 media_types = ["music"]
+provides = ["library.curate"]
 health = { kind = "http", path = "/ping", timeout_s = 90 }
 api = { kind = "servarr", key_source = "config-xml", path = "/config/config.xml", version = 1 }
 
@@ -325,6 +334,7 @@ without_it = "No book automation (Readarr is discontinued)"
 reaches = "book and audiobook metadata providers"
 asks_for = "Reads author, title and cover information for the books it watches for."
 media_types = ["books"]
+provides = ["library.curate"]
 health = { kind = "http", path = "/", timeout_s = 90 }
 # Its key is one lemonfiber mints and this service adopts, rather than one it
 # writes for lemonfiber to read: given BINDERY_API_KEY on its first start it
@@ -348,6 +358,7 @@ describes = "Finds and downloads subtitles"
 without_it = "No automatic subtitles"
 reaches = "the subtitle providers you enable"
 asks_for = "Searches for subtitles matching what is in your library, signing in where a provider requires an account."
+provides = ["subtitles.fetch"]
 health = { kind = "http", path = "/", timeout_s = 90 }
 # Its key is in the file it writes, which is YAML — the one service here that
 # keeps it that way. The path is inside the container: its /config mount holds a
@@ -370,6 +381,7 @@ describes = "Plays your library on TVs, phones and browsers"
 without_it = "Files on disk, no way to watch them"
 reaches = "metadata providers and its own plugin repository"
 asks_for = "Reads artwork and descriptions for what is in your library, and checks its plugin repository for updates unless you turn that off in its own settings."
+provides = ["media.serve", "identity.source"]
 health = { kind = "http", path = "/health", timeout_s = 120 }
 api = { kind = "jellyfin", key_source = "generated" }
 
@@ -389,6 +401,7 @@ describes = "Where the household asks for things"
 without_it = "Requests come to you in person"
 reaches = "the metadata provider it lists titles from"
 asks_for = "Reads the catalogue the household browses and requests from, and the artwork beside it."
+provides = ["request.intake"]
 health = { kind = "http", path = "/api/v1/status", timeout_s = 90 }
 # Its key can be fetched over its own API, and it also writes it to this file,
 # which is the cheaper read and the one lemonfiber takes. The path is where the
@@ -412,6 +425,7 @@ describes = "Reading and organising your ebook library"
 without_it = "No ebook reader"
 reaches = "book metadata providers"
 asks_for = "Reads covers and descriptions for the ebooks in your library when you ask it to."
+provides = ["media.serve"]
 health = { kind = "http", path = "/", timeout_s = 90 }
 
 [[service]]
@@ -430,6 +444,7 @@ describes = "Listening to audiobooks, with progress synced"
 without_it = "No audiobook player"
 reaches = "audiobook metadata providers"
 asks_for = "Reads covers, chapters and descriptions for the audiobooks in your library when you ask it to."
+provides = ["media.serve"]
 health = { kind = "http", path = "/healthcheck", timeout_s = 90 }
 # It starts with no account at all and refuses everything until one exists, so
 # lemonfiber makes the first one — the same shape as the media server's. The token
@@ -453,6 +468,7 @@ describes = "Plays your music library in a browser, on a phone, and in any Subso
 without_it = "Music arrives and only the thing that fetched it ever looks at it"
 reaches = "music metadata providers, and the background collection its sign-in page draws from"
 asks_for = "Reads artist images, biographies and similar-artist lists for the music in your library — Deezer and ListenBrainz, neither of which needs an account of yours. Its anonymous usage report is the one thing it would send about this machine, and the compose entry turns that off rather than leaving it on."
+provides = ["media.serve"]
 health = { kind = "http", path = "/ping", timeout_s = 90 }
 
 [[service]]
