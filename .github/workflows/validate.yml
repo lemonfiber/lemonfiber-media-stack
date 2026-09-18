@@ -192,3 +192,52 @@ jobs:
         env:
           PROFILES: ${{ matrix.group.profiles }}
         run: python3 scripts/check_runs.py --profile "$PROFILES"
+
+  # One name for the whole matrix above, because the matrix has no fixed names.
+  # Each leg is called `runs (<group>)` from `fromJSON(needs.runnable.outputs.groups)`,
+  # computed at run time from `stack.toml` — so adding, renaming or removing a
+  # profile changes the set of check names, and a branch protection rule naming
+  # one of them would silently stop covering the stack the day the profiles
+  # moved. This name does not move, and it is the one a rule can hold.
+  #
+  # `!cancelled()` rather than `needs:` alone: a dependency that fails makes a
+  # job vanish, and a skipped required check satisfies branch protection — so
+  # the one job standing for the whole matrix would be absent in exactly the
+  # case it exists to refuse. It reads the results rather than inheriting them.
+  the-stack-starts:
+    needs: [runnable, runs]
+    if: ${{ !cancelled() }}
+    name: the stack starts
+    runs-on: ubuntu-latest
+    steps:
+      - name: Every profile the plan named started, answered and came down
+        env:
+          PLANNED: ${{ needs.runnable.outputs.groups }}
+          RUNNABLE: ${{ needs.runnable.result }}
+          RUNS: ${{ needs.runs.result }}
+        run: |
+          set -euo pipefail
+
+          # A plan that named no group would leave the matrix with no legs, and
+          # a matrix with no legs reports success. "Every profile started" is
+          # then true of no profiles and reads exactly like it is true of
+          # twelve.
+          if [ "$RUNNABLE" != "success" ]; then
+            echo "::error::the profiles could not be planned (runnable: $RUNNABLE),"\
+              "so no profile was started and this says nothing about the stack."
+            exit 1
+          fi
+          named=$(printf '%s' "$PLANNED" | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))')
+          if [ "$named" -eq 0 ]; then
+            echo "::error::the plan named no profile, so the matrix ran nothing and"\
+              "there is no verdict here about whether the stack starts."
+            exit 1
+          fi
+
+          if [ "$RUNS" != "success" ]; then
+            echo "::error::at least one of the $named profile(s) did not start,"\
+              "answer and come down. The leg that failed carries which one."
+            exit 1
+          fi
+
+          echo "$named profile(s) started, answered and came down"
