@@ -9,7 +9,7 @@ permissions:
   pull-requests: write
 jobs:
   gate:
-    uses: lemonfiber/spec/.github/workflows/sonar-gate.yml@04447ba64dbbdbce7af81cace90b69e89601fdac # main
+    uses: lemonfiber/spec/.github/workflows/sonar-gate.yml@9d1b96f05269fcf3d8b7a0b4e05d9b83082164ff # v1.0.2
     with:
       # Named, because the default is <owner>_<repo> and this project is not called
       # that. `lemonfiber_lemonfiber-media-stack` resolves to nothing, and a key that
