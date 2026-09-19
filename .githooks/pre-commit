@@ -10,19 +10,41 @@
 
 set -eu
 
+# Say what did not run, and why. A check skipped because its tool is absent and a
+# check that found nothing are the same silence otherwise, and the second is what
+# somebody reads the first as — so the hook reports a pass it did not earn.
+say() {
+	printf 'pre-commit: %s\n' "$1" >&2
+}
+
 staged=$(git diff --cached --name-only --diff-filter=ACM)
-command -v python3 >/dev/null 2>&1 || exit 0
+
+if ! command -v python3 >/dev/null 2>&1; then
+	say "python3 is not installed, so the manifest, the forms and the script suite were not checked here. All three run in CI."
+	exit 0
+fi
+
+ran=""
 
 case "$staged" in
 *stack.toml* | *compose* | *stacks/*)
 	python3 scripts/validate_manifest.py && python3 scripts/check_forms.py || exit 1
+	ran="${ran}manifest and forms; "
 	;;
 esac
 
 case "$staged" in
 *scripts/*.py*)
 	python3 scripts/test_validate_manifest.py || exit 1
+	ran="${ran}the manifest suite; "
 	;;
 esac
 
+# Nothing staged that any of the checks above reads. Said rather than left as a
+# silent pass: this hook is scoped by path and "it did not apply" is a different
+# answer from "it was happy".
+if [ -z "$ran" ]; then
+	ran="nothing staged that these checks read; "
+fi
+say "ran: ${ran%; }"
 exit 0
