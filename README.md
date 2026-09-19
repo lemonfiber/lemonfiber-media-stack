@@ -164,6 +164,52 @@ configured by lemonfiber writing a file rather than by anything asking them a
 question. A capability is something one service asks another for while both are
 running, and nothing asks any of them.
 
+## What reaches what
+
+`provides` says what each service can do. `[[wiring]]` says what reaches what,
+and whether the link is an ask for a capability or a name:
+
+```toml
+[[wiring]]
+by = "seerr"
+asks = "identity.source"
+
+[[wiring]]
+by = "bazarr"
+asks = "library.curate"
+each = true
+
+[[wiring]]
+by = "qbittorrent"
+to = "gluetun"
+why = "It has no network namespace of its own — it is inside this one container's."
+```
+
+`by` is the service the link runs *from*, and it is the name a report uses when
+nothing fills what was asked for. An ask names a capability rather than a
+service, so anything that stands in for the far end is reached by everything
+that asked with nothing else changed. `each = true` means the link reaches every
+service that fills it rather than the one that does — `library.curate` is
+declared here four times over and `identity.source` once, and an ask that could
+not tell those apart would be wrong about both. `filled_by` is the stack choosing
+between its own claimants, with the reason beside it, and it is a default the
+operator substitutes rather than a rule.
+
+A `to` is by name, and it carries `why`. The stack has six, and every one of
+them is genuinely about one service: qBittorrent lives inside Gluetun's network
+namespace, which is a container rather than an errand and so has nothing for an
+ask to resolve to; Unpackerr and Recyclarr are configured per application, in
+each service's own terms, and know Sonarr rather than whatever curates a
+library. Writing the reason down is the point — an exception nobody explained
+reads as an oversight.
+
+**An ordering edge is a by-name wiring.** A `depends_on` names a service, so CI
+refuses one that no `[[wiring]]` shows as by name.
+
+Homepage's panels and Caddy's routes are deliberately absent: lemonfiber writes
+both files from the tier and the description each service already declares,
+which is generation rather than wiring.
+
 ## Bumping a pin
 
 Moving a `tag` is a review of the service, not an edit to a string, and two
@@ -209,6 +255,9 @@ proven to fail when broken by `scripts/test_validate_manifest.py`.
 | One `${DATA_ROOT}:/data` mount per service | Hardlinks (`ADR-0006`, `C5-R5`) |
 | Bindings match the manifest tier | Admin on loopback, household on LAN (`C6-R1/R2`) |
 | No `depends_on` across a profile | Any subset boots (`B1-R14`) |
+| Every `depends_on` shown as a by-name `[[wiring]]` | An exception is visible as one (`F4-R12`, `F9-R4`) |
+| A wiring asks or names, never both | The far end is a capability or a service (`F9-R4`) |
+| A by-name wiring and a chosen filler say why | Neither reads as an oversight or a rule (`F4-R8`, `F4-R12`) |
 | Killswitch routing | Nothing shares Gluetun's profile without its namespace, so no client here is one lemonfiber must report as leaking (`C2-R12`) |
 | Pinned, non-floating tags | Nothing changes because time passed (`E1-R1`) |
 | Kernel capabilities match the manifest | Only Gluetun is granted `NET_ADMIN` (`C6`) |

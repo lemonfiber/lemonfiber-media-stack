@@ -539,6 +539,109 @@ reaches = ""
 asks_for = "Nothing. It answers names on this machine and forwards to the services beside it; no certificate is fetched, because nothing here is published to the internet."
 health = { kind = "tcp", timeout_s = 30 }
 
+# ─────────────────────────── Wiring (what reaches what) ─────────────────────
+# `provides` above says what each service can do. This says what reaches what,
+# and whether the link is an ask for a capability or a name.
+#
+# Every entry names the service the link runs *from* in `by`, which is what a
+# report calls the asker when nothing fills what it asked for. An ask names a
+# capability; `each = true` means it reaches every service that fills it rather
+# than the one that does. A by-name link uses `to` and carries the reason it is
+# by name, because the point of writing it here is that the exception is visible
+# rather than assumed to be an oversight.
+#
+# What is deliberately absent: the dashboard's panels and the proxy's routes.
+# Homepage and Caddy do not ask anything — lemonfiber writes both files from the
+# tier and the description each service already declares, which is generation
+# rather than wiring, and a plugin's service is given the same on the same terms.
+
+# ── Asks ─────────────────────────────────────────────────────────────────────
+# The links lemonfiber makes, when it seeds. Each is written against what the
+# far end does rather than what it is called, so a service that stands in for
+# one of these is reached by everything that asked, with nothing else changed.
+
+[[wiring]]
+by = "sonarr"
+asks = "download.usenet"
+
+[[wiring]]
+by = "sonarr"
+asks = "download.torrent"
+
+[[wiring]]
+by = "radarr"
+asks = "download.usenet"
+
+[[wiring]]
+by = "radarr"
+asks = "download.torrent"
+
+[[wiring]]
+by = "lidarr"
+asks = "download.usenet"
+
+[[wiring]]
+by = "lidarr"
+asks = "download.torrent"
+
+[[wiring]]
+by = "prowlarr"
+asks = "library.curate"
+each = true
+
+[[wiring]]
+by = "bindery"
+asks = "indexer.search"
+filled_by = "prowlarr"
+why = "Two services here answer as an indexer and this asks for one of them. Prowlarr is the stack's choice because it is the one the book *arr can pull a keyed feed from; NZBHydra2 searches Usenet only. Change it and everything that asked follows."
+
+[[wiring]]
+by = "seerr"
+asks = "identity.source"
+
+[[wiring]]
+by = "seerr"
+asks = "library.curate"
+each = true
+
+[[wiring]]
+by = "bazarr"
+asks = "library.curate"
+each = true
+
+# ── By name ──────────────────────────────────────────────────────────────────
+# Six links that are genuinely about one service each, and say so.
+
+[[wiring]]
+by = "qbittorrent"
+to = "gluetun"
+why = "It has no network namespace of its own — it is inside this one container's, which is what makes the tunnel a killswitch rather than a route. What is shared is a container, not an errand, so there is nothing for an ask to resolve to and nothing to substitute at."
+
+[[wiring]]
+by = "unpackerr"
+to = "sonarr"
+why = "The image is configured per application — UN_SONARR_0_URL and its key — and what it knows is Sonarr, not whatever curates a library. The link is spelled in the service's own terms, so it is about that service."
+
+[[wiring]]
+by = "unpackerr"
+to = "radarr"
+why = "The same, in Radarr's terms."
+
+[[wiring]]
+by = "unpackerr"
+to = "lidarr"
+why = "The same, in Lidarr's terms."
+
+[[wiring]]
+by = "recyclarr"
+to = "sonarr"
+why = "It writes Sonarr-shaped quality profiles from Sonarr-shaped guides, into a section of its own configuration named for the service. Nothing about it generalises to a library curator."
+
+[[wiring]]
+by = "recyclarr"
+to = "radarr"
+why = "The same, in Radarr's terms."
+
 # ─────────────────────────── Removed (1) ─────────────────────────────────────
 # What the catalogue used to carry, why it went, and what took the job over. A
 # service that leaves takes its description with it, and what is left is a

@@ -66,6 +66,13 @@ that talks to nothing (`F2-R10`). That prose used to be a table compiled into
 lemonfiber, which meant a new service needed a lemonfiber release before anything
 could describe it; carrying it here is what makes `F1-R5` true.
 
+A service something reaches, or that reaches something, also needs a
+`[[wiring]]`: `by` is where the link runs from, and then either `asks` (a
+capability, `each = true` where it reaches every filler rather than the one) or
+`to` with a `why` (by name, which is the exception and has to say it is one).
+A `depends_on` is a by-name wiring and CI refuses one that no `[[wiring]]`
+shows as such.
+
 If the service is the first of a new profile, add a `compose/<profile>.yml` and
 an `include:` entry — with `project_directory: .`.
 
