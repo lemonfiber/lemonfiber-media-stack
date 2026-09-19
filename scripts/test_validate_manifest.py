@@ -421,6 +421,96 @@ CASES = [
         ),
         "no service declares this profile",
     ),
+    (
+        "F9-R4 an ordering edge no wiring shows as by-name",
+        strip_lines("stack.toml", ('by = "qbittorrent"', 'to = "gluetun"',
+                                   'why = "It has no network namespace')),
+        "and no [[wiring]] says so",
+    ),
+    (
+        "F4-R12 a by-name wiring that does not say why",
+        patch(
+            "stack.toml",
+            'by = "recyclarr"\nto = "radarr"\nwhy = "The same, in Radarr\'s terms."',
+            'by = "recyclarr"\nto = "radarr"',
+        ),
+        "does not say why",
+    ),
+    (
+        "F4-R12 a by-name wiring whose reason is blank",
+        patch("stack.toml", 'why = "The same, in Lidarr\'s terms."', 'why = "   "'),
+        "does not say why",
+    ),
+    (
+        "a wiring that both asks and names",
+        patch(
+            "stack.toml",
+            'by = "seerr"\nasks = "identity.source"',
+            'by = "seerr"\nasks = "identity.source"\nto = "jellyfin"\nwhy = "both"',
+        ),
+        "exactly one of `asks` and `to`",
+    ),
+    (
+        "a wiring that neither asks nor names",
+        patch("stack.toml", 'by = "bazarr"\nasks = "library.curate"\neach = true',
+              'by = "bazarr"'),
+        "exactly one of `asks` and `to`",
+    ),
+    (
+        "F4-R1 a wiring running from a service this stack does not declare",
+        patch("stack.toml", 'by = "bazarr"\nasks = "library.curate"',
+              'by = "subtitler"\nasks = "library.curate"'),
+        "by names 'subtitler', which this stack does not declare",
+    ),
+    (
+        "F4-R1 a by-name wiring pointing at a service this stack does not declare",
+        patch("stack.toml", 'by = "unpackerr"\nto = "lidarr"', 'by = "unpackerr"\nto = "lidaarr"'),
+        "to names 'lidaarr', which this stack does not declare",
+    ),
+    (
+        "F4-R1 a wiring asking for something shaped like a plugin's own name",
+        patch("stack.toml", 'by = "seerr"\nasks = "identity.source"',
+              'by = "seerr"\nasks = "plex:identity"'),
+        "which is not a core capability name",
+    ),
+    (
+        "F4-R8 a chosen filler that does not declare the capability",
+        patch("stack.toml", 'asks = "indexer.search"\nfilled_by = "prowlarr"',
+              'asks = "indexer.search"\nfilled_by = "sabnzbd"'),
+        "which that service does not declare",
+    ),
+    (
+        "F4-R8 a chosen filler with no reason beside it",
+        patch(
+            "stack.toml",
+            'filled_by = "prowlarr"\nwhy = "Two services here answer as an indexer',
+            'filled_by = "prowlarr"\nignored = "Two services here answer as an indexer',
+        ),
+        "a rule somebody encoded",
+    ),
+    (
+        "a wiring that reaches every filler and also chooses one",
+        patch("stack.toml", 'by = "prowlarr"\nasks = "library.curate"\neach = true',
+              'by = "prowlarr"\nasks = "library.curate"\neach = true\nfilled_by = "sonarr"'),
+        "does both only by meaning neither",
+    ),
+    (
+        "a by-name wiring carrying something only an ask can say",
+        patch("stack.toml", 'by = "unpackerr"\nto = "sonarr"',
+              'by = "unpackerr"\nto = "sonarr"\neach = true'),
+        "each says something about an ask",
+    ),
+    (
+        "a wiring from a service to itself",
+        patch("stack.toml", 'by = "unpackerr"\nto = "radarr"', 'by = "unpackerr"\nto = "unpackerr"'),
+        "a service does not wire to itself",
+    ),
+    (
+        "the same ask written twice",
+        patch("stack.toml", 'by = "lidarr"\nasks = "download.usenet"',
+              'by = "lidarr"\nasks = "download.usenet"\n\n[[wiring]]\nby = "lidarr"\nasks = "download.usenet"'),
+        "asks for 'download.usenet' twice",
+    ),
 ]
 
 
