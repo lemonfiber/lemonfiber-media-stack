@@ -97,7 +97,7 @@ CI rejects it. See spec
 | `compose/_common.yml` | Shared service defaults, reached via `extends:` |
 | `.env.example` | Every variable, documented |
 | `stacks/` | Overlay: NAS/copy mode |
-| `config/` | Seeded templates for Recyclarr, Homepage and Caddy |
+| `config/` | Seeded templates for Recyclarr, Homepage, Caddy and SABnzbd |
 | `scripts/` | The checks CI runs, all runnable locally via `just` |
 
 ## Adding a service
