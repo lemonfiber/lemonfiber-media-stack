@@ -6,6 +6,12 @@ on:
   push:
     branches: [main]
   pull_request:
+  # A merge queue asks for `analyze` and `alerts / alerts` again on its own
+  # branch, and a context that never reports there is a wait the queue ends by
+  # dropping the pull request. The analysis runs over the merged batch, and
+  # `alerts` asks about this run's own ref, which on this event is the queue's
+  # branch.
+  merge_group:
   schedule:
     - cron: "0 6 * * 2"
 permissions:
@@ -53,6 +59,6 @@ jobs:
     permissions:
       contents: read
       security-events: read
-    uses: lemonfiber/spec/.github/workflows/codeql-alerts.yml@719d8380ff919dccc74d056cd4e1b32153ca08a0 # v1.0.14
+    uses: lemonfiber/spec/.github/workflows/codeql-alerts.yml@f7ef911f4276d09240148d0c5ff5a18d9534497d # v1.0.15
     with:
       analysis: ${{ needs.analyze.result }}

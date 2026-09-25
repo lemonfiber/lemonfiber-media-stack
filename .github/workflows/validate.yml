@@ -1,5 +1,13 @@
 name: validate
-on: [pull_request]
+on:
+  pull_request:
+  # A merge queue asks for `stack`, `images`, `runnable` and `the stack starts`
+  # again on its own branch: `main`'s tip with the queued pull requests
+  # applied. A context that never reports there is read as a wait and the
+  # queue drops the pull request at the timeout, naming nothing. The two steps
+  # that compare against a base read the merge group's, so the batch is judged
+  # against the `main` it lands on.
+  merge_group:
 permissions:
   contents: read
 
@@ -43,8 +51,12 @@ jobs:
         run: python3 scripts/check_manifest_change.py --self-test
 
       - name: A bumped pin was reviewed, and a removal recorded
+        # The base per event: `github.event.pull_request` is null on a merge
+        # group and `github.event.merge_group` is null on a pull request. A
+        # merge group's base is the `main` tip the batch lands on, so every pin
+        # the batch moves is judged. Neither present still fails below.
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
         run: |
           # Event data through the environment, never interpolated into the
           # shell. A base that is not a commit means the comparison cannot be
@@ -125,11 +137,12 @@ jobs:
         run: python3 scripts/check_licences.py --self-test
 
       - name: Upstream licences, gated where this change moves a pin
+        # The base per event, for the step above's reason.
         env:
           # Read-only, repository-scoped, and used for the API rate limit rather
           # than for access: everything asked about here is public.
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
         run: |
           printf '%s' "$BASE_SHA" | grep -Eq '^[0-9a-f]{40}$' || {
             echo "::error::no base commit on this event; which pins moved cannot be established"
