@@ -13,6 +13,7 @@ Run directly — no test framework, because the repo has no Python dependencies:
 from __future__ import annotations
 
 import pathlib
+import re
 import shutil
 import subprocess
 import sys
@@ -34,6 +35,48 @@ def patch(path: str, old: str, new: str):
                 f"test fixture is stale: {old!r} appears {count}x in {path}, expected 1"
             )
         target.write_text(text.replace(old, new), encoding="utf-8")
+
+    return apply
+
+
+def field(service: str, name: str, line: str):
+    """A mutation that replaces one field's line in one `[[service]]` of stack.toml.
+
+    Found by the service and the field rather than by the value, because the
+    values here are pins, dates and digests that `pins.py` moves on its own
+    schedule — a fixture spelled with today's value goes stale at the next bump.
+    An empty `line` removes the field.
+    """
+
+    def apply(root: pathlib.Path) -> None:
+        target = root / "stack.toml"
+        blocks = re.split(r"(?m)^(?=\[\[)", target.read_text(encoding="utf-8"))
+        for number, block in enumerate(blocks):
+            if block.startswith("[[service]]") and f'\nid = "{service}"\n' in block:
+                replaced, count = re.subn(rf"(?m)^{name} = .*\n", f"{line}\n" if line else "", block)
+                if count != 1:
+                    raise AssertionError(f"test fixture is stale: {service} has {count} {name!r} lines")
+                blocks[number] = replaced
+                target.write_text("".join(blocks), encoding="utf-8")
+                return
+        raise AssertionError(f"test fixture is stale: no [[service]] {service} in stack.toml")
+
+    return apply
+
+
+def reference(path: str, image: str, new: str):
+    """A mutation that replaces the reference `image` is pulled by in a compose fragment."""
+
+    def apply(root: pathlib.Path) -> None:
+        target = root / path
+        replaced, count = re.subn(
+            rf"(?m)^(\s*image:\s*){re.escape(image)}[:@]\S*$",
+            lambda match: f"{match.group(1)}{new}",
+            target.read_text(encoding="utf-8"),
+        )
+        if count != 1:
+            raise AssertionError(f"test fixture is stale: {image} is pulled {count}x in {path}, expected 1")
+        target.write_text(replaced, encoding="utf-8")
 
     return apply
 
@@ -175,8 +218,28 @@ CASES = [
     ),
     (
         "E1-R1 floating tag",
-        patch("stack.toml", 'tag = "4.0.15"', 'tag = "latest"'),
+        field("sonarr", "tag", 'tag = "latest"'),
         "floating tag",
+    ),
+    (
+        "E1-R1 a service with no digest",
+        field("sonarr", "digest", ""),
+        "missing required field 'digest'",
+    ),
+    (
+        "E1-R1 a digest that is not one",
+        field("sonarr", "digest", 'digest = "sha256:a5c1a5fe"'),
+        "digest must be sha256:",
+    ),
+    (
+        "E1-R1 a digest written into the image name",
+        field("sonarr", "image", 'image = "lscr.io/linuxserver/sonarr@sha256:0000000000000000000000000000000000000000000000000000000000000000"'),
+        "must not carry a tag or a digest",
+    ),
+    (
+        "E1-R1 compose resolving the image by its tag alone",
+        reference("compose/tv.yml", "lscr.io/linuxserver/sonarr", "lscr.io/linuxserver/sonarr:4.0.20"),
+        "does not match the manifest",
     ),
     (
         "B1-R14 cross-profile depends_on in the manifest",
@@ -220,10 +283,10 @@ CASES = [
     ),
     (
         "REPO-R18 pinned tag drifts from the manifest",
-        patch(
+        reference(
             "compose/tv.yml",
-            "lscr.io/linuxserver/sonarr:4.0.15",
-            "lscr.io/linuxserver/sonarr:4.0.14",
+            "lscr.io/linuxserver/sonarr",
+            "lscr.io/linuxserver/sonarr:4.0.0@sha256:0000000000000000000000000000000000000000000000000000000000000000",
         ),
         "does not match the manifest",
     ),
@@ -255,22 +318,22 @@ CASES = [
     ),
     (
         "F2-R14 missing last_release",
-        patch("stack.toml", 'last_release = "2026-06-26"\n', ""),
+        field("sonarr", "last_release", ""),
         "missing required field 'last_release'",
     ),
     (
         "F2-R14 malformed last_release",
-        patch("stack.toml", 'last_release = "2026-07-22"', 'last_release = "22-07-2026"'),
+        field("prowlarr", "last_release", 'last_release = "22-07-2026"'),
         "last_release must be YYYY-MM-DD",
     ),
     (
         "F2-R14 last_release in the future",
-        patch("stack.toml", 'last_release = "2025-11-16"', 'last_release = "2099-01-01"'),
+        field("lidarr", "last_release", 'last_release = "2099-01-01"'),
         "is in the future",
     ),
     (
         "F2-R14 last_release that is not a real date",
-        patch("stack.toml", 'last_release = "2026-07-04"', 'last_release = "2026-02-31"'),
+        field("bazarr", "last_release", 'last_release = "2026-02-31"'),
         "is not a real date",
     ),
     (

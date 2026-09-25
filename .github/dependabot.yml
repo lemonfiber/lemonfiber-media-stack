@@ -8,13 +8,13 @@
 # `GOV-R12` for a pull request GitHub says `dependabot[bot]` opened (Q-R55).
 #
 # Not configured here, deliberately:
-#   - the container images. Every pin is written twice — `image: repo:tag` in a
-#     compose fragment and `image` + `tag` in stack.toml — and
+#   - the container images. Every pin is written twice — `image: repo:tag@digest`
+#     in a compose fragment and `image` + `tag` + `digest` in stack.toml — and
 #     validate_manifest.py fails the run when the two disagree. Dependabot's
 #     docker-compose manager edits the compose half and cannot reach the
-#     manifest, so each pull request it opened would arrive already red.
-#     `check_releases.py`, in validate.yml's `images` job, is what reports a pin
-#     falling behind upstream; moving one is a manifest change made by hand.
+#     manifest, so each pull request it opened would arrive already red. The
+#     `pins` workflow moves them instead, both halves at once, each to the
+#     newest release of its major.
 #   - `config/recyclarr/recyclarr.yml`. The `template:` names in it are
 #     Recyclarr's own, resolved against the TRaSH Guides at run time rather than
 #     pinned here, so there is no version in the file to advance.

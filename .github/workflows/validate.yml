@@ -44,6 +44,14 @@ jobs:
       - name: A forge is asked in one way, or not at all
         run: python3 scripts/forge.py --self-test
 
+      # How a registry is addressed and an index told from an image, and which
+      # tag `pins.py` would take and how it writes one into both files. Offline;
+      # the scheduled `pins` workflow is where they meet a registry.
+      - name: A registry is read, and a pin moved, as they should be
+        run: |
+          python3 scripts/registry.py --self-test
+          python3 scripts/pins.py --self-test
+
       # A pin that moved and a date that did not are both well-formed values, and
       # a service that left the stack leaves a manifest that simply no longer
       # mentions it. Only a diff can see either (F2-R13, F2-R14).
@@ -106,8 +114,18 @@ jobs:
       - name: The reading is proved before a registry is asked
         run: python3 scripts/check_images.py --self-test
 
-      - name: Every pin publishes linux/amd64 and linux/arm64
-        run: python3 scripts/check_images.py
+      # Each digest is an index publishing both architectures (F2-R6), and a
+      # pin this change moves is the index its tag names (E1-R1). The base per
+      # event, for the reason the licence step below gives.
+      - name: Every pinned index publishes linux/amd64 and linux/arm64
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+        run: |
+          printf '%s' "$BASE_SHA" | grep -Eq '^[0-9a-f]{40}$' || {
+            echo "::error::no base commit on this event; which pins moved cannot be established"
+            exit 1
+          }
+          python3 scripts/check_images.py --base "$BASE_SHA"
 
       # A template can resolve as Compose data and still be rejected by the
       # service that reads it, which would surface only at `up` time.

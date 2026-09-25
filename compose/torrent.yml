@@ -11,7 +11,7 @@ services:
     extends:
       file: compose/_common.yml
       service: defaults
-    image: qmcgaw/gluetun:v3.40.0
+    image: qmcgaw/gluetun:v3.41.3@sha256:fa19cc76b2af13d57a8d3dc3066f2ada061b1c761b8aecf989b3877c0486e027
     profiles: [torrent]
     cap_add: [NET_ADMIN]
     devices: ["/dev/net/tun:/dev/net/tun"]
@@ -55,7 +55,7 @@ services:
     extends:
       file: compose/_common.yml
       service: rootless
-    image: lscr.io/linuxserver/qbittorrent:5.0.3
+    image: lscr.io/linuxserver/qbittorrent:5.2.3@sha256:caab2ebce30799ab342c374ea268fef4ec063a8ec3733a4e5d4a8e856ee32ce8
     profiles: [torrent]
     environment:
       WEBUI_PORT: 8081

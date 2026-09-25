@@ -5,7 +5,7 @@ services:
     extends:
       file: compose/_common.yml
       service: rootless
-    image: lscr.io/linuxserver/radarr:5.14.0
+    image: lscr.io/linuxserver/radarr:5.28.0@sha256:c984533510abe0219a70e80d15bd0d212b7df21baa0913759c4ce6cc9092240b
     profiles: [movies]
     ports: ["127.0.0.1:7878:7878"]
     volumes:

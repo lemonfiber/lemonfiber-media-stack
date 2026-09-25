@@ -23,6 +23,8 @@ import sys
 import tempfile
 import tomllib
 
+from registry import pinned
+
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 
 
@@ -36,7 +38,7 @@ def manifest() -> dict:
 
 def pinned_image(service_id: str) -> str:
     service = next(s for s in manifest()["service"] if s["id"] == service_id)
-    return f"{service['image']}:{service['tag']}"
+    return pinned(service)
 
 
 def validate_caddyfile(path: pathlib.Path) -> tuple[bool, str]:

@@ -32,6 +32,8 @@ import subprocess
 import sys
 import tomllib
 
+from registry import DIGEST, pinned
+
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 
 # Interpolated into DATA_ROOT before resolving the model, so that "is this mount
@@ -75,7 +77,7 @@ ALLOWED_GRANTS = {"NET_ADMIN"}
 FLOATING_TAGS = {"latest", "stable", "edge", "nightly", "develop", "dev", "main", "master", "rolling"}
 
 SERVICE_REQUIRED = (
-    "id", "name", "profile", "image", "tag",
+    "id", "name", "profile", "image", "tag", "digest",
     "criticality", "license", "upstream", "last_release", "describes", "without_it",
 )
 SEMVER = re.compile(r"^\d+\.\d+\.\d+(?:[-+].*)?$")
@@ -417,9 +419,9 @@ def validate_service(service: dict, profile_ids: set[str], licences: set[str],
         "B1-R1",
     )
     report.check(
-        ":" not in str(service.get("image", "")),
+        ":" not in str(service.get("image", "")) and "@" not in str(service.get("image", "")),
         where,
-        "image must not carry a tag; use the separate `tag` field",
+        "image must not carry a tag or a digest; use the separate `tag` and `digest` fields",
     )
     tag = str(service.get("tag", ""))
     report.check(
@@ -428,6 +430,17 @@ def validate_service(service: dict, profile_ids: set[str], licences: set[str],
         f"floating tag {tag!r}",
         "E1-R1",
     )
+    # What runs. The tag is a label a publisher can move; the digest of the
+    # multi-architecture index cannot move, and is what Compose resolves. Whether
+    # it is an index, and the one the tag named, is asked of the registry by
+    # check_images.py; the shape is all an offline check can see.
+    if "digest" in service:
+        report.check(
+            bool(DIGEST.match(str(service["digest"]))),
+            where,
+            f"digest must be sha256: and 64 lowercase hex digits, got {service['digest']!r}",
+            "E1-R1",
+        )
     report.check(
         service.get("criticality") in CRITICALITIES,
         where,
@@ -769,7 +782,7 @@ def validate_parity(manifest: dict, model: dict, report: Report) -> None:
         spec, service = declared[sid], compose[sid]
         where = f"service {sid}"
 
-        expected_image = f"{spec.get('image')}:{spec.get('tag')}"
+        expected_image = pinned(spec)
         report.check(
             service.get("image") == expected_image,
             where,

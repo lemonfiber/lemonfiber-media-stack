@@ -10,7 +10,7 @@ services:
     extends:
       file: compose/_common.yml
       service: defaults
-    image: caddy:2.8.4
+    image: caddy:2.11.4@sha256:0c994536bddb66445885237f1a5dcc1916bccea922661c76b4e9fc24061f9b52
     profiles: [proxy]
     environment:
       # config/caddy/Caddyfile reads this. Without it every site address

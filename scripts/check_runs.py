@@ -52,6 +52,8 @@ import tomllib
 import urllib.error
 import urllib.request
 
+from registry import pinned
+
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 
 # Distinct from the project name a bare `docker compose up` would pick — the
@@ -170,7 +172,7 @@ def probe_of(service: dict) -> dict:
         "path": health.get("path", ""),
         "timeout_s": health.get("timeout_s", default_timeout),
         "settle_s": CONTAINER_SETTLE_S if kind == "container" else 0,
-        "image": f"{service['image']}:{service['tag']}",
+        "image": pinned(service),
     }
 
 
@@ -463,7 +465,7 @@ def run(profiles: list[str]) -> int:
         print(f"::error::profiles {profiles} hold no services")
         return 1
 
-    expected = {s["id"]: f"{s['image']}:{s['tag']}" for s in chosen}
+    expected = {s["id"]: pinned(s) for s in chosen}
     probes = [probe_of(service) for service in chosen]
     errors: list[str] = []
 

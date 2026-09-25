@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """The rules a *change* to stack.toml must satisfy, which only a diff can see.
 
-Two of them, and both are about a recorded fact going stale at the one moment it
-is cheapest to refresh:
+Three of them. The first two are about a recorded fact going stale at the one
+moment it is cheapest to refresh, and the third about a pin that says it moved
+and did not:
 
   pin moved, date not reviewed
       `last_release` is the latest release upstream had published when the pin
@@ -15,6 +16,14 @@ is cheapest to refresh:
       A service that leaves the stack has to say why and what took its place.
       `validate_manifest.py` holds the `[[removed]]` table to its shape; only
       the diff can see a service that vanished and left no entry at all.
+
+  tag moved, digest did not
+      The digest is what runs and the tag is what a reader is shown (`E1-R1`).
+      A change that advances the tag and keeps the digest reads as reviewed
+      and runs the previous build. A digest moving under an unchanged tag is
+      the other way round and is not a fault: publishers rebuild a release on
+      a patched base image and keep its tag, and that rebuild is taken with no
+      new date, because upstream released nothing.
 
 A pin that genuinely needs no new date — a registry re-tagging the same build,
 a tag corrected to the one already recorded — is re-affirmed by a trailer on the
@@ -64,6 +73,9 @@ REAFFIRMED = re.compile(r"^[ \t]*Pin-reviewed:[ \t]*(\S.*)$", re.IGNORECASE | re
 # nothing outside the characters a ref is spelled with can reach it at all.
 BASE_REF = re.compile(r"\A[0-9A-Za-z][0-9A-Za-z._/-]{0,254}\Z")
 
+# Two digests no registry published, for the self-test.
+DIGEST_A, DIGEST_B = (f"sha256:{char * 64}" for char in "ab")
+
 
 def pins(text: str) -> dict[str, dict[str, str]]:
     """What each service records about its pin, keyed by service id.
@@ -77,6 +89,7 @@ def pins(text: str) -> dict[str, dict[str, str]]:
         str(service.get("id")): {
             "image": str(service.get("image", "")),
             "tag": str(service.get("tag", "")),
+            "digest": str(service.get("digest", "")),
             "last_release": str(service.get("last_release", "")),
         }
         for service in manifest.get("service", [])
@@ -104,6 +117,22 @@ def bumped(before: dict[str, dict[str, str]], after: dict[str, dict[str, str]]) 
     }
 
 
+def repinned(before: dict[str, dict[str, str]], after: dict[str, dict[str, str]]) -> set[str]:
+    """Services whose pin this change moves in any part — image, tag or digest.
+
+    Wider than `bumped`: a digest moved under its tag is a different build of
+    the same release, which needs no date and does need the registry asked
+    whether the tag names it.
+    """
+    return {
+        sid
+        for sid, now in after.items()
+        if sid in before
+        and (now["image"], now["tag"], now.get("digest", ""))
+        != (before[sid]["image"], before[sid]["tag"], before[sid].get("digest", ""))
+    }
+
+
 def judge(
     before: dict[str, dict[str, str]],
     after: dict[str, dict[str, str]],
@@ -116,6 +145,16 @@ def judge(
     validate_manifest.py reports them all rather than stopping at the first.
     """
     faults = []
+
+    for sid in sorted(bumped(before, after)):
+        digest = before[sid].get("digest", "")
+        if digest and after[sid].get("digest", "") == digest:
+            faults.append(
+                f"service {sid}: the tag moved ({before[sid]['tag']} -> {after[sid]['tag']}) and the "
+                f"digest did not, so the manifest names a new version and runs the old build. The "
+                f"digest is the index the new tag resolves to; `scripts/pins.py --apply {sid}` "
+                f"writes both (E1-R1)"
+            )
 
     for sid in sorted(bumped(before, after)):
         if after[sid]["last_release"] != before[sid]["last_release"]:
@@ -307,6 +346,31 @@ def self_test() -> int:
             "lscr.io/linuxserver/sonarr:4.0.15 -> ghcr.io/elsewhere/sonarr:4.0.15",
         ),
         (
+            "a tag moved and its digest stayed where it was",
+            {**was, "sonarr": {**was["sonarr"], "digest": DIGEST_A}},
+            {**was, "sonarr": {**was["sonarr"], "digest": DIGEST_A,
+                               "tag": "4.0.16", "last_release": "2026-08-01"}},
+            set(),
+            set(),
+            "the digest did not",
+        ),
+        (
+            "a release rebuilt under its tag, taken by digest alone",
+            {**was, "sonarr": {**was["sonarr"], "digest": DIGEST_A}},
+            {**was, "sonarr": {**was["sonarr"], "digest": DIGEST_B}},
+            set(),
+            set(),
+            None,
+        ),
+        (
+            "digests written beside tags that did not move",
+            was,
+            {**was, "sonarr": {**was["sonarr"], "digest": DIGEST_A}},
+            set(),
+            set(),
+            None,
+        ),
+        (
             "a service removed with its reason recorded",
             was,
             {"lidarr": was["lidarr"]},
@@ -356,6 +420,12 @@ def self_test() -> int:
     )
 
     problems = judged_wrongly(cases) + base_refusals() + trailer_readings()
+
+    rebuilt = {**was, "sonarr": {**was["sonarr"], "digest": DIGEST_B}}
+    if repinned(was, rebuilt) != {"sonarr"} or bumped(was, rebuilt):
+        problems.append("a digest moved under its tag was not read as a repin that needs no date")
+    if repinned(was, was):
+        problems.append("a change that moved nothing was read as a repin")
 
     for problem in problems:
         print(f"::error::self-test: {problem}")
