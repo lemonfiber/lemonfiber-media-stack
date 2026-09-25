@@ -246,6 +246,14 @@ def validate_service_runtime(service: dict, where: str, report: Report) -> None:
         report.check(
             media_type in MEDIA_TYPES, where, f"unknown media type {media_type!r}"
         )
+    if "memory_mib" in service:
+        estimate = service["memory_mib"]
+        report.check(
+            isinstance(estimate, int) and not isinstance(estimate, bool) and estimate > 0,
+            where,
+            f"memory_mib must be a whole number of MiB above zero, not {estimate!r}",
+            "B1-R18",
+        )
 
 
 def validate_service_provides(service: dict, where: str, report: Report) -> None:
