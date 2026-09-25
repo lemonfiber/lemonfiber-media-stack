@@ -1,25 +1,23 @@
 # Homepage services.
 #
-# Two different URLs per entry, and the difference matters:
+# Up to two URLs per entry, and the difference matters:
 #
 #   href    where your browser goes. Admin services are bound to loopback, so
 #           their links only resolve on the machine running the stack.
 #           Household services use ${HOMEPAGE_VAR_LAN_HOST} so a phone on the
 #           sofa reaches them too.
-#   widget  where Homepage itself goes, over the Compose network by service
-#           name and container port.
+#   siteMonitor
+#           a reachability check Homepage makes over the Compose network, on an
+#           endpoint each service answers without a key.
 #
-# API keys arrive as HOMEPAGE_VAR_* environment variables and are empty until
-# the stack is seeded. A widget with no key simply shows no data; it does not
-# break the page. Never paste a key into this file — it is committed.
+# No panel holds a credential. This page is published to the LAN, and every key
+# a widget would read figures with administers the service it belongs to
+# (C6-R20). Never paste a key into this file — it is committed.
 #
 # A group whose services aren't in the running form just shows them as down.
 # That is correct: the form is the statement of what should be running.
 
 - Watch:
-    # A link and a reachability check, with no widget. Homepage's Jellyfin
-    # widget signs its requests with an API key, and a Jellyfin API key
-    # administers the whole server. `/health` answers without one.
     - Jellyfin:
         icon: jellyfin.png
         href: http://{{HOMEPAGE_VAR_LAN_HOST}}:8096
@@ -30,10 +28,7 @@
         icon: overseerr.png
         href: http://{{HOMEPAGE_VAR_LAN_HOST}}:5055
         description: Ask for something
-        widget:
-          type: overseerr
-          url: http://seerr:5055
-          key: "{{HOMEPAGE_VAR_SEERR_KEY}}"
+        siteMonitor: http://seerr:5055/api/v1/status
 
 - Library:
     - Calibre-Web:
@@ -45,56 +40,38 @@
         icon: audiobookshelf.png
         href: http://{{HOMEPAGE_VAR_LAN_HOST}}:13378
         description: Audiobooks
-        widget:
-          type: audiobookshelf
-          url: http://audiobookshelf:80
-          key: "{{HOMEPAGE_VAR_AUDIOBOOKSHELF_KEY}}"
+        siteMonitor: http://audiobookshelf:80/healthcheck
 
-    # Link only. Homepage's Navidrome widget signs in with an account rather
-    # than an API key, and this service declares no `api` for seeding to write
-    # one from — a widget here would ask with an empty credential and be
-    # refused, which is the panel that shows nothing at all.
     - Navidrome:
         icon: navidrome.png
         href: http://{{HOMEPAGE_VAR_LAN_HOST}}:4533
         description: Music
+        siteMonitor: http://navidrome:4533/ping
 
 - Automation:
     - Sonarr:
         icon: sonarr.png
         href: http://localhost:8989
         description: Television
-        widget:
-          type: sonarr
-          url: http://sonarr:8989
-          key: "{{HOMEPAGE_VAR_SONARR_KEY}}"
+        siteMonitor: http://sonarr:8989/ping
 
     - Radarr:
         icon: radarr.png
         href: http://localhost:7878
         description: Film
-        widget:
-          type: radarr
-          url: http://radarr:7878
-          key: "{{HOMEPAGE_VAR_RADARR_KEY}}"
+        siteMonitor: http://radarr:7878/ping
 
     - Lidarr:
         icon: lidarr.png
         href: http://localhost:8686
         description: Music
-        widget:
-          type: lidarr
-          url: http://lidarr:8686
-          key: "{{HOMEPAGE_VAR_LIDARR_KEY}}"
+        siteMonitor: http://lidarr:8686/ping
 
     - Bazarr:
         icon: bazarr.png
         href: http://localhost:6767
         description: Subtitles
-        widget:
-          type: bazarr
-          url: http://bazarr:6767
-          key: "{{HOMEPAGE_VAR_BAZARR_KEY}}"
+        siteMonitor: http://bazarr:6767/api/system/ping
 
     - Bindery:
         icon: mdi-book-open-variant
@@ -106,10 +83,7 @@
         icon: prowlarr.png
         href: http://localhost:9696
         description: Indexers
-        widget:
-          type: prowlarr
-          url: http://prowlarr:9696
-          key: "{{HOMEPAGE_VAR_PROWLARR_KEY}}"
+        siteMonitor: http://prowlarr:9696/ping
 
     - NZBHydra2:
         icon: nzbhydra2.png
@@ -120,19 +94,14 @@
         icon: sabnzbd.png
         href: http://localhost:8085
         description: Usenet downloads
-        widget:
-          type: sabnzbd
-          url: http://sabnzbd:8080
-          key: "{{HOMEPAGE_VAR_SABNZBD_KEY}}"
+        siteMonitor: http://sabnzbd:8080/api?mode=version
 
     - qBittorrent:
         icon: qbittorrent.png
         href: http://localhost:8081
         # Reached through Gluetun: qBittorrent has no network namespace of its
-        # own, so on the Compose network it answers on the tunnel's name.
+        # own, so on the Compose network it answers on the tunnel's name. Every
+        # path it serves asks for a sign-in and answers 401 without one, which
+        # Homepage counts as up: the server answered.
         description: Torrents, via the VPN
-        widget:
-          type: qbittorrent
-          url: http://gluetun:8081
-          username: "{{HOMEPAGE_VAR_QBITTORRENT_USER}}"
-          password: "{{HOMEPAGE_VAR_QBITTORRENT_PASS}}"
+        siteMonitor: http://gluetun:8081/

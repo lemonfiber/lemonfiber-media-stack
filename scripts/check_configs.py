@@ -16,6 +16,8 @@ stack.toml so this cannot drift from what is deployed.
 from __future__ import annotations
 
 import argparse
+import json
+import os
 import pathlib
 import re
 import subprocess
@@ -139,80 +141,80 @@ def validate_sabnzbd_categories(path: pathlib.Path) -> tuple[bool, str]:
     return True, ""
 
 
-# The credentials the dashboard reads that are not a service's API key: the account
-# name and password for the one service reached by neither.
-DASHBOARD_NOT_A_KEY = {"QBITTORRENT_USERNAME", "QBITTORRENT_PASSWORD"}
+# Everything the dashboard's container may be given in its environment, and why.
+# It is published to the LAN, so it holds no credential of any service (C6-R20):
+# every key a panel could read figures with administers the service it belongs
+# to. A name outside this list is refused whatever it holds, because a list of
+# what is allowed cannot miss a credential spelled in a way nobody thought of.
+DASHBOARD_ENVIRONMENT = {
+    "HOMEPAGE_ALLOWED_HOSTS": "the Host headers it answers for",
+    "HOMEPAGE_VAR_LAN_HOST": "the address the household links point at",
+    "TZ": "the time zone every service shares",
+    "PUID": "the user it runs as",
+    "PGID": "the group it runs as",
+}
 
-# A dashboard variable that names no service — the address the panels link to.
-DASHBOARD_NOT_A_SERVICE = {"HOMEPAGE_VAR_LAN_HOST"}
+# The `{{...}}` substitutions services.yaml may name: the one variable above that
+# reaches a panel. Homepage also reads `HOMEPAGE_FILE_*`, a file's contents,
+# which is a credential delivered another way and is refused like one.
+DASHBOARD_SUBSTITUTIONS = {"HOMEPAGE_VAR_LAN_HOST"}
+SUBSTITUTION = re.compile(r"\{\{\s*(HOMEPAGE_[A-Z]+_\w+)\s*\}\}", re.ASCII)
 
-# The API kinds whose key the dashboard never holds. A Jellyfin API key has no
-# scope: it administers the whole server, and the dashboard is published to the
-# LAN.
-DASHBOARD_NEVER_HOLDS = {"jellyfin"}
+# The fields a Homepage widget carries a credential in. A comment line starts
+# with `#` and does not match.
+CREDENTIAL_FIELD = re.compile(
+    r"^[ \t-]*(key|api_?key|password|username|user|token|secret)[ \t]*:", re.IGNORECASE | re.MULTILINE
+)
 
 
-def validate_dashboard_keys(
-    services_yaml: pathlib.Path, dash_yml: pathlib.Path
-) -> tuple[bool, str]:
-    """Every credential a widget asks for is one something publishes.
+def judge_dashboard(environment: dict, services_yaml: str) -> tuple[bool, str]:
+    """Whether the dashboard holds a credential, from what it is given and what it asks.
 
-    A widget reads `{{HOMEPAGE_VAR_X}}`, Compose maps that to `${Y}`, and seeding
-    writes `Y` from the service it read it off. Three files, and a break anywhere
-    along the chain shows up as a panel displaying nothing at all — which looks
-    exactly like a service with nothing to report.
-
-    So: every variable the widget config names must be mapped, and every mapping must
-    name a credential something can write — a service that declares an `api` in the
-    manifest, or one of the two halves of the one credential that is not a key. And
-    no mapping may hand the dashboard a key of an API kind in `DASHBOARD_NEVER_HOLDS`.
+    Pure, so the self-test drives it with a model nobody resolved. Three ways in,
+    each refused: a name in the container's environment the list above does not
+    carry, a substitution in services.yaml other than the address, and a
+    credential field in a panel, whether it holds a variable or a pasted value.
     """
-    asked = {
-        name[2:-2]
-        for name in re.findall(r"\{\{HOMEPAGE_VAR_[A-Z_]+\}\}", services_yaml.read_text(encoding="utf-8"))
-    }
-    mapped = dict(
-        re.findall(r"(HOMEPAGE_VAR_[A-Z_]+):\s*\$\{([A-Z_]+)", dash_yml.read_text(encoding="utf-8"))
-    )
-
-    administrative = {
-        service["id"].upper().replace("-", "_") + "_API_KEY"
-        for service in manifest()["service"]
-        if service.get("api", {}).get("kind") in DASHBOARD_NEVER_HOLDS
-    }
-    held = sorted(source for source in mapped.values() if source in administrative)
-    if held:
+    given = sorted(set(environment) - set(DASHBOARD_ENVIRONMENT))
+    if given:
         return False, (
-            f"the dashboard is handed {', '.join(held)}, a key that administers the whole "
-            "server it belongs to; a LAN-facing dashboard holds no such key"
+            f"the dashboard is handed {', '.join(given)}. It is published to the LAN and holds "
+            "no credential (C6-R20); add a name to DASHBOARD_ENVIRONMENT only for what is not one"
         )
-
-    unmapped = sorted(asked - set(mapped) - DASHBOARD_NOT_A_SERVICE)
-    if unmapped:
+    named = sorted(set(SUBSTITUTION.findall(services_yaml)) - DASHBOARD_SUBSTITUTIONS)
+    if named:
+        return False, f"a panel asks for {', '.join(named)}; the dashboard holds no credential (C6-R20)"
+    fields = sorted({field.lower() for field in CREDENTIAL_FIELD.findall(services_yaml)})
+    if fields:
         return False, (
-            f"the dashboard asks for {', '.join(unmapped)}, which nothing maps — "
-            "its panel would show nothing at all"
-        )
-
-    keyed = {
-        service["id"].upper().replace("-", "_") + "_API_KEY"
-        for service in manifest()["service"]
-        if service.get("api")
-    }
-    unwritable = sorted(
-        source
-        for name, source in mapped.items()
-        if name in asked
-        and source not in keyed
-        and source not in DASHBOARD_NOT_A_KEY
-        and name not in DASHBOARD_NOT_A_SERVICE
-    )
-    if unwritable:
-        return False, (
-            f"the dashboard reads {', '.join(unwritable)}, which no service declares an "
-            "api to write — its panel would ask with an empty credential and be refused"
+            f"a panel carries {', '.join(repr(field) for field in fields)}, a credential field; "
+            "the dashboard holds no credential (C6-R20)"
         )
     return True, ""
+
+
+def dashboard_environment() -> tuple[dict | None, str]:
+    """The environment Compose gives the dashboard's container, as resolved.
+
+    The resolved model rather than dash.yml, so an `env_file`, an `extends` or
+    an anchor that brings a variable in is seen the way Docker will run it.
+    """
+    env = {
+        **os.environ,
+        "COMPOSE_PROFILES": "dash",
+        "VPN_PROVIDER": os.environ.get("VPN_PROVIDER", "validation-placeholder"),
+        "WIREGUARD_PRIVATE_KEY": os.environ.get("WIREGUARD_PRIVATE_KEY", "validation-placeholder"),
+    }
+    result = subprocess.run(
+        ["docker", "compose", "config", "--format", "json"],
+        cwd=ROOT, env=env, capture_output=True, text=True, check=False,
+    )
+    if result.returncode != 0:
+        return None, f"`docker compose config` failed: {result.stderr.strip()[-300:]}"
+    service = json.loads(result.stdout).get("services", {}).get("homepage")
+    if service is None:
+        return None, "the dash profile resolves with no homepage service"
+    return service.get("environment") or {}, ""
 
 
 def validate_recyclarr(config: pathlib.Path, includes: pathlib.Path) -> tuple[bool, str]:
@@ -248,13 +250,28 @@ def reject_or_fail(label: str, ok: bool, error: str) -> bool:
     return True
 
 
-def dashboard_verdict(services_yaml: str, dash_yml: str) -> tuple[bool, str]:
-    """`validate_dashboard_keys` on a widget file and a mapping written for the case."""
-    with tempfile.TemporaryDirectory() as tmp:
-        widgets, mapping = pathlib.Path(tmp) / "services.yaml", pathlib.Path(tmp) / "dash.yml"
-        widgets.write_text(services_yaml, encoding="utf-8")
-        mapping.write_text(dash_yml, encoding="utf-8")
-        return validate_dashboard_keys(widgets, mapping)
+def dashboard_cases_hold() -> bool:
+    """Every way a credential reaches the dashboard refused, and the sound shape accepted."""
+    allowed = dict.fromkeys(DASHBOARD_ENVIRONMENT, "x")
+    panel = "- Watch:\n    - Sonarr:\n        href: http://{{HOMEPAGE_VAR_LAN_HOST}}:8989\n"
+    for label, environment, services_yaml in (
+        ("a service's API key in its environment", {**allowed, "SONARR_API_KEY": "k"}, panel),
+        ("a mapped panel variable", {**allowed, "HOMEPAGE_VAR_JELLYFIN_KEY": ""}, panel),
+        ("a download client's password", {**allowed, "QBITTORRENT_PASSWORD": "p"}, panel),
+        ("a panel naming a variable", allowed, panel + "        widget:\n          key: \"{{HOMEPAGE_VAR_SEERR_KEY}}\"\n"),
+        ("a panel reading a file", allowed, panel + "        widget:\n          url: \"{{HOMEPAGE_FILE_TOKEN}}\"\n"),
+        ("a key pasted into a panel", allowed, panel + "        widget:\n          key: 0123abcd\n"),
+        ("a sign-in pasted into a panel", allowed, panel + "        widget:\n          username: admin\n"),
+    ):
+        ok, error = judge_dashboard(environment, services_yaml)
+        if not reject_or_fail(label, ok, error):
+            return False
+    ok, error = judge_dashboard(allowed, panel + "        # the key: is not here\n        siteMonitor: http://sonarr:8989/ping\n")
+    if not ok:
+        print(f"::error::self-test: the dashboard as shipped was refused: {error}")
+        return False
+    print("  ok   a dashboard holding nothing accepted")
+    return True
 
 
 def self_test() -> int:
@@ -291,16 +308,7 @@ def self_test() -> int:
         print("::error::self-test: a sabnzbd.ini with no music category was accepted")
         return 1
     print(f"  ok   sabnzbd.ini missing a category rejected: {error[:80]}")
-    # A widget asking for a key, and a mapping that never heard of it.
-    ok, error = dashboard_verdict("key: {{HOMEPAGE_VAR_NOBODY_KEY}}\n", "services:\n  homepage:\n")
-    if not reject_or_fail("a widget variable nothing maps", ok, error):
-        return 1
-    # The Jellyfin widget as it was, and the mapping that fed it.
-    ok, error = dashboard_verdict(
-        "key: {{HOMEPAGE_VAR_JELLYFIN_KEY}}\n",
-        "services:\n  homepage:\n    environment:\n      HOMEPAGE_VAR_JELLYFIN_KEY: ${JELLYFIN_API_KEY:-}\n",
-    )
-    if not reject_or_fail("the dashboard handed Jellyfin's key", ok, error):
+    if not dashboard_cases_hold():
         return 1
     with tempfile.TemporaryDirectory() as tmp:
         twice = pathlib.Path(tmp) / "recyclarr.yml"
@@ -380,17 +388,17 @@ def main() -> int:
         return 1
     print("  ok   config/sabnzbd/sabnzbd.ini holds a category for every media type")
 
-    ok, error = validate_dashboard_keys(
-        ROOT / "config" / "homepage" / "services.yaml",
-        ROOT / "compose" / "dash.yml",
+    environment, problem = dashboard_environment()
+    ok, error = (False, problem) if environment is None else judge_dashboard(
+        environment, (ROOT / "config" / "homepage" / "services.yaml").read_text(encoding="utf-8")
     )
     if not checked(
-        "config/homepage/services.yaml",
+        "compose/dash.yml and config/homepage/services.yaml",
         ok,
         error,
-        "The panel would be blank, which reads the same as a service with nothing "
-        "to report.",
-        "every dashboard widget asks with a credential something publishes",
+        "The dashboard is published to the LAN, and a credential in it administers the "
+        "service it belongs to.",
+        "the dashboard holds no credential",
     ):
         return 1
 
