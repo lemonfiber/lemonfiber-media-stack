@@ -4,12 +4,20 @@
 name: sonar
 on:
   pull_request:
+  # A merge queue asks for `gate / gate` again on its own branch, and a context
+  # that never reports there is a wait the queue ends by dropping the pull
+  # request. The shared gate runs on this event rather than skipping: it reads
+  # the new-issue count of every pull request in the batch and the open count
+  # against the project, and refuses what it cannot read. `SonarCloud Code
+  # Analysis` is not required on `main`, because the app that posts it never
+  # posts on a queue's branch; this gate is what holds Q-R64.
+  merge_group:
 permissions:
   contents: read
   pull-requests: write
 jobs:
   gate:
-    uses: lemonfiber/spec/.github/workflows/sonar-gate.yml@719d8380ff919dccc74d056cd4e1b32153ca08a0 # v1.0.14
+    uses: lemonfiber/spec/.github/workflows/sonar-gate.yml@f7ef911f4276d09240148d0c5ff5a18d9534497d # v1.0.15
     with:
       # Named, because the default is <owner>_<repo> and this project is not called
       # that. `lemonfiber_lemonfiber-media-stack` resolves to nothing, and a key that
