@@ -146,6 +146,11 @@ DASHBOARD_NOT_A_KEY = {"QBITTORRENT_USERNAME", "QBITTORRENT_PASSWORD"}
 # A dashboard variable that names no service — the address the panels link to.
 DASHBOARD_NOT_A_SERVICE = {"HOMEPAGE_VAR_LAN_HOST"}
 
+# The API kinds whose key the dashboard never holds. A Jellyfin API key has no
+# scope: it administers the whole server, and the dashboard is published to the
+# LAN.
+DASHBOARD_NEVER_HOLDS = {"jellyfin"}
+
 
 def validate_dashboard_keys(
     services_yaml: pathlib.Path, dash_yml: pathlib.Path
@@ -159,7 +164,8 @@ def validate_dashboard_keys(
 
     So: every variable the widget config names must be mapped, and every mapping must
     name a credential something can write — a service that declares an `api` in the
-    manifest, or one of the two halves of the one credential that is not a key.
+    manifest, or one of the two halves of the one credential that is not a key. And
+    no mapping may hand the dashboard a key of an API kind in `DASHBOARD_NEVER_HOLDS`.
     """
     asked = {
         name[2:-2]
@@ -168,6 +174,18 @@ def validate_dashboard_keys(
     mapped = dict(
         re.findall(r"(HOMEPAGE_VAR_[A-Z_]+):\s*\$\{([A-Z_]+)", dash_yml.read_text(encoding="utf-8"))
     )
+
+    administrative = {
+        service["id"].upper().replace("-", "_") + "_API_KEY"
+        for service in manifest()["service"]
+        if service.get("api", {}).get("kind") in DASHBOARD_NEVER_HOLDS
+    }
+    held = sorted(source for source in mapped.values() if source in administrative)
+    if held:
+        return False, (
+            f"the dashboard is handed {', '.join(held)}, a key that administers the whole "
+            "server it belongs to; a LAN-facing dashboard holds no such key"
+        )
 
     unmapped = sorted(asked - set(mapped) - DASHBOARD_NOT_A_SERVICE)
     if unmapped:
@@ -230,6 +248,15 @@ def reject_or_fail(label: str, ok: bool, error: str) -> bool:
     return True
 
 
+def dashboard_verdict(services_yaml: str, dash_yml: str) -> tuple[bool, str]:
+    """`validate_dashboard_keys` on a widget file and a mapping written for the case."""
+    with tempfile.TemporaryDirectory() as tmp:
+        widgets, mapping = pathlib.Path(tmp) / "services.yaml", pathlib.Path(tmp) / "dash.yml"
+        widgets.write_text(services_yaml, encoding="utf-8")
+        mapping.write_text(dash_yml, encoding="utf-8")
+        return validate_dashboard_keys(widgets, mapping)
+
+
 def self_test() -> int:
     """Every guard here refuses the shape that actually shipped."""
     with tempfile.TemporaryDirectory() as tmp:
@@ -264,14 +291,16 @@ def self_test() -> int:
         print("::error::self-test: a sabnzbd.ini with no music category was accepted")
         return 1
     print(f"  ok   sabnzbd.ini missing a category rejected: {error[:80]}")
-    with tempfile.TemporaryDirectory() as tmp:
-        widgets = pathlib.Path(tmp) / "services.yaml"
-        mapping = pathlib.Path(tmp) / "dash.yml"
-        # A widget asking for a key, and a mapping that never heard of it.
-        widgets.write_text("key: {{HOMEPAGE_VAR_NOBODY_KEY}}\n", encoding="utf-8")
-        mapping.write_text("services:\n  homepage:\n", encoding="utf-8")
-        ok, error = validate_dashboard_keys(widgets, mapping)
+    # A widget asking for a key, and a mapping that never heard of it.
+    ok, error = dashboard_verdict("key: {{HOMEPAGE_VAR_NOBODY_KEY}}\n", "services:\n  homepage:\n")
     if not reject_or_fail("a widget variable nothing maps", ok, error):
+        return 1
+    # The Jellyfin widget as it was, and the mapping that fed it.
+    ok, error = dashboard_verdict(
+        "key: {{HOMEPAGE_VAR_JELLYFIN_KEY}}\n",
+        "services:\n  homepage:\n    environment:\n      HOMEPAGE_VAR_JELLYFIN_KEY: ${JELLYFIN_API_KEY:-}\n",
+    )
+    if not reject_or_fail("the dashboard handed Jellyfin's key", ok, error):
         return 1
     with tempfile.TemporaryDirectory() as tmp:
         twice = pathlib.Path(tmp) / "recyclarr.yml"
