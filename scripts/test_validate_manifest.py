@@ -84,6 +84,16 @@ CASES = [
         "servarr api.version must be",
     ),
     (
+        "a memory estimate of nothing",
+        patch("stack.toml", "memory_mib = 600\n", "memory_mib = 0\n"),
+        "memory_mib must be a whole number",
+    ),
+    (
+        "a memory estimate that is not a number",
+        patch("stack.toml", "memory_mib = 600\n", 'memory_mib = "600"\n'),
+        "memory_mib must be a whole number",
+    ),
+    (
         "a capability in a plugin's namespace on a bundled service",
         patch("stack.toml", 'provides = ["download.torrent"]', 'provides = ["qbittorrent:torrent"]'),
         "is not a core name",
