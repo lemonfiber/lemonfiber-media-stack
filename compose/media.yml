@@ -11,7 +11,7 @@ services:
     extends:
       file: compose/_common.yml
       service: defaults
-    image: jellyfin/jellyfin:10.10.3
+    image: jellyfin/jellyfin:10.11.11@sha256:aefb67e6a7ff1debdd154a78a7bbb780fd0c873d8639210a7f6a2016ad2b35db
     profiles: [media]
     # The official image takes a uid:gid pair rather than PUID/PGID.
     user: "${PUID:-1000}:${PGID:-1000}"
@@ -31,7 +31,7 @@ services:
     extends:
       file: compose/_common.yml
       service: defaults
-    image: ghcr.io/seerr-team/seerr:v3.3.0
+    image: ghcr.io/seerr-team/seerr:v3.4.1@sha256:f4768de5f616248d723e05891f3345a1402123775d03bf0890dbfedc0831bda1
     profiles: [media]
     # The image bakes in `node:node` and documents no PUID pair. That fixed uid
     # owns nothing on the host, so its bind-mounted config is unwritable on
@@ -50,7 +50,7 @@ services:
     extends:
       file: compose/_common.yml
       service: rootless
-    image: crocodilestick/calibre-web-automated:V3.0.4
+    image: crocodilestick/calibre-web-automated:V3.1.4@sha256:577e846f104fd21453ef306eefb4a95dd95b3b9ddd2463a150944494284da0fd
     profiles: [media]
     ports: ["${LAN_BIND:-0.0.0.0}:8083:8083"]
     volumes:
@@ -64,7 +64,7 @@ services:
     extends:
       file: compose/_common.yml
       service: defaults
-    image: ghcr.io/advplyr/audiobookshelf:2.17.7
+    image: ghcr.io/advplyr/audiobookshelf:2.36.1@sha256:3528a93b6442ffe54bd46771bbbab7c97084e1101071586d9dc2254f30bb4358
     profiles: [media]
     # The container serves on 80; 13378 is the conventional host port.
     ports: ["${LAN_BIND:-0.0.0.0}:13378:80"]
@@ -77,7 +77,7 @@ services:
     extends:
       file: compose/_common.yml
       service: defaults
-    image: ghcr.io/navidrome/navidrome:0.64.0
+    image: ghcr.io/navidrome/navidrome:0.64.2@sha256:38dc2727bfcfd5ede290f8ada114fc90368146f265ae4701ddddbcbe2a44ee52
     profiles: [media]
     # No PUID/PGID pair is documented: the image takes a uid:gid instead, and
     # runs as root when given neither. config/navidrome/ is shipped for the same

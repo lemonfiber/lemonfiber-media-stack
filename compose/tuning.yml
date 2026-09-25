@@ -10,7 +10,7 @@ services:
     extends:
       file: compose/_common.yml
       service: defaults
-    image: ghcr.io/recyclarr/recyclarr:8.7.1
+    image: ghcr.io/recyclarr/recyclarr:8.7.2@sha256:6e69e009e1cd7493ff6093e8e187b5d3788c75b4a2c0c5127b6a1beda1c19728
     profiles: [tuning]
     # Upstream documents a uid:gid pair rather than PUID/PGID.
     user: "${PUID:-1000}:${PGID:-1000}"
@@ -29,7 +29,7 @@ services:
     extends:
       file: compose/_common.yml
       service: rootless
-    image: ghcr.io/hotio/unpackerr:release-0.14.5
+    image: ghcr.io/hotio/unpackerr:release-0.15.2@sha256:724c702e81727e3d90c42cf2b3d900674203906a6d135ba07416c9a3f9f67fbb
     profiles: [tuning]
     environment:
       UMASK: ${UMASK:-002}

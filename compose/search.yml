@@ -6,7 +6,7 @@ services:
     extends:
       file: compose/_common.yml
       service: rootless
-    image: lscr.io/linuxserver/prowlarr:2.5.2
+    image: lscr.io/linuxserver/prowlarr:2.6.5@sha256:f2b26429893d4c4cb71941b7ee50b1bdecd9d5f9f9e02d5410615e9f4f7c8d95
     profiles: [search]
     ports: ["127.0.0.1:9696:9696"]
     volumes:
@@ -17,7 +17,7 @@ services:
     extends:
       file: compose/_common.yml
       service: defaults
-    image: ghcr.io/flaresolverr/flaresolverr:v3.5.0
+    image: ghcr.io/flaresolverr/flaresolverr:v3.5.2@sha256:c80ae007ce2ccdcd217a12426e4f039ef763ff90738c808d38810c3e59323767
     profiles: [search]
     environment:
       LOG_LEVEL: ${FLARESOLVERR_LOG_LEVEL:-info}
@@ -28,7 +28,7 @@ services:
     extends:
       file: compose/_common.yml
       service: rootless
-    image: lscr.io/linuxserver/nzbhydra2:8.9.0
+    image: lscr.io/linuxserver/nzbhydra2:8.9.0@sha256:3cdcea6fc97861bb30ef2551884f1c371e08a884c2f75230c7a3a2e14c5f0516
     profiles: [search]
     ports: ["127.0.0.1:5076:5076"]
     volumes:

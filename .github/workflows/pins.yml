@@ -1,0 +1,241 @@
+# Each pin on the newest release of its own major.
+#
+# Every image is pinned by the digest of its multi-architecture index, with the
+# tag beside it for reading (`E1-R1`), and written twice: `tag` and `digest` in
+# stack.toml, `image:tag@digest` in the service's compose fragment. Dependabot's
+# docker-compose manager edits the second and cannot reach the first, and
+# validate_manifest.py fails the run when the two disagree — so the stack moves
+# its own pins, here.
+#
+# `scripts/pins.py` finds, per service, the newest tag the registry publishes in
+# the current tag's spelling and major, and the digest of the index it names. A
+# major is never crossed: that is the operator's decision, and a line of the
+# stack is split only on one. A digest that moved under an unchanged tag is a
+# rebuild of the same release on a patched base, and is taken the same way.
+#
+# One pull request per service, so a bump that fails `validate` holds back that
+# service and nothing else, and says which one. Each is armed to merge on its
+# own once every required check is green — the images and licence checks, and
+# the profile it belongs to started, answering and taken down. A red one stays
+# open and red, naming what it broke.
+name: pins
+
+on:
+  schedule:
+    # Monday morning, Amsterdam, after the weekend's upstream releases.
+    - cron: "30 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  # Two runs would each move the same branches under the other.
+  group: pins
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      services: ${{ steps.plan.outputs.services }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Offline first: which tag is newest, and how it is written into both
+      # files, are judgements a registry answering cannot prove.
+      - name: The choice and the rewrite are proved before a registry is asked
+        run: |
+          python3 scripts/registry.py --self-test
+          python3 scripts/pins.py --self-test
+
+      - name: Which pins would move
+        id: plan
+        env:
+          # Read-only, and used for the forge's rate limit when upstream's
+          # latest release date is read.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          python3 scripts/pins.py --plan > plan.json
+          services="$(python3 -c 'import json; print(json.dumps([m["id"] for m in json.load(open("plan.json"))]))')"
+          echo "services=${services}" >> "$GITHUB_OUTPUT"
+          python3 - <<'PY' >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
+          import json
+
+          moves = json.load(open("plan.json"))
+          print(f"## {len(moves)} pin(s) to move\n")
+          for move in moves:
+              print(f"- `{move['id']}` {move['from']['tag']} -> {move['to']['tag']} `{move['to']['digest'][:19]}…`")
+          PY
+
+  bump:
+    needs: plan
+    if: ${{ needs.plan.outputs.services != '[]' && needs.plan.outputs.services != '' }}
+    runs-on: ubuntu-latest
+    strategy:
+      # One service's registry or branch failing says nothing about the others.
+      fail-fast: false
+      matrix:
+        service: ${{ fromJSON(needs.plan.outputs.services) }}
+    steps:
+      # `main` requires signed commits and only commits GitHub makes are signed,
+      # and a pull request opened with `GITHUB_TOKEN` triggers no workflows — so
+      # its required checks would never report and it could never merge. Both
+      # reasons want an app token.
+      - name: Mint a token that can open a pull request here
+        id: token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.RELEASE_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_APP_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Move the pin
+        id: move
+        env:
+          SERVICE: ${{ matrix.service }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          # The service id comes from the plan, which read it from stack.toml;
+          # held to an id's shape before it reaches a command line or a ref.
+          printf '%s' "$SERVICE" | grep -Eq '^[a-z0-9][a-z0-9-]{0,62}$' || {
+            echo "::error::'${SERVICE}' is not a service id"
+            exit 1
+          }
+          # Outside the checkout, so the commit below cannot carry it.
+          python3 scripts/pins.py --apply "$SERVICE" > "$RUNNER_TEMP/applied.json"
+          cat "$RUNNER_TEMP/applied.json"
+          if git diff --quiet; then
+            echo "moved=no" >> "$GITHUB_OUTPUT"
+            echo "::notice::${SERVICE} no longer moves; the registry answered differently since the plan."
+            exit 0
+          fi
+          echo "moved=yes" >> "$GITHUB_OUTPUT"
+
+      # The same offline gate the pull request will meet, so a rewrite that
+      # breaks parity is reported here rather than as a red pull request.
+      - name: The manifest and the compose model still agree
+        if: steps.move.outputs.moved == 'yes'
+        run: python3 scripts/validate_manifest.py
+
+      - name: Put the change on the branch, signed, and open or update its pull request
+        if: steps.move.outputs.moved == 'yes'
+        env:
+          GH_TOKEN: ${{ steps.token.outputs.token }}
+          SERVICE: ${{ matrix.service }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          branch="chore/pin-${SERVICE}"
+          staging="${branch}-staging"
+          # The commit the files were read from, not whatever `main` is now: the
+          # change below carries whole files, and laid onto a later `main` they
+          # would undo whatever landed in between.
+          base="$(git rev-parse HEAD)"
+
+          # Built on a scratch ref and moved across in one step. Resetting the
+          # pull request's own branch to `main` first would leave it briefly
+          # holding no commits, and GitHub closes a pull request in that state.
+          if gh api "repos/${REPO}/git/ref/heads/${staging}" >/dev/null 2>&1; then
+            gh api --method PATCH "repos/${REPO}/git/refs/heads/${staging}" \
+              -F sha="${base}" -F force=true >/dev/null
+          else
+            gh api --method POST "repos/${REPO}/git/refs" \
+              -f ref="refs/heads/${staging}" -f sha="${base}" >/dev/null
+          fi
+
+          python3 - "$REPO" "$staging" "$base" "$RUNNER_TEMP" <<'PY' > "$RUNNER_TEMP/request.json"
+          import base64
+          import json
+          import subprocess
+          import sys
+
+          repo, branch, base, scratch = sys.argv[1:5]
+          applied = json.load(open(f"{scratch}/applied.json"))
+          move = applied["moves"][0]
+          reviewed = [f"Pin-reviewed: {sid}" for sid in applied["reviewed"]]
+          changed = subprocess.run(
+              ["git", "diff", "--name-only"], capture_output=True, text=True, check=True
+          ).stdout.split()
+          was, now = move["from"], move["to"]
+          if was["tag"] == now["tag"]:
+              headline = f"chore(pins): {move['id']} {now['tag']} rebuilt"
+              said = (
+                  f"{move['image']}:{now['tag']} was re-published, and its index is now "
+                  f"{now['digest']}. The release is the same; the build is newer."
+              )
+          else:
+              headline = f"chore(pins): {move['id']} {was['tag']} -> {now['tag']}"
+              said = (
+                  f"{move['image']}:{now['tag']} is the newest release in the major "
+                  f"{was['tag']} belongs to, and its index is {now['digest']}."
+              )
+          body = "\n".join([
+              said,
+              "",
+              *reviewed,
+              "Spec: E1-R1, F2-R14",
+              "",
+              "Signed-off-by: lemonfiber release <release@lemonfiber.app>",
+          ])
+          print(json.dumps({
+              "query": (
+                  "mutation($input: CreateCommitOnBranchInput!) "
+                  "{ createCommitOnBranch(input: $input) { commit { oid } } }"
+              ),
+              "variables": {"input": {
+                  "branch": {"repositoryNameWithOwner": repo, "branchName": branch},
+                  "expectedHeadOid": base,
+                  "message": {"headline": headline, "body": body},
+                  "fileChanges": {"additions": [
+                      {"path": name, "contents": base64.b64encode(open(name, "rb").read()).decode()}
+                      for name in changed
+                  ]},
+              }},
+          }))
+          with open(f"{scratch}/headline.txt", "w") as handle:
+              handle.write(headline)
+          with open(f"{scratch}/body.md", "w") as handle:
+              handle.write(body.replace("Signed-off-by: lemonfiber release <release@lemonfiber.app>", "").rstrip())
+              handle.write("\n\nOpened by `pins`, which moves each pin to the newest release of its major.\n")
+          PY
+
+          built="$(gh api graphql --input "$RUNNER_TEMP/request.json" --jq '.data.createCommitOnBranch.commit.oid')"
+          if ! printf '%s' "$built" | grep -Eq '^[0-9a-f]{40}$'; then
+            echo "::error::the commit was not created; got '${built}'"
+            exit 1
+          fi
+
+          if gh api "repos/${REPO}/git/ref/heads/${branch}" >/dev/null 2>&1; then
+            gh api --method PATCH "repos/${REPO}/git/refs/heads/${branch}" \
+              -F sha="${built}" -F force=true >/dev/null
+          else
+            gh api --method POST "repos/${REPO}/git/refs" \
+              -f ref="refs/heads/${branch}" -f sha="${built}" >/dev/null
+          fi
+          gh api --method DELETE "repos/${REPO}/git/refs/heads/${staging}" >/dev/null 2>&1 || true
+
+          headline="$(cat "$RUNNER_TEMP/headline.txt")"
+          existing="$(gh pr list --repo "${REPO}" --head "${branch}" --state open --json number --jq '.[0].number // ""')"
+          if [ -n "$existing" ]; then
+            gh pr edit "${existing}" --repo "${REPO}" --title "${headline}" --body-file "$RUNNER_TEMP/body.md" >/dev/null
+            echo "::notice::#${existing} updated"
+          else
+            created="$(gh pr create --repo "${REPO}" --head "${branch}" --base main \
+              --title "${headline}" --body-file "$RUNNER_TEMP/body.md" --label dependencies)"
+            existing="${created##*/}"
+            echo "::notice::opened #${existing}"
+          fi
+
+          gh pr merge "${existing}" --repo "${REPO}" --auto \
+            && echo "auto-merge armed on #${existing}" \
+            || echo "::warning::could not arm auto-merge on #${existing}; it waits for a maintainer."

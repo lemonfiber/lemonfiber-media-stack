@@ -5,7 +5,7 @@ services:
     extends:
       file: compose/_common.yml
       service: rootless
-    image: lscr.io/linuxserver/sabnzbd:4.5.1
+    image: lscr.io/linuxserver/sabnzbd:4.5.5@sha256:374051b90f64d107f8658dcd9b9065c28826afe14562647214f45057e119fc04
     profiles: [usenet]
     ports: ["127.0.0.1:8085:8080"]
     volumes:

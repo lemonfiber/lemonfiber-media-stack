@@ -212,8 +212,20 @@ which is generation rather than wiring.
 
 ## Bumping a pin
 
-Moving a `tag` is a review of the service, not an edit to a string, and two
-checks hold it to that. Both read the diff against the base branch, so neither
+A pin is the digest of an image's multi-architecture index, with its tag beside
+it for reading: `tag` and `digest` in `stack.toml`, `image:tag@digest` in the
+compose fragment. The digest is what runs; the tag is what a reader is shown.
+
+Each pin follows the newest release of its own major. The `pins` workflow runs
+weekly, and `scripts/pins.py` finds for each service the newest tag in the
+current tag's spelling and major, resolves the digest of the index it names, and
+writes both files. It opens one pull request per service and arms it to merge
+once every required check is green. A major is never crossed: that is the
+operator's decision. `just pins` shows what it would move, and `just pins-apply
+<service>` moves one by hand.
+
+Moving a `tag` is a review of the service, not an edit to a string, and three
+checks hold it to that. Each reads the diff against the base branch, so none
 says anything about a service the change did not touch.
 
 - **`last_release` moves with the tag** — refreshed to what upstream has
@@ -223,8 +235,14 @@ says anything about a service the change did not touch.
   it: `Pin-reviewed: <service-id>`.
 - **the upstream licence is read from the forge**, and has to still be
   OSI-approved. A licence that could not be read at all fails the same way — a
-  pin bump is where a licence is established, not where it is assumed. Recorded
-  identifiers that merely differ from upstream's are reported, not failed.
+  pin bump is where a licence is established, not where it is assumed. A
+  licence file the forge cannot identify passes only where it is the same file
+  at the new release as at the release pinned before. Recorded identifiers that
+  merely differ from upstream's are reported, not failed.
+- **the digest is the index the tag names.** A tag that moved with its digest
+  left behind fails, and so does a moved pin whose tag the registry resolves to
+  another digest. For a pin the change leaves alone, a tag re-published since is
+  reported, not failed.
 
 ## Removing a service
 
@@ -259,7 +277,7 @@ proven to fail when broken by `scripts/test_validate_manifest.py`.
 | A wiring asks or names, never both | The far end is a capability or a service (`F9-R4`) |
 | A by-name wiring and a chosen filler say why | Neither reads as an oversight or a rule (`F4-R8`, `F4-R12`) |
 | Killswitch routing | Nothing shares Gluetun's profile without its namespace, so no client here is one lemonfiber must report as leaking (`C2-R12`) |
-| Pinned, non-floating tags | Nothing changes because time passed (`E1-R1`) |
+| Pinned by index digest, tag beside it | Nothing changes because time passed, and nothing runs by tag (`E1-R1`) |
 | Kernel capabilities match the manifest | Only Gluetun is granted `NET_ADMIN` (`C6`) |
 | OSI licence per service | Verified against a vendored SPDX list (`F2-R5`) |
 | What each service reaches | `reaches` and `asks_for` together, for every service or for none (`F2-R10`, `F1-R5`) |
@@ -269,7 +287,8 @@ proven to fail when broken by `scripts/test_validate_manifest.py`.
 | A removal says why | `[[removed]]` names the reason and any replacement (`F2-R13`) |
 | Every form resolves | `docker compose config` per form (`REPO-R17`), dragging in nothing outside its profiles (`B1-R14`, `REPO-R19`) |
 | Every profile starts | Brought up with plain `docker compose`, every service answering its declared probe on its published port, then torn down. The torrent profile is excluded by name: it needs a VPN subscription (`F1-R1`) |
-| arm64 + amd64 per pin | Read from each registry's manifest list (`F2-R6`) |
+| arm64 + amd64 per pin | Read from the pinned index, which must be one (`F2-R6`, `E1-R1`) |
+| A moved pin is its tag's index | The registry resolves the tag to the pinned digest (`E1-R1`) |
 
 The parity checks read `docker compose config`'s resolved model rather than the
 YAML, so they check what Docker will run, not what the file appears to say.

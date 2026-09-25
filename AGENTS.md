@@ -37,14 +37,16 @@ templates never become containers:
   into separate mounts — it breaks hardlinks (ADR-0006). CI rejects it.
 - **One profile per service** (`B1-R1`); **no `depends_on` across profiles**
   except `qbittorrent → gluetun`, which share the `torrent` profile (`B1-R14`).
-- **Pinned tags, never `latest`** (`E1-R1`). A pin that does not resolve on both
+- **Pinned by digest, never by tag alone** (`E1-R1`). `digest` is the
+  multi-architecture index's, beside a non-floating `tag`, and the compose
+  fragment pulls `image:tag@digest`. A digest that is not an index publishing
   `linux/amd64` and `linux/arm64` fails CI (`F2-R6`).
 - **`bind` matches the manifest tier** — admin services `loopback`, household
   services `lan` (`C6`). Only Gluetun holds `NET_ADMIN`, and anything sharing its
   profile must use `network_mode: service:gluetun` — a download client outside the
   tunnel's namespace is one lemonfiber reports as leaking (`C2-R12`).
 - `stack.toml` and the Compose model must stay in parity — every service in one
-  is in the other, with the same image, tag and profile.
+  is in the other, with the same image, tag, digest and profile.
 
 ## Adding a service
 
@@ -88,7 +90,9 @@ Both are changes only a diff can judge, and `scripts/check_manifest_change.py`
 judges them against the pull request's base:
 
 - A moved `tag` (or `image`) has to carry a refreshed `last_release`, or a
-  `Pin-reviewed: <service-id>` trailer on the commit that moves it (`F2-R14`).
+  `Pin-reviewed: <service-id>` trailer on the commit that moves it (`F2-R14`),
+  and a new `digest` — the index the new tag names, which `just images` asks
+  the registry for (`E1-R1`). `just pins-apply <service>` writes all three.
   A moved pin also has its upstream licence read from the forge and held to the
   OSI list (`F2-R12`) — that half is networked and lives in `just licences`.
 - A service that leaves the manifest has to gain a `[[removed]]` entry naming
@@ -99,7 +103,8 @@ judges them against the pull request's base:
 ```
 just ci        # parity + every form + what the diff says + the validator's own tests
 just runs <profiles>   # start them for real and make them answer (needs Docker)
-just images    # arm64/amd64 for every pin (needs the network)
+just images    # each digest an arm64/amd64 index, moved pins their tag's (needs the network)
+just pins      # what the weekly `pins` workflow would move (needs the network)
 just licences  # what each upstream licences itself as now (needs the network)
 just candidate <url>   # judge a candidate on its history (needs the network)
 ```

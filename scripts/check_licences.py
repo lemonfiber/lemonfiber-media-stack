@@ -31,6 +31,13 @@ What it fails, and what it only reports:
   on the forge's classifier would have kept both out for a reason that is not
   about their licences.
 
+  A licence file the forge cannot identify, on a gated service, is compared
+  with itself: the file at the upstream release the pin moves to against the
+  file at the release it moves from. Byte-identical, the licence did not change
+  at this bump, which is the change `F2-R12` disqualifies on, and the service
+  passes as `unchanged`. Different, or not readable at either release, it
+  fails as before: a file that changed is a licence somebody has to read.
+
   A recorded identifier that differs from upstream's but is still OSI-approved
   is reported and never failed, gated or not. The forge answers with deprecated
   identifiers — `GPL-3.0` for what SPDX now spells `GPL-3.0-only` — and names
@@ -52,8 +59,10 @@ from __future__ import annotations
 
 import argparse
 import pathlib
+import re
 import sys
 import tomllib
+import urllib.parse
 
 from check_manifest_change import bumped, pins, read_at
 from forge import NOT_FOUND, get_json, repo_of, safe
@@ -65,6 +74,11 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 UNIDENTIFIED = {"", "noassertion", "other"}
 
 FAILS_WHEN_GATED = {"moved", "unstated", "unknown"}
+
+# How an upstream names the git tag of a release its image tag names: the
+# version bare, with a `v`, or after `release-` — the three spellings the
+# upstreams in this stack use.
+REF_SPELLINGS = ("{version}", "v{version}", "release-{version}")
 
 
 def spdx_key(identifier: str) -> str:
@@ -112,6 +126,55 @@ def stated_licence(upstream: str) -> tuple[str | None, str]:
     return str(licence.get("spdx_id") or ""), ""
 
 
+def release_refs(tag: str) -> list[str]:
+    """The git refs an image tag's release may be tagged as upstream."""
+    version = re.sub(r"\A(?:release-|[vV])", "", tag)
+    return [spelling.format(version=version) for spelling in REF_SPELLINGS]
+
+
+def licence_file_at(upstream: str, tag: str) -> tuple[str, str]:
+    """The blob of upstream's licence file at the release `tag` names, and that release's ref.
+
+    Empty where no spelling of the release is a ref the forge knows, or the
+    forge did not answer: either way there is nothing to compare.
+    """
+    repo = repo_of(upstream)
+    if repo is None:
+        return "", ""
+    for ref in release_refs(tag):
+        query = urllib.parse.urlencode({"ref": ref})
+        document, problem = get_json(f"/repos/{repo[0]}/{repo[1]}/license?{query}")
+        if problem == NOT_FOUND:
+            continue
+        if problem:
+            return "", ""
+        return str((document or {}).get("sha") or ""), ref
+    return "", ""
+
+
+def compare_files(was: tuple[str, str], now: tuple[str, str]) -> tuple[str, str]:
+    """Whether an unidentified licence file is the one the previous pin shipped. Pure.
+
+    Each side is (blob, ref). Only the same blob at two readable releases clears
+    it; anything less leaves the service as the forge left it, unstated.
+    """
+    (was_blob, was_ref), (now_blob, now_ref) = was, now
+    if not (was_blob and now_blob):
+        return "unstated", (
+            "upstream's licence file is one the forge cannot identify, and it could not be read at "
+            "both the release pinned before and the one pinned now"
+        )
+    if was_blob != now_blob:
+        return "unstated", (
+            f"upstream's licence file is one the forge cannot identify, and it changed between "
+            f"{safe(was_ref)} and {safe(now_ref)}; read it"
+        )
+    return "unchanged", (
+        f"upstream's licence file is one the forge cannot identify, and it is the same file at "
+        f"{safe(now_ref)} as at {safe(was_ref)}"
+    )
+
+
 def assess(recorded: str, stated: str | None, problem: str, osi: set[str]) -> tuple[str, str]:
     """Verdict for one service. Pure, so the self-test needs no forge."""
     if problem:
@@ -128,6 +191,25 @@ def assess(recorded: str, stated: str | None, problem: str, osi: set[str]) -> tu
     if spdx_key(stated) != spdx_key(recorded):
         return "differs", f"manifest records {recorded}, upstream states {safe(stated)}"
     return "agrees", f"{recorded}"
+
+
+def comparison_problems() -> list[str]:
+    """An unidentified licence file held against the one the previous pin shipped."""
+    problems = []
+    for said, was, now, want in (
+        ("the same file at both releases", ("a1", "4.5.1"), ("a1", "4.5.5"), "unchanged"),
+        ("a file that changed between them", ("a1", "4.5.1"), ("b2", "4.5.5"), "unstated"),
+        ("a release whose file could not be read", ("", ""), ("b2", "4.5.5"), "unstated"),
+        ("neither release readable", ("", ""), ("", ""), "unstated"),
+    ):
+        verdict, _ = compare_files(was, now)
+        if verdict != want:
+            problems.append(f"{said}: judged {verdict!r}, wanted {want!r}")
+    if "unchanged" in FAILS_WHEN_GATED or "unstated" not in FAILS_WHEN_GATED:
+        problems.append("an unchanged file would fail a bump, or a changed one would pass it")
+    if release_refs("release-5.2.3") != ["5.2.3", "v5.2.3", "release-5.2.3"] or release_refs("V3.1.4")[0] != "3.1.4":
+        problems.append(f"release refs read as {release_refs('release-5.2.3')}")
+    return problems
 
 
 def self_test() -> int:
@@ -192,6 +274,8 @@ def self_test() -> int:
     if {want for *_, want, _ in cases} != {"agrees", "differs", "moved", "unstated", "unknown"}:
         problems.append("a verdict this check can give is never driven here")
 
+    problems += comparison_problems()
+
     for problem in problems:
         print(f"::error::self-test: {problem}")
     if problems:
@@ -201,17 +285,44 @@ def self_test() -> int:
     return 0
 
 
-def gated_services(base: str, all_of_them: bool, manifest_text: str) -> tuple[set[str], str]:
-    """The services this run gates, and how it decided. Empty is a legitimate answer."""
+def gated_services(
+    base: str, all_of_them: bool, manifest_text: str
+) -> tuple[set[str], str, dict[str, dict[str, str]]]:
+    """The services this run gates, how it decided, and the pins at the base.
+
+    Empty is a legitimate answer. The base's pins are empty under `--all`, which
+    compares nothing with a previous release.
+    """
     if all_of_them:
-        return set(pins(manifest_text)), "every service, asked for"
+        return set(pins(manifest_text)), "every service, asked for", {}
     found, base_manifest = read_at(base, "manifest")
     if not found:
-        return set(), ""
-    return bumped(pins(base_manifest), pins(manifest_text)), f"pins moved since {base}"
+        return set(), "", {}
+    before = pins(base_manifest)
+    return bumped(before, pins(manifest_text)), f"pins moved since {base}", before
 
 
-def survey(services: list, gated: set[str], osi: set[str]) -> tuple[list[str], list[str], dict[str, int]]:
+def judged(service: dict, was: dict[str, str] | None, osi: set[str]) -> tuple[str, str]:
+    """One service's verdict. `was` is its pin at the base, given only where it is gated.
+
+    An unidentified licence file on a gated service is compared with the file at
+    the release pinned before, which is the one question the forge's classifier
+    cannot answer and a blob comparison can.
+    """
+    upstream = str(service.get("upstream", ""))
+    stated, problem = stated_licence(upstream)
+    verdict, detail = assess(str(service.get("license", "")), stated, problem, osi)
+    if was is not None and stated is not None and spdx_key(stated) in UNIDENTIFIED:
+        return compare_files(
+            licence_file_at(upstream, was["tag"]),
+            licence_file_at(upstream, str(service.get("tag", ""))),
+        )
+    return verdict, detail
+
+
+def survey(
+    services: list, gated: set[str], osi: set[str], before: dict[str, dict[str, str]]
+) -> tuple[list[str], list[str], dict[str, int]]:
     """Ask about each service, say what came back, and separate the failures from the notes.
 
     The asking and the judging are apart — `stated_licence` fetches and `assess`
@@ -220,17 +331,17 @@ def survey(services: list, gated: set[str], osi: set[str]) -> tuple[list[str], l
     """
     failures, noted, tally = [], [], {}
     for service in services:
-        sid, recorded = service["id"], str(service.get("license", ""))
-        verdict, detail = assess(recorded, *stated_licence(str(service.get("upstream", ""))), osi)
+        sid = service["id"]
+        verdict, detail = judged(service, before.get(sid) if sid in gated else None, osi)
         tally[verdict] = tally.get(verdict, 0) + 1
         gate = sid in gated
         failed = gate and verdict in FAILS_WHEN_GATED
-        marker = "ok  " if verdict == "agrees" else "note"
+        marker = "ok  " if verdict in ("agrees", "unchanged") else "note"
         print(f"  {'FAIL' if failed else marker} {sid:<22} {'[bumped] ' if gate else ''}{detail}")
 
         if failed:
             failures.append(f"{sid}: {detail} (F2-R12)")
-        elif verdict != "agrees":
+        elif verdict not in ("agrees", "unchanged"):
             noted.append(sid)
     return failures, noted, tally
 
@@ -245,10 +356,15 @@ def counted(tally: dict[str, int]) -> str:
     return ", ".join(f"{count} {verdict}" for verdict, count in sorted(tally.items()))
 
 
-def settled(gated: set[str]) -> str:
+def settled(gated: set[str], tally: dict[str, int]) -> str:
     """What the gate decided, including the common case where it had nothing to decide."""
     if not gated:
         return "nothing was gated, because this change moves no pin"
+    if tally.get("unchanged"):
+        return (
+            f"every one of the {len(gated)} gated is OSI-approved or ships the licence file "
+            f"the release pinned before it shipped"
+        )
     return f"every one of the {len(gated)} gated is OSI-approved"
 
 
@@ -281,7 +397,7 @@ def main() -> int:
 
     manifest_text = (ROOT / "stack.toml").read_text(encoding="utf-8")
     manifest = tomllib.loads(manifest_text)
-    gated, how = gated_services(args.base, args.all, manifest_text)
+    gated, how, before = gated_services(args.base, args.all, manifest_text)
     if not how:
         print(
             f"::error::cannot read stack.toml as of {args.base}, so there is no way to tell which "
@@ -291,7 +407,7 @@ def main() -> int:
         )
         return 2
 
-    failures, noted, tally = survey(manifest["service"], gated, osi_keys())
+    failures, noted, tally = survey(manifest["service"], gated, osi_keys(), before)
     print(f"\ngated: {len(gated)} service(s) — {how}")
     if noted:
         print(f"reported, not failed: {', '.join(noted)}")
@@ -300,7 +416,7 @@ def main() -> int:
     if failures:
         refuse(failures)
         return 1
-    print(f"\n{len(manifest['service'])} upstream(s) asked — {counted(tally)}; {settled(gated)}.")
+    print(f"\n{len(manifest['service'])} upstream(s) asked — {counted(tally)}; {settled(gated, tally)}.")
     return 0
 
 

@@ -1,13 +1,22 @@
 #!/usr/bin/env python3
-"""Verify every pinned image publishes linux/amd64 and linux/arm64.
+"""Verify every pinned digest is an index publishing linux/amd64 and linux/arm64.
 
 Inclusion in the stack requires native images for both architectures — an Apple
 Silicon or Raspberry Pi operator running an amd64 image under emulation gets a
-service that is slow in ways nothing explains.
+service that is slow in ways nothing explains. The pin is the digest of the
+multi-architecture index (`E1-R1`), so that is what is asked about: a digest of
+one platform's image is refused here as a single-architecture publish.
+
+The tag beside it is a label, and this asks the registry what the tag names
+now. For a pin this change moves (`--base`), the two must agree — that is the
+mechanical half of reviewing a bump. For a pin it does not move, a tag that has
+since been re-published is reported and never failed: publishers rebuild a
+release under its tag, and failing every unrelated change on their schedule is
+not a check anybody keeps.
 
 This is the one check that needs the network, so it lives apart from
 validate_manifest.py and runs as its own CI job. It reads the registry's
-manifest list rather than pulling anything.
+manifests rather than pulling anything.
 """
 
 from __future__ import annotations
@@ -19,6 +28,9 @@ import re
 import subprocess
 import sys
 import tomllib
+
+from check_manifest_change import pins, read_at, repinned
+from registry import resolve
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 REQUIRED = {("linux", "amd64"), ("linux", "arm64")}
@@ -131,7 +143,7 @@ def self_test() -> int:
         ("a failure that said nothing", (1, "", ""), set(), "inspect failed"),
     )
 
-    problems = reference_problems()
+    problems = reference_problems() + agreement_problems()
     for said, reply, wanted, because in cases:
         found, problem = read(*reply)
         if found != wanted:
@@ -157,9 +169,72 @@ def self_test() -> int:
     return 0
 
 
+def agreement(sid: str, tag: str, pinned_digest: str, named: str, problem: str, moved: bool) -> tuple[str, str]:
+    """Whether a tag still names the pinned digest: an error, a note, or neither.
+
+    Pure, so the self-test can drive it. A registry that could not say is an
+    error only where the pin moved, because only there is the answer the review.
+    """
+    if problem:
+        said = f"{sid}: what {tag} names could not be read: {problem}"
+        return (said, "") if moved else ("", said)
+    if named == pinned_digest:
+        return "", ""
+    if moved:
+        error = (
+            f"{sid}: {tag} names {named}, and this change pins {pinned_digest}. A pin that moves "
+            f"is the index its tag names when it moves; `scripts/pins.py --apply {sid}` writes both (E1-R1)"
+        )
+        return error, ""
+    return "", f"{sid}: {tag} has been re-published as {named} since it was pinned; `pins.py` takes that"
+
+
+def agreement_problems() -> list[str]:
+    digest, other = "sha256:" + "a" * 64, "sha256:" + "b" * 64
+    problems = []
+    for said, args, wanted in (
+        ("a moved pin its tag names", ("s", "1.0", digest, digest, "", True), ("", "")),
+        ("an unmoved pin its tag names", ("s", "1.0", digest, digest, "", False), ("", "")),
+        ("a moved pin its tag does not name", ("s", "1.0", digest, other, "", True), ("error", "")),
+        ("an unmoved pin whose tag was re-published", ("s", "1.0", digest, other, "", False), ("", "note")),
+        ("a moved pin the registry would not answer for", ("s", "1.0", digest, "", "denied", True), ("error", "")),
+        ("an unmoved pin the registry would not answer for", ("s", "1.0", digest, "", "denied", False), ("", "note")),
+    ):
+        error, note = agreement(*args)
+        if (bool(error), bool(note)) != (bool(wanted[0]), bool(wanted[1])):
+            problems.append(f"{said}: error {error!r}, note {note!r}")
+    return problems
+
+
+def publishes_both(service: dict) -> list[str]:
+    """What is wrong with the platforms a service's pinned index publishes, printed as read."""
+    reference = f"{service['image']}@{service['digest']}"
+    found, problem = platforms(reference)
+    if problem:
+        print(f"  FAIL {service['id']:<22} {problem}")
+        return [f"{service['id']} ({reference}): {problem}"]
+    missing = REQUIRED - found
+    if missing:
+        listed = ", ".join(f"{os_}/{arch}" for os_, arch in sorted(missing))
+        print(f"  FAIL {service['id']:<22} missing {listed}")
+        return [f"{service['id']} ({reference}): missing {listed} (F2-R6)"]
+    print(f"  ok   {service['id']:<22} {reference}")
+    return []
+
+
+def moved_since(base: str) -> tuple[set[str], str]:
+    """The services whose pin this change moves, or why that could not be read."""
+    found, manifest = read_at(base, "manifest")
+    if not found:
+        return set(), manifest
+    now = (ROOT / "stack.toml").read_text(encoding="utf-8")
+    return repinned(pins(manifest), pins(now)), ""
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--only", help="check one service id")
+    parser.add_argument("--base", help="the commit this change is measured against; its moved pins must agree")
     parser.add_argument("--self-test", action="store_true", help="prove the reading, without a registry")
     args = parser.parse_args()
 
@@ -172,27 +247,34 @@ def main() -> int:
         print(f"no service matching {args.only!r}", file=sys.stderr)
         return 2
 
-    errors = []
-    for service in services:
-        reference = f"{service['image']}:{service['tag']}"
-        found, problem = platforms(reference)
+    moved: set[str] = set()
+    if args.base:
+        moved, problem = moved_since(args.base)
         if problem:
-            errors.append(f"{service['id']} ({reference}): {problem}")
-            print(f"  FAIL {service['id']:<22} {problem}")
-            continue
-        missing = REQUIRED - found
-        if missing:
-            listed = ", ".join(f"{os_}/{arch}" for os_, arch in sorted(missing))
-            errors.append(f"{service['id']} ({reference}): missing {listed} (F2-R6)")
-            print(f"  FAIL {service['id']:<22} missing {listed}")
-        else:
-            print(f"  ok   {service['id']:<22} {reference}")
+            print(f"::error::which pins moved since {args.base} could not be read: {problem}")
+            return 2
 
+    errors, notes = [], []
+    for service in services:
+        if not service.get("digest"):
+            print(f"  FAIL {service['id']:<22} no digest")
+            errors.append(f"{service['id']}: pins no digest, so nothing says which build runs (E1-R1)")
+            continue
+        named, _, problem = resolve(service["image"], service["tag"])
+        error, note = agreement(service["id"], service["tag"], service["digest"], named, problem,
+                                service["id"] in moved)
+        errors.extend([error] if error else [])
+        notes.extend([note] if note else [])
+        errors.extend(publishes_both(service))
+
+    if notes:
+        print()
+        print("\n".join(f"  note {note}" for note in notes))
     if errors:
         print()
         print("\n".join(f"::error::{error}" for error in errors))
         return 1
-    print(f"\nall {len(services)} images publish linux/amd64 and linux/arm64.")
+    print(f"\nall {len(services)} pinned indexes publish linux/amd64 and linux/arm64.")
     return 0
 
 

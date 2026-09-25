@@ -60,17 +60,29 @@ changes base="origin/main":
     python3 scripts/check_manifest_change.py --base {{base}}
 
 # Where the networked checks may address a request, and what they may echo out
-# of a reply. Offline, and the one whose failure would be a token going
-# somewhere it should not.
+# of a reply, and how a registry is addressed. Offline, and the one whose
+# failure would be a token going somewhere it should not.
 forge:
     python3 scripts/forge.py --self-test
+    python3 scripts/registry.py --self-test
+    python3 scripts/pins.py --self-test
 
-# Every pinned image publishes linux/amd64 and linux/arm64. Networked — but the
+# Every pinned digest is an index publishing linux/amd64 and linux/arm64, and a
+# pin this branch moves is the index its tag names. Networked — but the
 # self-test is not, and runs first for that reason: the reading it proves is the
 # one least likely to have been exercised by anybody before a registry answers.
-images:
+images base="origin/main":
     python3 scripts/check_images.py --self-test
-    python3 scripts/check_images.py
+    python3 scripts/check_images.py --base {{base}}
+
+# What `pins` would move: each service to the newest release of its major, by
+# tag and digest. Networked. `just pins-apply sonarr` writes one.
+pins:
+    python3 scripts/pins.py --self-test
+    python3 scripts/pins.py --plan
+
+pins-apply +services:
+    python3 scripts/pins.py --apply {{services}}
 
 # Shipped config templates parse in the service that reads them. Networked.
 configs:
