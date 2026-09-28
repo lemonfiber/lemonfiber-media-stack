@@ -15,6 +15,12 @@ on:
 permissions:
   contents: read
   pull-requests: write
+# A pull request pushed again cancels the run on its old head, which nobody
+# will read and which holds runners the org shares (Q-R75). Every other event
+# is grouped by its own run, so it is never cancelled and never cancels.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: true
 jobs:
   gate:
     uses: lemonfiber/spec/.github/workflows/sonar-gate.yml@eef28a9c763d2011bbaae835970e7c29ac844011 # v1.0.22
