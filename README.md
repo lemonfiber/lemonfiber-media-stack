@@ -224,6 +224,14 @@ once every required check is green. A major is never crossed: that is the
 operator's decision. `just pins` shows what it would move, and `just pins-apply
 <service>` moves one by hand.
 
+lemonfiber's own images, under `ghcr.io/lemonfiber`, are the exception: `pins`
+leaves them alone, and they move with the release train. Each publish from a tag
+`lemonfiber-<service>` cuts dispatches the `image-bump` workflow with the tag and
+the index digest it published; `scripts/image_bump.py` checks that the service is
+already in `stack.toml` with that image, and that the registry answers the tag
+with that digest on both platforms, and writes the pin. Its pull request meets
+the same checks and is armed to merge the same way.
+
 Moving a `tag` is a review of the service, not an edit to a string, and three
 checks hold it to that. Each reads the diff against the base branch, so none
 says anything about a service the change did not touch.

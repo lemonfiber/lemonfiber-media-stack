@@ -52,12 +52,14 @@ jobs:
         run: python3 scripts/forge.py --self-test
 
       # How a registry is addressed and an index told from an image, and which
-      # tag `pins.py` would take and how it writes one into both files. Offline;
-      # the scheduled `pins` workflow is where they meet a registry.
+      # tag `pins.py` would take and how it writes one into both files, and which
+      # pin of lemonfiber's own `image_bump.py` refuses. Offline; the `pins` and
+      # `image-bump` workflows are where they meet a registry.
       - name: A registry is read, and a pin moved, as they should be
         run: |
           python3 scripts/registry.py --self-test
           python3 scripts/pins.py --self-test
+          python3 scripts/image_bump.py --self-test
 
       # A pin that moved and a date that did not are both well-formed values, and
       # a service that left the stack leaves a manifest that simply no longer

@@ -17,6 +17,10 @@ and resolves it to the digest of its multi-architecture index (`E1-R1`). A tag
 that stays where it is can still move: publishers rebuild a release on a patched
 base image under the same tag, and the digest follows that rebuild too.
 
+lemonfiber's own images, under `ghcr.io/lemonfiber`, are left alone. Their pin
+moves when the release train publishes one, through `image_bump.py`, and never to
+a tag the train has not reached (ADR-0033 §4).
+
 `last_release` is read from upstream's latest release when the pin moves
 (`F2-R14`). Where upstream's date is the one already recorded, the pin is
 re-affirmed with a `Pin-reviewed:` trailer on the commit; where it cannot be
@@ -44,6 +48,13 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 STACK_TOML = ROOT / "stack.toml"
 COMPOSE_DIR = ROOT / "compose"
 REQUIRED = {("linux", "amd64"), ("linux", "arm64")}
+# Where lemonfiber publishes the images it builds (ADR-0033 §1).
+OWN_IMAGES = "ghcr.io/lemonfiber"
+
+
+def rides_the_train(image: str) -> bool:
+    """Whether an image is one of lemonfiber's own, whose pin the release train moves."""
+    return image.startswith(f"{OWN_IMAGES}/")
 
 def version_of(tag: str) -> tuple[str, tuple[int, ...], str] | None:
     """A tag's prefix, numbers and suffix, or None for a tag with no number in it.
@@ -124,7 +135,7 @@ def plan(only: set[str]) -> tuple[list[dict], list[str]]:
     moves, problems = [], []
     for service in manifest["service"]:
         sid = service["id"]
-        if only and sid not in only:
+        if (only and sid not in only) or rides_the_train(service["image"]):
             continue
         published, problem = registry.tags(service["image"])
         if problem:
@@ -217,6 +228,11 @@ def choice_problems() -> list[str]:
     ):
         if version_of(tag) != wanted:
             problems.append(f"{tag} read as {version_of(tag)}, wanted {wanted}")
+
+    for image, wanted in (("ghcr.io/lemonfiber/decline", True), ("ghcr.io/lemonfiber-x/y", False),
+                          ("ghcr.io/seerr-team/seerr", False)):
+        if rides_the_train(image) != wanted:
+            problems.append(f"{image} read as {'not ' if wanted else ''}lemonfiber's own")
     return problems
 
 
