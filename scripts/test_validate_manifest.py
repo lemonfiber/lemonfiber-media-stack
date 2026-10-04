@@ -104,6 +104,10 @@ def append(path: str, text: str):
     return apply
 
 
+# The request gate's networks line in compose/media.yml, beside which a case
+# overrides one of what the `confined` template in compose/_common.yml gives it.
+GATE_NETWORKS = "    networks: [requests-gate, gate-upstream]\n"
+
 # (name, mutation or None, expected substring of the report)
 CASES = [
     (
@@ -583,6 +587,84 @@ CASES = [
         patch("stack.toml", 'by = "lidarr"\nasks = "download.usenet"',
               'by = "lidarr"\nasks = "download.usenet"\n\n[[wiring]]\nby = "lidarr"\nasks = "download.usenet"'),
         "asks for 'download.usenet' twice",
+    ),
+    (
+        "C6-R22 the request gate on a writable root",
+        patch("compose/media.yml", GATE_NETWORKS, "    read_only: false\n" + GATE_NETWORKS),
+        "service request-gate: runs with a writable root",
+    ),
+    (
+        "C6-R22 lemonfiber's own services keeping their kernel capabilities",
+        patch("compose/_common.yml", "    cap_drop: [ALL]\n", ""),
+        "service decline: keeps kernel capabilities",
+    ),
+    (
+        "C6-R22 lemonfiber's own services able to gain privileges",
+        patch("compose/_common.yml", '    security_opt: ["no-new-privileges:true"]\n', ""),
+        "service request-gate: can gain privileges",
+    ),
+    (
+        "C6-R22 lemonfiber's own services with no memory limit",
+        patch("compose/_common.yml", "    mem_limit: 64m\n", ""),
+        "service decline: runs with no memory limit",
+    ),
+    (
+        "C6-R22 the request gate running as root",
+        patch("compose/media.yml", GATE_NETWORKS, '    user: "0:0"\n' + GATE_NETWORKS),
+        "service request-gate: runs as '0:0'",
+    ),
+    (
+        "C6-R22 the decline service mounting the data root",
+        patch("compose/media.yml", "      - ./config/decline:/config\n",
+              "      - ./config/decline:/config\n      - ${DATA_ROOT:-./data}:/data\n"),
+        "service decline: mounts ['/config', '/data']",
+    ),
+    (
+        "C6-R22 the request gate on the default network",
+        patch("compose/media.yml", GATE_NETWORKS, "    networks: [default, requests-gate, gate-upstream]\n"),
+        "its ADR puts it on ['gate-upstream', 'requests-gate']",
+    ),
+    (
+        "C6-R22 another service on the network only Seerr shares with the request gate",
+        patch("compose/dash.yml", "networks: [default, requests]", "networks: [default, requests, requests-gate]"),
+        "shares 'requests-gate' with ['homepage', 'seerr']",
+    ),
+    (
+        "C6-R22 Seerr back on the default network, beside what it reaches through the gate",
+        patch("compose/media.yml", "networks: [requests, requests-gate]",
+              "networks: [default, requests, requests-gate]"),
+        "service seerr: shares a network with ['jellyfin', 'radarr', 'sonarr']",
+    ),
+    (
+        "C6-R22 the request gate's upstream network routed off the host",
+        patch("compose.yml", "  gate-upstream:\n    internal: true\n", "  gate-upstream: {}\n"),
+        "service request-gate: is on 1 network(s) that are not internal",
+    ),
+    (
+        "ADR-0029 another service on the decline service's published network",
+        patch("compose/proxy.yml", "networks: [default, requests]", "networks: [default, requests, decline]"),
+        "shares 'decline' with ['caddy']",
+    ),
+    (
+        "ADR-0029 the decline service's published network reaching off the host",
+        patch("compose.yml", '  decline:\n    driver_opts:\n      com.docker.network.bridge.enable_ip_masquerade: "false"\n',
+              "  decline: {}\n"),
+        "service decline: publishes on 'decline', which reaches off the host",
+    ),
+    (
+        "F2-R5 an OSI licence on lemonfiber's own image",
+        field("decline", "license", 'license = "MIT"'),
+        "licence 'MIT' on lemonfiber's own image",
+    ),
+    (
+        "F2-R5 lemonfiber's own licence on an image lemonfiber does not build",
+        field("caddy", "license", 'license = "Hippocratic-3.0"'),
+        "licence 'Hippocratic-3.0' is not a recognised OSI identifier",
+    ),
+    (
+        "ADR-0033 one of lemonfiber's own images with no containment stated",
+        patch("scripts/validate_manifest.py", '    "decline": ("C6-R20", {\n', '    "declined": ("C6-R20", {\n'),
+        "service decline: is lemonfiber's own image and its containment is not stated",
     ),
 ]
 

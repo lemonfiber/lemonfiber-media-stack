@@ -50,3 +50,30 @@ include:
     project_directory: .
   - path: compose/proxy.yml
     project_directory: .
+
+# NETWORKS: every service is on the project's `default` network unless its entry
+# names others. These are the ones that do, declared here once because they span
+# fragments. An `internal` network has no route off the host, so a service on
+# internal networks alone has no egress and publishes nothing.
+#
+#   requests          Seerr's own bridge: its published port, its egress to its
+#                     metadata provider and notification services, and the two
+#                     services that reach it, Homepage and Caddy.
+#   requests-gate     Seerr and the request gate, and nothing else. The gate is
+#                     Seerr's only path to Sonarr, Radarr and Jellyfin (ADR-0032).
+#   gate-upstream     The request gate, Sonarr, Radarr and Jellyfin.
+#   decline           The decline service's published port, and nothing else on it.
+#                     It translates no address off the host, so the port answers
+#                     and the service cannot reach out.
+#   decline-upstream  The decline service and Jellyfin, and nothing else (ADR-0029).
+networks:
+  requests: {}
+  requests-gate:
+    internal: true
+  gate-upstream:
+    internal: true
+  decline:
+    driver_opts:
+      com.docker.network.bridge.enable_ip_masquerade: "false"
+  decline-upstream:
+    internal: true

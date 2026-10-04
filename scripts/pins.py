@@ -50,6 +50,8 @@ COMPOSE_DIR = ROOT / "compose"
 REQUIRED = {("linux", "amd64"), ("linux", "arm64")}
 # Where lemonfiber publishes the images it builds (ADR-0033 §1).
 OWN_IMAGES = "ghcr.io/lemonfiber"
+# The licence lemonfiber's own images carry, and the only one they may (F2-R5).
+OWN_LICENCE = "Hippocratic-3.0"
 
 
 def rides_the_train(image: str) -> bool:

@@ -45,6 +45,14 @@ What it fails, and what it only reports:
   rather than proof of anything. Those two spellings are the same licence here
   for that reason.
 
+  lemonfiber's own images, under `ghcr.io/lemonfiber`, are held to a different
+  licence rather than to none (`F2-R5`): built from lemonfiber's own code, they
+  carry `Hippocratic-3.0` and nothing else, which OSI has not approved and the
+  forge does not identify. So for them the OSI list is not asked. A manifest
+  recording anything else fails, gated or not, and so does an upstream the forge
+  names as publishing anything else; an unidentified file is compared across the
+  bump like any other.
+
 Needs the network, and git, which is how it knows which pins moved. Set
 GITHUB_TOKEN to avoid the unauthenticated rate limit; where it may be sent is
 `forge.py`'s decision, and it is never printed.
@@ -66,6 +74,7 @@ import urllib.parse
 
 from check_manifest_change import bumped, pins, read_at
 from forge import NOT_FOUND, get_json, repo_of, safe
+from pins import OWN_LICENCE, rides_the_train
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 
@@ -175,14 +184,22 @@ def compare_files(was: tuple[str, str], now: tuple[str, str]) -> tuple[str, str]
     )
 
 
-def assess(recorded: str, stated: str | None, problem: str, osi: set[str]) -> tuple[str, str]:
-    """Verdict for one service. Pure, so the self-test needs no forge."""
+def assess(recorded: str, stated: str | None, problem: str, osi: set[str],
+           own: bool = False) -> tuple[str, str]:
+    """Verdict for one service; `own` where its image is lemonfiber's own. Pure, so
+    the self-test needs no forge."""
+    if own and recorded != OWN_LICENCE:
+        return "moved", f"lemonfiber's own image records {recorded}; it carries {OWN_LICENCE} and nothing else"
     if problem:
         return "unknown", problem
     if stated is None:
         return "unstated", "the forge reports no licence for it: no licence file, or no such project"
     if spdx_key(stated) in UNIDENTIFIED:
         return "unstated", f"upstream's licence file is one the forge cannot identify ({safe(stated)})"
+    if own:
+        if spdx_key(stated) != spdx_key(OWN_LICENCE):
+            return "moved", f"upstream now publishes {safe(stated)}; lemonfiber's own images carry {OWN_LICENCE}"
+        return "agrees", f"{recorded}"
     if spdx_key(stated) not in osi:
         return "moved", (
             f"upstream now publishes {safe(stated)}, which OSI has not approved; the manifest "
@@ -209,6 +226,23 @@ def comparison_problems() -> list[str]:
         problems.append("an unchanged file would fail a bump, or a changed one would pass it")
     if release_refs("release-5.2.3") != ["5.2.3", "v5.2.3", "release-5.2.3"] or release_refs("V3.1.4")[0] != "3.1.4":
         problems.append(f"release refs read as {release_refs('release-5.2.3')}")
+    return problems
+
+
+def own_problems(osi: set[str]) -> list[str]:
+    """lemonfiber's own images, held to lemonfiber's licence rather than to the OSI list."""
+    problems = []
+    for said, recorded, stated, want in (
+        ("its own licence, which the forge cannot identify", OWN_LICENCE, "NOASSERTION", "unstated"),
+        ("its own licence, named by the forge", OWN_LICENCE, OWN_LICENCE, "agrees"),
+        ("an OSI licence recorded on it", "MIT", "NOASSERTION", "moved"),
+        ("an upstream that relicensed it", OWN_LICENCE, "MIT", "moved"),
+    ):
+        verdict, _ = assess(recorded, stated, "", osi, own=True)
+        if verdict != want:
+            problems.append(f"lemonfiber's own image with {said}: judged {verdict!r}, wanted {want!r}")
+    if assess(OWN_LICENCE, OWN_LICENCE, "", osi)[0] != "moved":
+        problems.append("lemonfiber's own licence passed on an image lemonfiber does not build")
     return problems
 
 
@@ -275,6 +309,7 @@ def self_test() -> int:
         problems.append("a verdict this check can give is never driven here")
 
     problems += comparison_problems()
+    problems += own_problems(osi)
 
     for problem in problems:
         print(f"::error::self-test: {problem}")
@@ -311,7 +346,10 @@ def judged(service: dict, was: dict[str, str] | None, osi: set[str]) -> tuple[st
     """
     upstream = str(service.get("upstream", ""))
     stated, problem = stated_licence(upstream)
-    verdict, detail = assess(str(service.get("license", "")), stated, problem, osi)
+    own = rides_the_train(str(service.get("image", "")))
+    verdict, detail = assess(str(service.get("license", "")), stated, problem, osi, own)
+    if own and verdict == "moved":
+        return verdict, detail
     if was is not None and stated is not None and spdx_key(stated) in UNIDENTIFIED:
         return compare_files(
             licence_file_at(upstream, was["tag"]),

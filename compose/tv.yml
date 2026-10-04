@@ -11,3 +11,5 @@ services:
     volumes:
       - ${DATA_ROOT:-./data}:/data
       - ./config/sonarr:/config
+    # `gate-upstream` is how the request gate reaches it for Seerr.
+    networks: [default, gate-upstream]

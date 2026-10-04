@@ -136,7 +136,7 @@ name = "Proxy"
 description = "Friendly hostnames. Layers onto any other form."
 profiles = ["proxy"]
 
-# ─────────────────────────── Services (20) ───────────────────────────────────
+# ─────────────────────────── Services (22) ───────────────────────────────────
 [[service]]
 id = "prowlarr"
 name = "Prowlarr"
@@ -435,6 +435,51 @@ health = { kind = "http", path = "/api/v1/status", timeout_s = 90 }
 # its application directory rather than at /config like the rest.
 api = { kind = "seerr", key_source = "config-json", path = "/app/config/settings.json" }
 
+# lemonfiber's own image, built by lemonfiber-request-gate and pinned at the tag
+# the release train published (ADR-0033). It publishes nothing, so it declares no
+# port and no bind, and its health is the image's own check. Its port, 5057, is
+# reached only across its two internal networks (ADR-0032).
+[[service]]
+id = "request-gate"
+name = "Request gate"
+profile = "media"
+image = "ghcr.io/lemonfiber/request-gate"
+tag = "v0.17.0-pre.1"
+digest = "sha256:c98c54fbbd3b43c73386cc45a8d7dbf03411827675691f67cff228f8ba8ea341"
+criticality = "important"
+memory_mib = 32
+license = "Hippocratic-3.0"
+upstream = "https://github.com/lemonfiber/lemonfiber-request-gate"
+last_release = "2026-10-03"
+describes = "Stands between Seerr and Sonarr, Radarr and Jellyfin, so Seerr holds none of their keys"
+without_it = "Seerr cannot reach Sonarr, Radarr or Jellyfin: requests are not sent, and members cannot sign in to Seerr"
+reaches = ""
+asks_for = "Nothing beyond this machine. It answers only Seerr, and makes the calls Seerr's requests, scans and sign-ins need of Sonarr, Radarr and Jellyfin, over networks it shares with them alone."
+health = { kind = "container" }
+
+# lemonfiber's own image, built by lemonfiber-decline and pinned at the tag the
+# release train published (ADR-0033). It answers the decline address an
+# invitation carries, at the household tier (ADR-0029).
+[[service]]
+id = "decline"
+name = "Decline service"
+profile = "media"
+image = "ghcr.io/lemonfiber/decline"
+tag = "v0.17.0-pre.1"
+digest = "sha256:65b3ea113ca2c6f04e1c434594b10429a545ad915e56981f31a6c2cc8c03e8c2"
+port = 5056
+bind = "lan"
+criticality = "enhancing"
+memory_mib = 32
+license = "Hippocratic-3.0"
+upstream = "https://github.com/lemonfiber/lemonfiber-decline"
+last_release = "2026-10-03"
+describes = "Lets somebody you invited turn the invitation down, and switches the account off the moment they do"
+without_it = "An invitation carries no way to refuse it, and stays claimable until it lapses"
+reaches = ""
+asks_for = "Nothing beyond this machine. When an invitee refuses, it switches that one account off in Jellyfin, over a network the two share alone, and records the refusal for lemonfiber."
+health = { kind = "http", path = "/health", timeout_s = 30 }
+
 [[service]]
 id = "calibre-web-automated"
 name = "Calibre-Web-Automated"
@@ -594,6 +639,9 @@ health = { kind = "tcp", timeout_s = 30 }
 # Homepage and Caddy do not ask anything — lemonfiber writes both files from the
 # tier and the description each service already declares, which is generation
 # rather than wiring, and a plugin's service is given the same on the same terms.
+# The request gate has none either: it is how lemonfiber carries Seerr's asks to
+# Sonarr, Radarr and Jellyfin, not a capability of its own, so Seerr's wiring is
+# what states those links (ADR-0032 §5).
 
 # ── Asks ─────────────────────────────────────────────────────────────────────
 # The links lemonfiber makes, when it seeds. Each is written against what the
@@ -650,7 +698,7 @@ asks = "library.curate"
 each = true
 
 # ── By name ──────────────────────────────────────────────────────────────────
-# Six links that are genuinely about one service each, and say so.
+# Seven links that are genuinely about one service each, and say so.
 
 [[wiring]]
 by = "qbittorrent"
@@ -681,6 +729,11 @@ why = "It writes Sonarr-shaped quality profiles from Sonarr-shaped guides, into 
 by = "recyclarr"
 to = "radarr"
 why = "The same, in Radarr's terms."
+
+[[wiring]]
+by = "decline"
+to = "jellyfin"
+why = "It makes three of Jellyfin's own calls, reading an account and its activity log and writing the account's policy back disabled, with a key lemonfiber minted for it alone. What it acts on is Jellyfin, not whatever serves identity."
 
 # ─────────────────────────── Removed (1) ─────────────────────────────────────
 # What the catalogue used to carry, why it went, and what took the job over. A

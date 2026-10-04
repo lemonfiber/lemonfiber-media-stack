@@ -19,6 +19,8 @@ services:
     ports:
       - "${LAN_BIND:-0.0.0.0}:80:80"
       - "${LAN_BIND:-0.0.0.0}:443:443"
+    # `requests` is how it reaches Seerr, which is on no other network it shares.
+    networks: [default, requests]
     volumes:
       - ./config/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
       # Caddy's own certificate and configuration stores, unrelated to

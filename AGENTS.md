@@ -8,7 +8,7 @@ Guidance for any AI agent working in this repo.
 
 ## What this repo is
 
-The Docker Compose stack — 20 services — plus `stack.toml`, the manifest
+The Docker Compose stack — 22 services — plus `stack.toml`, the manifest
 lemonfiber consumes. Spec:
 [`30-repos/lemonfiber-media-stack.md`](https://github.com/lemonfiber/spec/blob/main/30-repos/lemonfiber-media-stack.md)
 and the
@@ -22,7 +22,7 @@ in a fragment resolve from the repo root rather than from `compose/`. Omitting i
 breaks the fragment's `extends:` path and Compose refuses to build a model —
 loudly, which is the intent.
 
-Shared defaults live in `compose/_common.yml` as two template services reached
+Shared defaults live in `compose/_common.yml` as three template services reached
 through `extends:`. That file is deliberately **not** in the include list, so the
 templates never become containers:
 
@@ -30,6 +30,10 @@ templates never become containers:
 - `rootless` — adds `PUID`/`PGID`, for images that document them. An image that
   ignores them gets `defaults` and a `user:` pair instead; setting PUID on an
   image that ignores it is a silent no-op that reads like a security control.
+- `confined` — for lemonfiber's own images: a read-only root, the operator's
+  uid, every kernel capability dropped, `no-new-privileges` and a memory limit.
+  `validate_manifest.py` refuses a service of lemonfiber's own without all of
+  it, or on any network, or beside any service, its ADR does not name.
 
 ## The rules you cannot break
 
@@ -47,6 +51,13 @@ templates never become containers:
   tunnel's namespace is one lemonfiber reports as leaking (`C2-R12`).
 - `stack.toml` and the Compose model must stay in parity — every service in one
   is in the other, with the same image, tag, digest and profile.
+- **lemonfiber's own images run confined** (`C6-R20`, `C6-R22`). Each extends
+  `confined`, mounts `./config/<id>:/config` and nothing else, and is on exactly
+  the networks its ADR names, beside exactly the services it names. Seerr is not
+  on the default network: the request gate is its only path to Sonarr, Radarr
+  and Jellyfin. `CONFINED` in `scripts/validate_manifest.py` is where each
+  service's networks are stated, and one of lemonfiber's own without an entry
+  there fails CI.
 
 ## Adding a service
 
@@ -57,10 +68,11 @@ Then `just ci`.
 The `[[service]]` also says what the service can do — `provides`, in lemonfiber's
 published capability vocabulary — so that wiring can ask for a capability rather
 than name a service. That file is generated from this field, so a capability
-nothing here declares cannot be published. Recyclarr, Unpackerr, Homepage and
-Caddy declare nothing, because nothing asks them anything: the first two act on
-the filesystem and on other services' configuration, and the other two are
-configured by lemonfiber writing a file.
+nothing here declares cannot be published. Recyclarr, Unpackerr, Homepage,
+Caddy, the request gate and the decline service declare nothing, because nothing
+asks them anything: the first two act on the filesystem and on other services'
+configuration, the next two are configured by lemonfiber writing a file, the
+gate carries Seerr's asks, and the decline service answers an invitee's browser.
 
 The `[[service]]` says what the service reaches on the network and what it asks
 for there — `reaches` and `asks_for`, both or neither, `reaches = ""` for one
@@ -94,7 +106,8 @@ judges them against the pull request's base:
   and a new `digest` — the index the new tag names, which `just images` asks
   the registry for (`E1-R1`). `just pins-apply <service>` writes all three.
   A moved pin also has its upstream licence read from the forge and held to the
-  OSI list (`F2-R12`) — that half is networked and lives in `just licences`.
+  OSI list (`F2-R12`), or to `Hippocratic-3.0` for lemonfiber's own images
+  (`F2-R5`) — that half is networked and lives in `just licences`.
 - A service that leaves the manifest has to gain a `[[removed]]` entry naming
   the reason and any replacement (`F2-R13`).
 

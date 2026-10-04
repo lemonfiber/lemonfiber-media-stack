@@ -4,7 +4,8 @@
 # a library nobody can reach from the TV is not a library. Homepage (dash) and
 # Caddy (proxy) publish there too — `bind = "lan"` in stack.toml is the list of
 # record. Set LAN_BIND in .env to pin them to one interface address rather than
-# all of them.
+# all of them. The request gate is the exception: it publishes nothing, and only
+# Seerr reaches it.
 
 services:
   jellyfin:
@@ -22,6 +23,10 @@ services:
       - ${DATA_ROOT:-./data}:/data
       - ./config/jellyfin:/config
       - ./config/jellyfin/cache:/cache
+    # The default network for everything that reaches it by name, and the two
+    # that are each shared with one confined service: the request gate's and the
+    # decline service's.
+    networks: [default, gate-upstream, decline-upstream]
     # Hardware transcoding: uncomment both lines and set RENDER_GID in .env to
     # the host's render group id (`getent group render`). Intel/AMD VA-API.
     # devices: ["/dev/dri:/dev/dri"]
@@ -45,6 +50,52 @@ services:
     volumes:
       - ./config/seerr:/app/config
     # No data mount: it takes requests and calls APIs, it never reads the library.
+    # Not on the default network: it reaches Sonarr, Radarr and Jellyfin only
+    # through the request gate, under tokens lemonfiber mints for the gate
+    # (C6-R22). `requests` carries its port and its egress, and holds the two
+    # services that reach it, Homepage and Caddy.
+    networks: [requests, requests-gate]
+
+  # The request gate: Seerr's one path to Sonarr, Radarr and Jellyfin. It holds
+  # their credentials, answers a fixed list of calls it builds itself on port
+  # 5057, and refuses everything else (ADR-0032). It publishes no port, and both
+  # its networks are internal: Seerr reaches it, it reaches the three upstreams,
+  # and it reaches nothing off the host.
+  request-gate:
+    extends:
+      file: compose/_common.yml
+      service: confined
+    image: ghcr.io/lemonfiber/request-gate:v0.17.0-pre.1@sha256:c98c54fbbd3b43c73386cc45a8d7dbf03411827675691f67cff228f8ba8ea341
+    profiles: [media]
+    networks: [requests-gate, gate-upstream]
+    volumes:
+      # The one mount. lemonfiber writes upstreams.json and tokens.json here,
+      # owner-only, and the gate only reads them; record.json is the gate's own.
+      # A directory rather than a file per mount, because lemonfiber replaces
+      # each file whole and a file mount would keep showing the one it replaced.
+      - ./config/request-gate:/config
+    # No data mount and no engine socket.
+
+  # The decline service: the address an invitation is refused at. It disables
+  # the invited account in Jellyfin the moment the invitee refuses, with the one
+  # key lemonfiber minted for it, and records the refusal (ADR-0029). It serves
+  # on 8080 inside, published at the household tier.
+  decline:
+    extends:
+      file: compose/_common.yml
+      service: confined
+    image: ghcr.io/lemonfiber/decline:v0.17.0-pre.1@sha256:65b3ea113ca2c6f04e1c434594b10429a545ad915e56981f31a6c2cc8c03e8c2
+    profiles: [media]
+    ports: ["${LAN_BIND:-0.0.0.0}:5056:8080"]
+    # Its published port's network, which holds nothing else, and the one it
+    # shares with Jellyfin alone. Not the default network the admin services
+    # share.
+    networks: [decline, decline-upstream]
+    volumes:
+      # The one mount. lemonfiber writes jellyfin.key and invitations.json here,
+      # owner-only, and the service only reads them; refusals.json is its own.
+      - ./config/decline:/config
+    # No data mount and no engine socket.
 
   calibre-web-automated:
     extends:
