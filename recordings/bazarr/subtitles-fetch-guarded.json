@@ -1,0 +1,17 @@
+{
+  "recorded_from": "lscr.io/linuxserver/bazarr@sha256:8b30e81c4aec2991f469e78fae8afaa89ecc9b21a80e3897f50427216b55470c",
+  "note": "Its own state, asked for presenting nothing, on a fresh instance. A refusal is the pass: it holds subtitle-provider accounts and a path into the library, and neither is something the network may read.",
+  "request": {
+    "method": "GET",
+    "path": "/api/system/status"
+  },
+  "response": {
+    "status": 401,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "json": {
+      "message": "The server could not verify that you are authorized to access the URL requested. You either supplied the wrong credentials (e.g. a bad password), or your browser doesn't understand how to supply the credentials required."
+    }
+  }
+}

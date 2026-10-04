@@ -1,0 +1,51 @@
+{
+  "recorded_from": "lscr.io/linuxserver/sabnzbd@sha256:374051b90f64d107f8658dcd9b9065c28826afe14562647214f45057e119fc04",
+  "note": "The same read with the API key this instance wrote on first start, passed as SABnzbd takes it. Recorded empty, because nothing has been handed to it yet; what it shows is the queue a filer reads finished paths from.",
+  "request": {
+    "method": "GET",
+    "path": "/api?mode=queue&output=json"
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json;charset=UTF-8"
+    },
+    "json": {
+      "queue": {
+        "version": "4.5.5",
+        "paused": false,
+        "pause_int": "0",
+        "paused_all": false,
+        "diskspace1": "<redacted>",
+        "diskspace2": "<redacted>",
+        "diskspace1_norm": "<redacted>",
+        "diskspace2_norm": "<redacted>",
+        "diskspacetotal1": "<redacted>",
+        "diskspacetotal2": "<redacted>",
+        "speedlimit": "0",
+        "speedlimit_abs": "0",
+        "have_warnings": "1",
+        "finishaction": null,
+        "quota": "0 B",
+        "have_quota": false,
+        "left_quota": "0 B",
+        "cache_art": "0",
+        "cache_size": "0 B",
+        "kbpersec": "0.00",
+        "speed": "0",
+        "mbleft": "0.00",
+        "mb": "0.00",
+        "sizeleft": "0 B",
+        "size": "0 B",
+        "noofslots_total": 0,
+        "noofslots": 0,
+        "start": 0,
+        "limit": 0,
+        "finish": 0,
+        "status": "Idle",
+        "timeleft": "0:00:00",
+        "slots": []
+      }
+    }
+  }
+}

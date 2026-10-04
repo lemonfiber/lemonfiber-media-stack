@@ -1,0 +1,16 @@
+{
+  "recorded_from": "lscr.io/linuxserver/qbittorrent@sha256:caab2ebce30799ab342c374ea268fef4ec063a8ec3733a4e5d4a8e856ee32ce8",
+  "note": "The torrent list, asked for with no session, on a fresh instance. A refusal is the pass: a torrent client's queue is the one list in this stack whose disclosure has consequences outside the household.",
+  "request": {
+    "method": "GET",
+    "path": "/api/v2/torrents/info"
+  },
+  "response": {
+    "status": 403,
+    "headers": {
+      "content-type": "text/plain; charset=UTF-8"
+    },
+    "json": null,
+    "body_starts_with": "Forbidden"
+  }
+}

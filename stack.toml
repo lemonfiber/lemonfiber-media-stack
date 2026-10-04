@@ -249,6 +249,21 @@ health = { kind = "http", path = "/api?mode=version", timeout_s = 60 }
 api = { kind = "sabnzbd", key_source = "config-ini", path = "/config/sabnzbd.ini" }
 listens = 8080
 
+[[service.claim]]
+capability = "download.usenet"
+
+[[service.claim.probe]]
+id = "guarded"
+request = { method = "GET", path = "/api?mode=queue&output=json" }
+expect = { status = 403 }
+fixture = "recordings/sabnzbd/download-usenet-guarded.json"
+
+[[service.claim.probe]]
+id = "queue"
+request = { method = "GET", path = "/api?mode=queue&output=json" }
+expect = { status = 200, json_types = { "/queue/slots" = "list" } }
+fixture = "recordings/sabnzbd/download-usenet-queue.json"
+
 [[service]]
 id = "gluetun"
 name = "Gluetun"
@@ -268,6 +283,15 @@ asks_for = "Dials the tunnel everything torrent-shaped is routed through, and as
 grants = ["NET_ADMIN"]
 provides = ["network.egress-guard"]
 health = { kind = "container" }
+
+[[service.claim]]
+capability = "network.egress-guard"
+
+[[service.claim.probe]]
+id = "identifies"
+request = { method = "GET", path = "/v1/vpn/status" }
+expect = { status = 200, json_types = { status = "str" } }
+fixture = "recordings/gluetun/network-egress-guard-identifies.json"
 
 [[service]]
 id = "qbittorrent"
@@ -293,6 +317,21 @@ health = { kind = "http", path = "/api/v2/app/version", timeout_s = 60 }
 api = { kind = "qbittorrent", key_source = "generated" }
 listens = 8081
 
+[[service.claim]]
+capability = "download.torrent"
+
+[[service.claim.probe]]
+id = "guarded"
+request = { method = "GET", path = "/api/v2/torrents/info" }
+expect = { status = 403 }
+fixture = "recordings/qbittorrent/download-torrent-guarded.json"
+
+[[service.claim.probe]]
+id = "queue"
+request = { method = "GET", path = "/api/v2/torrents/info" }
+expect = { status = 200, json_array_min = 0 }
+fixture = "recordings/qbittorrent/download-torrent-queue.json"
+
 [[service]]
 id = "sonarr"
 name = "Sonarr"
@@ -316,6 +355,21 @@ provides = ["library.curate"]
 health = { kind = "http", path = "/ping", timeout_s = 90 }
 api = { kind = "servarr", key_source = "config-xml", path = "/config/config.xml", version = 3 }
 listens = 8989
+
+[[service.claim]]
+capability = "library.curate"
+
+[[service.claim.probe]]
+id = "guarded"
+request = { method = "GET", path = "/api/v3/wanted/missing" }
+expect = { status = 401 }
+fixture = "recordings/sonarr/library-curate-guarded.json"
+
+[[service.claim.probe]]
+id = "wanted"
+request = { method = "GET", path = "/api/v3/wanted/missing" }
+expect = { status = 200, json_types = { records = "list", totalRecords = "int" } }
+fixture = "recordings/sonarr/library-curate-wanted.json"
 
 [[service]]
 id = "radarr"
@@ -341,6 +395,21 @@ health = { kind = "http", path = "/ping", timeout_s = 90 }
 api = { kind = "servarr", key_source = "config-xml", path = "/config/config.xml", version = 3 }
 listens = 7878
 
+[[service.claim]]
+capability = "library.curate"
+
+[[service.claim.probe]]
+id = "guarded"
+request = { method = "GET", path = "/api/v3/wanted/missing" }
+expect = { status = 401 }
+fixture = "recordings/radarr/library-curate-guarded.json"
+
+[[service.claim.probe]]
+id = "wanted"
+request = { method = "GET", path = "/api/v3/wanted/missing" }
+expect = { status = 200, json_types = { records = "list", totalRecords = "int" } }
+fixture = "recordings/radarr/library-curate-wanted.json"
+
 [[service]]
 id = "lidarr"
 name = "Lidarr"
@@ -364,6 +433,21 @@ provides = ["library.curate"]
 health = { kind = "http", path = "/ping", timeout_s = 90 }
 api = { kind = "servarr", key_source = "config-xml", path = "/config/config.xml", version = 1 }
 listens = 8686
+
+[[service.claim]]
+capability = "library.curate"
+
+[[service.claim.probe]]
+id = "guarded"
+request = { method = "GET", path = "/api/v1/wanted/missing" }
+expect = { status = 401 }
+fixture = "recordings/lidarr/library-curate-guarded.json"
+
+[[service.claim.probe]]
+id = "wanted"
+request = { method = "GET", path = "/api/v1/wanted/missing" }
+expect = { status = 200, json_types = { records = "list", totalRecords = "int" } }
+fixture = "recordings/lidarr/library-curate-wanted.json"
 
 [[service]]
 id = "bindery"
@@ -393,6 +477,21 @@ health = { kind = "http", path = "/", timeout_s = 90 }
 api = { kind = "bindery", key_source = "generated" }
 listens = 8787
 
+[[service.claim]]
+capability = "library.curate"
+
+[[service.claim.probe]]
+id = "guarded"
+request = { method = "GET", path = "/api/v1/wanted/missing" }
+expect = { status = 401 }
+fixture = "recordings/bindery/library-curate-guarded.json"
+
+[[service.claim.probe]]
+id = "wanted"
+request = { method = "GET", path = "/api/v1/wanted/missing" }
+expect = { status = 200, json_array_min = 0 }
+fixture = "recordings/bindery/library-curate-wanted.json"
+
 [[service]]
 id = "bazarr"
 name = "Bazarr"
@@ -418,6 +517,21 @@ health = { kind = "http", path = "/", timeout_s = 90 }
 # config directory of its own.
 api = { kind = "bazarr", key_source = "config-yaml", path = "/config/config/config.yaml" }
 listens = 6767
+
+[[service.claim]]
+capability = "subtitles.fetch"
+
+[[service.claim.probe]]
+id = "guarded"
+request = { method = "GET", path = "/api/system/status" }
+expect = { status = 401 }
+fixture = "recordings/bazarr/subtitles-fetch-guarded.json"
+
+[[service.claim.probe]]
+id = "status"
+request = { method = "GET", path = "/api/system/status" }
+expect = { status = 200, json_types = { "/data" = "dict", "/data/bazarr_version" = "str" } }
+fixture = "recordings/bazarr/subtitles-fetch-status.json"
 
 [[service]]
 id = "jellyfin"

@@ -1,0 +1,31 @@
+{
+  "recorded_from": "lscr.io/linuxserver/bazarr@sha256:8b30e81c4aec2991f469e78fae8afaa89ecc9b21a80e3897f50427216b55470c",
+  "note": "The same read with the API key this instance wrote on first start. What it is and which version, answered without a provider being asked anything; the host's operating system and core count are redacted, being the recording machine's rather than Bazarr's.",
+  "request": {
+    "method": "GET",
+    "path": "/api/system/status"
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "json": {
+      "data": {
+        "bazarr_version": "1.6.2",
+        "package_version": "v1.6.2-ls366 by linuxserver.io",
+        "sonarr_version": "",
+        "radarr_version": "",
+        "operating_system": "<redacted>",
+        "python_version": "3.12.14",
+        "database_engine": "Sqlite 3.53.4",
+        "database_migration": "unknown",
+        "bazarr_directory": "/app/bazarr/bin",
+        "bazarr_config_directory": "/config",
+        "start_time": 1791147022.2241325,
+        "timezone": "Etc/UTC",
+        "cpu_cores": "<redacted>"
+      }
+    }
+  }
+}
