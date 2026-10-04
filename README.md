@@ -184,12 +184,14 @@ recording taken from any other image are all refused, so a pin that moves is
 re-recorded in the same change.
 
 `just record <vocabulary> <service>...` takes the recordings. For each service
-it starts the pinned image fresh, in a scratch directory holding only the
-templates this repository ships, does its first run with credentials made for
-that run alone, asks every probe the claims bind,
-and writes each answer with every credential the run made, and the container's
-name and addresses, replaced by `<redacted>`. The container, its directory and
-any image it pulled are removed afterwards. `<vocabulary>` is the
+it starts the pinned image fresh, its configuration on a volume of its own
+holding only the templates this repository ships, does its first run with
+credentials made for that run alone, asks every probe the claims bind, and
+writes each answer with every credential the run made, and the container's name
+and addresses, replaced by `<redacted>`. A credential is scrubbed in either case
+and URL-, base64- or JSON-encoded, and a recording that still carries one is not
+written. No credential is put on a command line or printed. The container, its
+volume and any image it pulled are removed afterwards. `<vocabulary>` is the
 `capability-vocabulary.json` lemonfiber publishes, which says which probes are
 asked with the operator's credential.
 

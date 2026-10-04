@@ -5,13 +5,19 @@ A `[[service.claim]]` in stack.toml binds every probe of a capability to a
 request on the service and to a recording of the answer, taken from the image
 the manifest pins (`ARCH-R136`). This takes those recordings.
 
-For each service named it starts the pinned `image@digest` fresh, in a scratch
-directory with nothing in it but the templates this repository ships, under a
-container name and a port nothing else uses. It does whatever first run the
-service needs before it will answer an operator, with credentials generated for
-that run and thrown away with it, asks each bound probe, and writes the answer
-to the fixture the claim names. The container and its scratch directory are
-removed whether or not that worked.
+For each service named it starts the pinned `image@digest` fresh, its
+configuration on a volume of its own holding nothing but the templates this
+repository ships, under a container name and a port nothing else uses. It does
+whatever first run the service needs before it will answer an operator, with
+credentials generated for that run and thrown away with it, asks each bound
+probe, and writes the answer to the fixture the claim names. The container and
+its volume are removed whether or not that worked, and nothing it wrote is ever
+on the host's disk.
+
+A credential this run makes is never on a command line, where any process can
+read it, and never in what this prints: a value the container is started with
+reaches Docker through the environment, and a failure is reported with every
+credential the run made taken out of it.
 
 A probe the published vocabulary says is asked with the operator's credential is
 asked with the one this run made; every other probe presents nothing. The
@@ -19,11 +25,13 @@ recording keeps the request the claim declares and never the credential: a
 claim cannot present one, and a recording is committed to a public repository.
 
 What comes back is scrubbed before it is written. Every credential the run
-made, the container's id, hostname and addresses, the scratch directory's path
-and the recording machine's own name are replaced with a placeholder, and so is
-each place a recipe names as describing the machine or the instance rather than
-the service. A recording carries the shape of the answer and nothing about where
-it was taken. Read each one anyway before committing it.
+made — as it was made, in either case, and URL-, base64- or JSON-encoded — the
+container's id, hostname and addresses, and the recording machine's own name are
+replaced with a placeholder wherever they appear, and so is each place a recipe
+names as describing the machine or the instance rather than the service. Then
+the recording is read once more as the text it will be written as, and if any
+credential the run made is still in it, in any of those forms, it is not
+written. Read each one anyway before committing it.
 
 Needs Docker and the network, and the vocabulary lemonfiber publishes, read on
 standard input:
@@ -41,15 +49,16 @@ import base64
 import dataclasses
 import http.client
 import http.cookiejar
+import io
 import json
+import os
 import pathlib
 import re
 import secrets
-import shutil
 import socket
 import subprocess
 import sys
-import tempfile
+import tarfile
 import time
 import tomllib
 import urllib.error
@@ -104,9 +113,15 @@ CALIBRE_WEB_LOGIN = "/login"
 
 # What every scrubbed value is replaced with.
 REDACTED = "<redacted>"
+# The shortest value scrubbing looks for. Below this a value is a word that
+# occurs in answers by chance, and every credential a run makes is longer.
+SHORTEST_HIDDEN = 4
 
-# The uid and gid the images that drop privileges run as here. The stack takes
-# both from the operator's environment; a recording has no operator.
+# The uid and gid the LinuxServer.io images drop privileges to here. The stack
+# takes both from the operator's environment; a recording has no operator. Every
+# other image runs as the user it was built with, which owns the volume its
+# configuration is on: the stack's `user:` pair is about owning files on the
+# host, and a recording's volume is never on the host.
 PUID = "1000"
 PGID = "1000"
 TZ = "Etc/UTC"
@@ -151,11 +166,11 @@ OPENER = urllib.request.build_opener(NoRedirect)
 class Run:
     """One fresh container of one pinned image, and what its first run made."""
 
-    def __init__(self, sid: str, reference: str, port: int, scratch: pathlib.Path) -> None:
+    def __init__(self, sid: str, reference: str, port: int, config: str) -> None:
         self.sid = sid
         self.reference = reference
         self.port = port
-        self.scratch = scratch
+        self.config = config
         self.name = f"{CONTAINER_PREFIX}{sid}"
         self.host_port = 0
         self.secrets: set[str] = set()
@@ -218,8 +233,21 @@ class Run:
         raise RuntimeError(f"{self.sid} did not answer {path} within {READY_S}s; last: {last}")
 
     def file(self, inside: str) -> str:
-        """A file in the container's configuration, read from the scratch directory."""
-        return (self.scratch / inside).read_text(encoding="utf-8")
+        """A file in the container's configuration, read out of the container.
+
+        Through `docker cp`, which needs nothing inside the image to read with,
+        so a distroless one is read like any other.
+        """
+        copied = subprocess.run(["docker", "cp", f"{self.name}:{self.config}/{inside}", "-"],
+                                capture_output=True, check=False)
+        if copied.returncode != 0:
+            raise OSError(f"{self.sid} has no {inside} in its configuration yet")
+        with tarfile.open(fileobj=io.BytesIO(copied.stdout)) as archive:
+            member = next((one for one in archive.getmembers() if one.isfile()), None)
+            held = archive.extractfile(member) if member else None
+            if held is None:
+                raise OSError(f"{self.sid}'s {inside} is not a file")
+            return held.read().decode("utf-8")
 
     def logs(self) -> str:
         done = subprocess.run(["docker", "logs", self.name], capture_output=True, text=True, check=False)
@@ -229,7 +257,7 @@ class Run:
         """What names this container and the machine it ran on."""
         inspected = json.loads(subprocess.run(["docker", "inspect", self.name], capture_output=True,
                                               text=True, check=True).stdout)[0]
-        found = {inspected["Id"], inspected["Id"][:12], inspected["Config"]["Hostname"], str(self.scratch)}
+        found = {inspected["Id"], inspected["Id"][:12], inspected["Config"]["Hostname"]}
         for network in (inspected.get("NetworkSettings", {}).get("Networks") or {}).values():
             found.update({network.get("IPAddress", ""), network.get("Gateway", ""),
                           network.get("MacAddress", "")})
@@ -495,7 +523,6 @@ RECIPES: dict[str, Recipe] = {
         setup=jellyfin,
         ready="/Startup/Configuration",
         env={"TZ": TZ, "JELLYFIN_CACHE_DIR": "/config/cache"},
-        run_args=("--user", f"{PUID}:{PGID}"),
         notes={
             (MEDIA_SERVE, "guarded"): (
                 "The catalogue, asked for presenting nothing, on an instance whose first run is "
@@ -543,7 +570,6 @@ RECIPES: dict[str, Recipe] = {
         setup=navidrome,
         config="/data",
         env={"TZ": TZ},
-        run_args=("--user", f"{PUID}:{PGID}"),
         ready="/ping",
         notes={
             (MEDIA_SERVE, "guarded"): (
@@ -561,7 +587,9 @@ RECIPES: dict[str, Recipe] = {
     "bindery": Recipe(
         setup=minted,
         env={"TZ": TZ, "BINDERY_API_KEY": "{key}"},
-        run_args=("--user", f"{PUID}:{PGID}"),
+        # Its image has no /config, so the volume Docker makes there is root's,
+        # and the image's own nonroot user could not write its database to it.
+        run_args=("--user", "0:0"),
         notes={
             (LIBRARY_CURATE, "guarded"): GUARDED_CURATE,
             (LIBRARY_CURATE, "wanted"): (
@@ -575,7 +603,6 @@ RECIPES: dict[str, Recipe] = {
         setup=anonymous,
         config="/app/config",
         env={"TZ": TZ},
-        run_args=("--user", f"{PUID}:{PGID}"),
         notes={
             (REQUEST_INTAKE, "identifies"): (
                 "Its own version and state, asked for presenting nothing. An answer is the pass: "
@@ -649,7 +676,9 @@ RECIPES: dict[str, Recipe] = {
     "qbittorrent": Recipe(
         setup=qbittorrent,
         env={**LSIO_ENV, "WEBUI_PORT": "8081"},
-        ready="/api/v2/app/version",
+        # The sign-in page, which answers before a session exists; every API
+        # path refuses a caller without one.
+        ready="/",
         notes={
             (DOWNLOAD_TORRENT, "guarded"): (
                 "The torrent list, asked for with no session, on a fresh instance. A refusal is "
@@ -670,18 +699,54 @@ RECIPES: dict[str, Recipe] = {
 # ── recording ───────────────────────────────────────────────────────────────
 
 
+def forms(value: str) -> set[str]:
+    """Every spelling of `value` an answer could echo it back in.
+
+    As it was made, URL-encoded either way, base64-encoded with and without
+    padding and in the URL-safe alphabet, and escaped as a JSON string would
+    carry it. Case is not spelled out here: every comparison ignores it.
+    """
+    if len(value) < SHORTEST_HIDDEN:
+        return set()
+    encoded = base64.b64encode(value.encode()).decode()
+    url_safe = base64.urlsafe_b64encode(value.encode()).decode()
+    return {
+        value,
+        urllib.parse.quote(value, safe=""),
+        urllib.parse.quote_plus(value),
+        encoded, encoded.rstrip("="),
+        url_safe, url_safe.rstrip("="),
+        json.dumps(value)[1:-1],
+    }
+
+
+def hiding(hidden: set[str]) -> re.Pattern[str] | None:
+    """One pattern matching every form of every hidden value, longest first."""
+    every = sorted({one for value in hidden for one in forms(value)}, key=len, reverse=True)
+    return re.compile("|".join(map(re.escape, every)), re.IGNORECASE) if every else None
+
+
 def scrubbed(value: object, hidden: set[str]) -> object:
-    """`value` with every hidden string, wherever it appears, replaced."""
+    """`value` with every hidden string, in every form and either case, replaced
+    wherever it appears: in a string at any depth, and in a key."""
+    pattern = hiding(hidden)
+    return value if pattern is None else scrubbed_by(value, pattern)
+
+
+def scrubbed_by(value: object, pattern: re.Pattern[str]) -> object:
     if isinstance(value, str):
-        for secret in sorted(hidden, key=len, reverse=True):
-            if secret in value:
-                value = REDACTED if value == secret else value.replace(secret, REDACTED)
-        return value
+        return REDACTED if pattern.fullmatch(value) else pattern.sub(REDACTED, value)
     if isinstance(value, list):
-        return [scrubbed(item, hidden) for item in value]
+        return [scrubbed_by(item, pattern) for item in value]
     if isinstance(value, dict):
-        return {scrubbed(key, hidden): scrubbed(item, hidden) for key, item in value.items()}
+        return {scrubbed_by(key, pattern): scrubbed_by(item, pattern) for key, item in value.items()}
     return value
+
+
+def still_carries(text: str, made: set[str]) -> bool:
+    """Whether `text` holds any credential this run made, in any form or case."""
+    pattern = hiding(made)
+    return pattern is not None and pattern.search(text) is not None
 
 
 def redacted(document: object, places: tuple[str, ...]) -> object:
@@ -742,21 +807,38 @@ def free_port() -> int:
         return probe.getsockname()[1]
 
 
-def start(run: Run, recipe: Recipe) -> None:
-    for template in recipe.templates:
-        source = ROOT / template
-        target = run.scratch / source.name
-        shutil.copyfile(source, target)
-    run.host_port = free_port()
+def created(run: Run, recipe: Recipe) -> tuple[list[str], dict[str, str]]:
+    """The command that creates the container, and the environment it is run in.
+
+    Each variable is named on the command line and valued in the environment,
+    where Docker reads it from: a command line is readable by every process on
+    the machine and is what a failed command reports, and a value this run
+    minted belongs in neither.
+    """
+    variables = environment(run, recipe)
     command = [
-        "docker", "run", "-d", "--name", run.name,
+        "docker", "create", "--name", run.name,
         "-p", f"{HOST}:{run.host_port}:{run.port}",
-        "-v", f"{run.scratch}:{recipe.config}",
-        *(item for name, value in environment(run, recipe).items() for item in ("-e", f"{name}={value}")),
+        # A volume of the container's own rather than a directory on the host,
+        # removed with it: what the service writes there includes the keys this
+        # run made, and nothing of that reaches the host's disk.
+        "-v", recipe.config,
+        *(item for name in variables for item in ("-e", name)),
         *recipe.run_args,
         run.reference,
     ]
-    subprocess.run(command, capture_output=True, text=True, check=True)
+    return command, {**os.environ, **variables}
+
+
+def start(run: Run, recipe: Recipe) -> None:
+    run.host_port = free_port()
+    command, env = created(run, recipe)
+    subprocess.run(command, capture_output=True, text=True, check=True, env=env)
+    for template in recipe.templates:
+        source = ROOT / template
+        subprocess.run(["docker", "cp", str(source), f"{run.name}:{recipe.config}/{source.name}"],
+                       capture_output=True, text=True, check=True)
+    subprocess.run(["docker", "start", run.name], capture_output=True, text=True, check=True)
 
 
 def environment(run: Run, recipe: Recipe) -> dict[str, str]:
@@ -773,8 +855,7 @@ def record(service: dict, recipe: Recipe, operator: set[tuple[str, str]], hold: 
     sid = service["id"]
     reference = by_digest(service)
     port = recipe.port or service.get("listens") or service.get("port")
-    scratch = pathlib.Path(tempfile.mkdtemp(prefix=f"record-{sid}-"))
-    run = Run(sid, reference, port, scratch)
+    run = Run(sid, reference, port, recipe.config)
     written: list[str] = []
     # Pulled for this run, so removed with it. An image that was already here is
     # somebody else's, whether or not anything is running it.
@@ -802,16 +883,25 @@ def record(service: dict, recipe: Recipe, operator: set[tuple[str, str]], hold: 
                     "request": {key: asked[key] for key in ("method", "path", "accept") if key in asked},
                     "response": response_of(answer, hidden, recipe.redact, recipe.redact_named),
                 }
+                text = json.dumps(recording, indent=2, ensure_ascii=False) + "\n"
+                if still_carries(text, run.secrets):
+                    raise RuntimeError(
+                        f"{probe['fixture']} still carries a credential this run made after scrubbing, "
+                        "so it was not written"
+                    )
                 target = ROOT / probe["fixture"]
                 target.parent.mkdir(parents=True, exist_ok=True)
-                target.write_text(json.dumps(recording, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+                target.write_text(text, encoding="utf-8")
                 written.append(f"{probe['fixture']}: {answer.status}")
         if hold:
             print(f"held: {run.name} at {run.base}, until `docker rm -f -v {run.name}`")
+    except Exception as broke:
+        # Reported with every credential the run made taken out, and without
+        # the exception it came from, whose arguments are what was not scrubbed.
+        raise RuntimeError(str(scrubbed(str(broke), run.secrets))) from None
     finally:
         if not hold:
             stop(run)
-            shutil.rmtree(scratch, ignore_errors=True)
             if pulled:
                 # Refused by Docker while any container uses it, which is the guard.
                 subprocess.run(["docker", "rmi", reference], capture_output=True, check=False)
@@ -839,9 +929,36 @@ def self_test() -> int:
     vocabulary = {"capabilities": [{"name": "a.b", "probes": [
         {"id": "guarded", "credential": "none"}, {"id": "read", "credential": "operator"}]}]}
     assert operator_probes(vocabulary) == {("a.b", "read")}
-    run = Run("thing", "example/thing@sha256:0", 80, pathlib.Path("/nowhere"))
-    minted = environment(run, Recipe(setup=anonymous, notes={}, env={"KEY": "{key}", "TZ": TZ}))
-    assert minted == {"KEY": run.key, "TZ": TZ} and run.key in run.secrets, minted
+    run = Run("thing", "example/thing@sha256:0", 80, "/config")
+    recipe = Recipe(setup=anonymous, notes={}, env={"KEY": "{key}", "WG": "{wireguard}", "TZ": TZ})
+    minted = environment(run, recipe)
+    assert minted == {"KEY": run.key, "WG": run.wireguard, "TZ": TZ} and run.key in run.secrets, minted
+    # A minted value reaches Docker through the environment, never the command line.
+    command, env = created(run, recipe)
+    assert not any(secret in argument for secret in run.secrets for argument in command), command
+    assert "KEY" in command and env["KEY"] == run.key and env["WG"] == run.wireguard
+
+    # Echoed back in another case, URL-encoded, base64-encoded or JSON-escaped,
+    # at any depth or as a key, a credential is still scrubbed.
+    made = {"S3cret/Key+1"}
+    echoed = {
+        "upper": "S3CRET/KEY+1",
+        "url": f"/x?k={urllib.parse.quote('S3cret/Key+1', safe='')}",
+        "plus": urllib.parse.quote_plus("S3cret/Key+1"),
+        "b64": base64.b64encode(b"S3cret/Key+1").decode(),
+        "deep": [{"S3cret/Key+1": "value"}],
+    }
+    clean = json.dumps(scrubbed(echoed, made))
+    assert not still_carries(clean, made) and REDACTED in clean, clean
+    assert still_carries('{"a": "...s3cret%2Fkey%2B1..."}', made)
+    assert not still_carries('{"a": "nothing here"}', made)
+    assert forms("ab") == set(), "a value too short to look for is not looked for"
+
+    # A failure is reported with what the run made taken out.
+    try:
+        raise RuntimeError(f"refused {run.key}")
+    except RuntimeError as broke:
+        assert run.key not in str(scrubbed(str(broke), run.secrets))
     print("self-test: what a run made and where it ran scrubbed, answers kept as a recording keeps them")
     return 0
 
