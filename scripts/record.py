@@ -25,9 +25,10 @@ each place a recipe names as describing the machine or the instance rather than
 the service. A recording carries the shape of the answer and nothing about where
 it was taken. Read each one anyway before committing it.
 
-Needs Docker and the network, and the vocabulary lemonfiber publishes:
+Needs Docker and the network, and the vocabulary lemonfiber publishes, read on
+standard input:
 
-    python3 scripts/record.py --vocabulary capability-vocabulary.json sonarr radarr
+    python3 scripts/record.py sonarr radarr < capability-vocabulary.json
 
 `--self-test` proves the scrubbing and the reading of an answer, offline.
 Exit 0 = every recording written, 1 = one was not.
@@ -82,6 +83,24 @@ KEPT_HEADERS = ("content-type",)
 READY_S = 240
 POLL_S = 2.0
 ATTEMPT_TIMEOUT_S = 10
+
+# The capabilities the recipes write notes for, as the published vocabulary
+# names them.
+INDEXER_SEARCH = "indexer.search"
+INDEXER_PROXY = "indexer.proxy"
+DOWNLOAD_USENET = "download.usenet"
+DOWNLOAD_TORRENT = "download.torrent"
+EGRESS_GUARD = "network.egress-guard"
+LIBRARY_CURATE = "library.curate"
+SUBTITLES_FETCH = "subtitles.fetch"
+MEDIA_SERVE = "media.serve"
+IDENTITY_SOURCE = "identity.source"
+REQUEST_INTAKE = "request.intake"
+
+# The media type every JSON exchange here is sent and asked for as.
+JSON_TYPE = "application/json"
+# Calibre-Web-Automated's sign-in page, which is also the first thing it serves.
+CALIBRE_WEB_LOGIN = "/login"
 
 # What every scrubbed value is replaced with.
 REDACTED = "<redacted>"
@@ -175,7 +194,7 @@ class Run:
 
     def json(self, method: str, path: str, document: object = None, *,
              headers: dict[str, str] | None = None) -> Answer:
-        sent = {"Content-Type": "application/json", "Accept": "application/json", **(headers or {})}
+        sent = {"Content-Type": JSON_TYPE, "Accept": JSON_TYPE, **(headers or {})}
         body = None if document is None else json.dumps(document).encode()
         return self.ask(method, path, headers=sent, body=body)
 
@@ -356,7 +375,7 @@ def calibre_web(run: Run) -> Credential:
     jar = http.cookiejar.CookieJar()
     opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(jar), NoRedirect)
     host = {"Host": f"{HOST}:{run.port}"}
-    with opener.open(urllib.request.Request(run.base + "/login", headers=host),
+    with opener.open(urllib.request.Request(run.base + CALIBRE_WEB_LOGIN, headers=host),
                      timeout=ATTEMPT_TIMEOUT_S) as page:
         token = re.search(r'name="csrf_token" value="([^"]+)"', page.read().decode("utf-8", "replace"))
     if token is None:
@@ -364,7 +383,7 @@ def calibre_web(run: Run) -> Credential:
     username, secret = CALIBRE_WEB_ADMIN
     fields = {"username": username, "password": secret, "csrf_token": token.group(1),
               "remember_me": "on", "submit": ""}
-    request = urllib.request.Request(run.base + "/login", data=urllib.parse.urlencode(fields).encode(),
+    request = urllib.request.Request(run.base + CALIBRE_WEB_LOGIN, data=urllib.parse.urlencode(fields).encode(),
                                      headers=host)
     try:
         opener.open(request, timeout=ATTEMPT_TIMEOUT_S)
@@ -406,12 +425,12 @@ RECIPES: dict[str, Recipe] = {
         setup=servarr,
         env=LSIO_ENV,
         notes={
-            ("indexer.search", "guarded"): (
+            (INDEXER_SEARCH, "guarded"): (
                 "The indexers this instance holds, asked for presenting nothing. A refusal is "
                 "the pass: an indexer account is an account somebody paid for, and listing them "
                 "to the network is the failure whether or not it still searches."
             ),
-            ("indexer.search", "indexers"): (
+            (INDEXER_SEARCH, "indexers"): (
                 "The same read with the API key this instance wrote on first start. Recorded "
                 "from a fresh instance, so the list is empty; what it shows is that the indexers "
                 "are a list the operator's credential can read."
@@ -423,8 +442,8 @@ RECIPES: dict[str, Recipe] = {
             setup=servarr,
             env=LSIO_ENV,
             notes={
-                ("library.curate", "guarded"): GUARDED_CURATE,
-                ("library.curate", "wanted"): WANTED_CURATE,
+                (LIBRARY_CURATE, "guarded"): GUARDED_CURATE,
+                (LIBRARY_CURATE, "wanted"): WANTED_CURATE,
             },
         )
         for sid in ("sonarr", "radarr", "lidarr")
@@ -439,12 +458,12 @@ RECIPES: dict[str, Recipe] = {
                          "diskspacetotal1", "diskspacetotal2")
         ),
         notes={
-            ("download.usenet", "guarded"): (
+            (DOWNLOAD_USENET, "guarded"): (
                 "The queue, asked for presenting nothing, on a fresh instance started from the "
                 "template this repository ships. A refusal is the pass: the queue names what the "
                 "household is downloading and the account paying for it."
             ),
-            ("download.usenet", "queue"): (
+            (DOWNLOAD_USENET, "queue"): (
                 "The same read with the API key this instance wrote on first start, passed as "
                 "SABnzbd takes it. Recorded empty, because nothing has been handed to it yet; "
                 "what it shows is the queue a filer reads finished paths from."
@@ -456,12 +475,12 @@ RECIPES: dict[str, Recipe] = {
         env=LSIO_ENV,
         redact=("/data/operating_system", "/data/cpu_cores"),
         notes={
-            ("subtitles.fetch", "guarded"): (
+            (SUBTITLES_FETCH, "guarded"): (
                 "Its own state, asked for presenting nothing, on a fresh instance. A refusal is "
                 "the pass: it holds subtitle-provider accounts and a path into the library, and "
                 "neither is something the network may read."
             ),
-            ("subtitles.fetch", "status"): (
+            (SUBTITLES_FETCH, "status"): (
                 "The same read with the API key this instance wrote on first start. What it is "
                 "and which version, answered without a provider being asked anything; the host's "
                 "operating system and core count are redacted, being the recording machine's "
@@ -475,24 +494,24 @@ RECIPES: dict[str, Recipe] = {
         env={"TZ": TZ, "JELLYFIN_CACHE_DIR": "/config/cache"},
         run_args=("--user", f"{PUID}:{PGID}"),
         notes={
-            ("media.serve", "guarded"): (
+            (MEDIA_SERVE, "guarded"): (
                 "The catalogue, asked for presenting nothing, on an instance whose first run is "
                 "done. A refusal is the pass, and the probe the vocabulary exists for: a media "
                 "server on the household network that answered this would be publishing the "
                 "household's library to every device on it."
             ),
-            ("media.serve", "catalogue"): (
+            (MEDIA_SERVE, "catalogue"): (
                 "The same read signed in as the user its first run made. Recorded with no library "
                 "added, so the catalogue holds only the playlists folder Jellyfin makes itself; "
                 "what it shows is the catalogue a player reads, in the shape it reads it."
             ),
-            ("identity.source", "identifies"): (
+            (IDENTITY_SOURCE, "identifies"): (
                 "The public server information, asked for presenting nothing. An answer is the "
                 "pass: something has to be answerable before anybody signs in, and what it is is "
                 "which server this is. The server's id is redacted, and so are the container's "
                 "name and address it reports."
             ),
-            ("identity.source", "guarded"): (
+            (IDENTITY_SOURCE, "guarded"): (
                 "The accounts it holds, asked for presenting nothing. A refusal is the pass: "
                 "which server, to anybody; who is on it, to nobody."
             ),
@@ -504,12 +523,12 @@ RECIPES: dict[str, Recipe] = {
         env={"TZ": TZ},
         ready="/healthcheck",
         notes={
-            ("media.serve", "guarded"): (
+            (MEDIA_SERVE, "guarded"): (
                 "The libraries it serves, asked for presenting nothing, on an instance whose root "
                 "user exists. A refusal is the pass: a library server on the household network "
                 "that answered this would be publishing the household's collection to it."
             ),
-            ("media.serve", "catalogue"): (
+            (MEDIA_SERVE, "catalogue"): (
                 "The same read signed in as the root user its first run made. Recorded with no "
                 "library added, so the list is empty; what it shows is the catalogue a player "
                 "reads, in the shape it reads it."
@@ -523,12 +542,12 @@ RECIPES: dict[str, Recipe] = {
         run_args=("--user", f"{PUID}:{PGID}"),
         ready="/ping",
         notes={
-            ("media.serve", "guarded"): (
+            (MEDIA_SERVE, "guarded"): (
                 "The albums it serves, asked for presenting nothing, on an instance whose admin "
                 "exists. A refusal is the pass: a library server on the household network that "
                 "answered this would be publishing the household's collection to it."
             ),
-            ("media.serve", "catalogue"): (
+            (MEDIA_SERVE, "catalogue"): (
                 "The same read signed in as the admin its first run made. Recorded with no music "
                 "in its folder, so the list is empty; what it shows is the catalogue a player "
                 "reads, in the shape it reads it."
@@ -540,8 +559,8 @@ RECIPES: dict[str, Recipe] = {
         env={"TZ": TZ, "BINDERY_API_KEY": "{key}"},
         run_args=("--user", f"{PUID}:{PGID}"),
         notes={
-            ("library.curate", "guarded"): GUARDED_CURATE,
-            ("library.curate", "wanted"): (
+            (LIBRARY_CURATE, "guarded"): GUARDED_CURATE,
+            (LIBRARY_CURATE, "wanted"): (
                 "The same read with the API key this instance was given before its first start, "
                 "as the stack gives it one. Recorded empty, because a fresh instance wants nothing "
                 "yet; what it shows is that the list is there and answers as a list."
@@ -554,12 +573,12 @@ RECIPES: dict[str, Recipe] = {
         env={"TZ": TZ},
         run_args=("--user", f"{PUID}:{PGID}"),
         notes={
-            ("request.intake", "identifies"): (
+            (REQUEST_INTAKE, "identifies"): (
                 "Its own version and state, asked for presenting nothing. An answer is the pass: "
                 "this is the one service a household member reaches without being an operator, "
                 "so it has a front door that answers before anybody signs in."
             ),
-            ("request.intake", "guarded"): (
+            (REQUEST_INTAKE, "guarded"): (
                 "What has been requested, asked for presenting nothing. A refusal is the pass: a "
                 "request list readable by the network is a list of what everybody in the house "
                 "is waiting to watch."
@@ -576,14 +595,14 @@ RECIPES: dict[str, Recipe] = {
             "VPN_TYPE": "wireguard",
             "WIREGUARD_PRIVATE_KEY": "{wireguard}",
             "WIREGUARD_PUBLIC_KEY": "{peer}",
-            "WIREGUARD_ADDRESSES": "10.64.0.2/32",
+            "WIREGUARD_ADDRESSES": "192.0.2.2/32",
             "VPN_ENDPOINT_IP": "192.0.2.1",
             "VPN_ENDPOINT_PORT": "51820",
         },
         run_args=("--cap-add", "NET_ADMIN", "--device", "/dev/net/tun:/dev/net/tun"),
         ready="/v1/vpn/status",
         notes={
-            ("network.egress-guard", "identifies"): (
+            (EGRESS_GUARD, "identifies"): (
                 "The tunnel's state, asked of the control server from beside it, presenting "
                 "nothing. Recorded with a tunnel dialled at a documentation address (192.0.2.1) "
                 "with keys made for this run, because no provider account is used to record. "
@@ -595,14 +614,14 @@ RECIPES: dict[str, Recipe] = {
     "calibre-web-automated": Recipe(
         setup=calibre_web,
         env=LSIO_ENV,
-        ready="/login",
+        ready=CALIBRE_WEB_LOGIN,
         notes={
-            ("media.serve", "guarded"): (
+            (MEDIA_SERVE, "guarded"): (
                 "The OPDS catalogue a reader's device pulls from, asked for presenting nothing. "
                 "A refusal is the pass: a library server on the household network that answered "
                 "this would be publishing the household's books to it."
             ),
-            ("media.serve", "catalogue"): (
+            (MEDIA_SERVE, "catalogue"): (
                 "The catalogue as its own views read it, in a session signed in as the "
                 "administrator every fresh instance ships with. Asked here rather than at /opds, "
                 "which answers XML and so could not show the body this probe requires; recorded "
@@ -615,7 +634,7 @@ RECIPES: dict[str, Recipe] = {
         env={"TZ": TZ},
         ready="/",
         notes={
-            ("indexer.proxy", "identifies"): (
+            (INDEXER_PROXY, "identifies"): (
                 "Its own state, asked for presenting nothing. It holds nothing of the operator's "
                 "and is reached only from inside the stack, so an answer is the pass, and what "
                 "the answer has to show is that the thing behind the port is FlareSolverr and "
@@ -628,12 +647,12 @@ RECIPES: dict[str, Recipe] = {
         env={**LSIO_ENV, "WEBUI_PORT": "8081"},
         ready="/api/v2/app/version",
         notes={
-            ("download.torrent", "guarded"): (
+            (DOWNLOAD_TORRENT, "guarded"): (
                 "The torrent list, asked for with no session, on a fresh instance. A refusal is "
                 "the pass: a torrent client's queue is the one list in this stack whose "
                 "disclosure has consequences outside the household."
             ),
-            ("download.torrent", "queue"): (
+            (DOWNLOAD_TORRENT, "queue"): (
                 "The same read in a session opened with the password this instance printed for "
                 "its first run. Recorded from the image alone, outside the tunnel it runs behind "
                 "in the stack, because the queue answers the same either way; empty, because "
@@ -787,8 +806,8 @@ def record(service: dict, recipe: Recipe, operator: set[tuple[str, str]], hold: 
 
 def self_test() -> int:
     hidden = {"abc123", "host-1"}
-    assert scrubbed({"key": "abc123", "url": "http://host-1:80/x", "n": 3}, hidden) == {
-        "key": REDACTED, "url": f"http://{REDACTED}:80/x", "n": 3,
+    assert scrubbed({"key": "abc123", "at": "host-1:80/x", "n": 3}, hidden) == {
+        "key": REDACTED, "at": f"{REDACTED}:80/x", "n": 3,
     }
     assert scrubbed(["abc123abc123"], hidden) == [f"{REDACTED}{REDACTED}"]
     empty = response_of(Answer(401, {"content-length": "0"}, b""), set())
@@ -796,8 +815,8 @@ def self_test() -> int:
     html = response_of(Answer(200, {"content-type": "text/html"}, b"<!doctype html>" + b"x" * 200), set())
     assert html["json"] is None and html["body_starts_with"].startswith("<!doctype html>")
     assert len(html["body_starts_with"]) == BODY_STARTS_WITH
-    parsed = response_of(Answer(200, {"content-type": "application/json"}, b'{"token":"abc123"}'), hidden)
-    assert parsed["json"] == {"token": REDACTED} and parsed["headers"] == {"content-type": "application/json"}
+    parsed = response_of(Answer(200, {"content-type": JSON_TYPE}, b'{"token":"abc123"}'), hidden)
+    assert parsed["json"] == {"token": REDACTED} and parsed["headers"] == {"content-type": JSON_TYPE}
     placed = response_of(Answer(200, {}, b'{"q":{"disk":"31.3","n":1},"a~b":2}'), set(), ("/q/disk", "/a~0b", "/x/y"))
     assert placed["json"] == {"q": {"disk": REDACTED, "n": 1}, "a~b": REDACTED}, placed
     vocabulary = {"capabilities": [{"name": "a.b", "probes": [
@@ -813,18 +832,22 @@ def self_test() -> int:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("services", nargs="*", help="service ids in stack.toml")
-    parser.add_argument("--vocabulary", type=pathlib.Path, help="lemonfiber's published capability-vocabulary.json")
     parser.add_argument("--hold", action="store_true", help="leave the container running, to look at by hand")
     parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args()
     if args.self_test:
         return self_test()
-    if not args.services or args.vocabulary is None:
-        parser.error("name at least one service, and --vocabulary")
+    if not args.services:
+        parser.error("name at least one service")
+    if sys.stdin.isatty():
+        parser.error("give lemonfiber's published capability-vocabulary.json on standard input")
 
     manifest = tomllib.loads((ROOT / STACK_TOML).read_text(encoding="utf-8"))
     services = {service["id"]: service for service in manifest.get("service", [])}
-    operator = operator_probes(json.loads(args.vocabulary.read_text(encoding="utf-8")))
+    try:
+        operator = operator_probes(json.load(sys.stdin))
+    except (ValueError, AttributeError, KeyError, TypeError) as unreadable:
+        parser.error(f"standard input is not a capability vocabulary: {unreadable}")
     failed = 0
     for sid in args.services:
         if sid not in services or sid not in RECIPES:

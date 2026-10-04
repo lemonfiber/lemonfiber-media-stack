@@ -94,7 +94,7 @@ pins-apply +services:
 #   just record ../lemonfiber/contract/capability-vocabulary.json sonarr radarr
 record vocabulary +services:
     python3 scripts/record.py --self-test
-    python3 scripts/record.py --vocabulary {{vocabulary}} {{services}}
+    python3 scripts/record.py {{services}} < {{vocabulary}}
 
 # Shipped config templates parse in the service that reads them. Networked.
 configs:
