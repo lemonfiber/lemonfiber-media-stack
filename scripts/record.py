@@ -259,6 +259,9 @@ class Recipe:
     # the service — a disk's size, a server's id — written as JSON Pointers, and
     # redacted.
     redact: tuple[str, ...] = ()
+    # Members redacted wherever they appear, at any depth: identifiers an
+    # instance gives what it holds, which a list of items repeats once per item.
+    redact_named: tuple[str, ...] = ()
 
 
 # ── first runs ──────────────────────────────────────────────────────────────
@@ -503,7 +506,8 @@ RECIPES: dict[str, Recipe] = {
             (MEDIA_SERVE, "catalogue"): (
                 "The same read signed in as the user its first run made. Recorded with no library "
                 "added, so the catalogue holds only the playlists folder Jellyfin makes itself; "
-                "what it shows is the catalogue a player reads, in the shape it reads it."
+                "what it shows is the catalogue a player reads, in the shape it reads it. The ids "
+                "the instance gives the folder are redacted, as the server's id is."
             ),
             (IDENTITY_SOURCE, "identifies"): (
                 "The public server information, asked for presenting nothing. An answer is the "
@@ -516,7 +520,7 @@ RECIPES: dict[str, Recipe] = {
                 "which server, to anybody; who is on it, to nobody."
             ),
         },
-        redact=("/Id",),
+        redact_named=("Id", "ItemId", "Key"),
     ),
     "audiobookshelf": Recipe(
         setup=audiobookshelf,
@@ -696,7 +700,17 @@ def redacted(document: object, places: tuple[str, ...]) -> object:
     return document
 
 
-def response_of(answer: Answer, hidden: set[str], places: tuple[str, ...] = ()) -> dict:
+def redacted_named(document: object, names: tuple[str, ...]) -> object:
+    """`document` with every member called one of `names` replaced, at any depth."""
+    if isinstance(document, list):
+        return [redacted_named(item, names) for item in document]
+    if isinstance(document, dict):
+        return {key: REDACTED if key in names else redacted_named(item, names) for key, item in document.items()}
+    return document
+
+
+def response_of(answer: Answer, hidden: set[str], places: tuple[str, ...] = (),
+                names: tuple[str, ...] = ()) -> dict:
     """An answer in the terms a recording keeps it: status, the headers an
     expectation reads, and the body as JSON or as the start of it."""
     kept: dict = {"status": answer.status}
@@ -705,7 +719,7 @@ def response_of(answer: Answer, hidden: set[str], places: tuple[str, ...] = ()) 
         kept["headers"] = headers
     text = answer.body.decode("utf-8", errors="replace")
     try:
-        kept["json"] = redacted(json.loads(text), places) if text.strip() else None
+        kept["json"] = redacted_named(redacted(json.loads(text), places), names) if text.strip() else None
     except ValueError:
         kept["json"] = None
     if kept["json"] is None and text.strip():
@@ -786,7 +800,7 @@ def record(service: dict, recipe: Recipe, operator: set[tuple[str, str]], hold: 
                     "recorded_from": reference,
                     "note": recipe.notes[(capability, probe["id"])],
                     "request": {key: asked[key] for key in ("method", "path", "accept") if key in asked},
-                    "response": response_of(answer, hidden, recipe.redact),
+                    "response": response_of(answer, hidden, recipe.redact, recipe.redact_named),
                 }
                 target = ROOT / probe["fixture"]
                 target.parent.mkdir(parents=True, exist_ok=True)
@@ -819,6 +833,9 @@ def self_test() -> int:
     assert parsed["json"] == {"token": REDACTED} and parsed["headers"] == {"content-type": JSON_TYPE}
     placed = response_of(Answer(200, {}, b'{"q":{"disk":"31.3","n":1},"a~b":2}'), set(), ("/q/disk", "/a~0b", "/x/y"))
     assert placed["json"] == {"q": {"disk": REDACTED, "n": 1}, "a~b": REDACTED}, placed
+    named = response_of(Answer(200, {}, b'{"Id":"a","Items":[{"Id":"b","UserData":{"Key":"c","n":1}}]}'), set(),
+                        names=("Id", "Key"))
+    assert named["json"] == {"Id": REDACTED, "Items": [{"Id": REDACTED, "UserData": {"Key": REDACTED, "n": 1}}]}
     vocabulary = {"capabilities": [{"name": "a.b", "probes": [
         {"id": "guarded", "credential": "none"}, {"id": "read", "credential": "operator"}]}]}
     assert operator_probes(vocabulary) == {("a.b", "read")}

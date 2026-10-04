@@ -1,0 +1,23 @@
+{
+  "recorded_from": "jellyfin/jellyfin@sha256:aefb67e6a7ff1debdd154a78a7bbb780fd0c873d8639210a7f6a2016ad2b35db",
+  "note": "The public server information, asked for presenting nothing. An answer is the pass: something has to be answerable before anybody signs in, and what it is is which server this is. The server's id is redacted, and so are the container's name and address it reports.",
+  "request": {
+    "method": "GET",
+    "path": "/System/Info/Public"
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=utf-8"
+    },
+    "json": {
+      "LocalAddress": "http://<redacted>:8096",
+      "ServerName": "<redacted>",
+      "Version": "10.11.11",
+      "ProductName": "Jellyfin Server",
+      "OperatingSystem": "",
+      "Id": "<redacted>",
+      "StartupWizardCompleted": true
+    }
+  }
+}

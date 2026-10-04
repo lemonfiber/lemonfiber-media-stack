@@ -1,0 +1,13 @@
+{
+  "recorded_from": "ghcr.io/advplyr/audiobookshelf@sha256:3528a93b6442ffe54bd46771bbbab7c97084e1101071586d9dc2254f30bb4358",
+  "note": "The libraries it serves, asked for presenting nothing, on an instance whose root user exists. A refusal is the pass: a library server on the household network that answered this would be publishing the household's collection to it.",
+  "request": {
+    "method": "GET",
+    "path": "/api/libraries"
+  },
+  "response": {
+    "status": 401,
+    "json": null,
+    "body_starts_with": "Unauthorized"
+  }
+}

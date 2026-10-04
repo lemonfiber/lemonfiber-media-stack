@@ -1,0 +1,21 @@
+{
+  "recorded_from": "ghcr.io/seerr-team/seerr@sha256:27602401178d54f1964442287b9f23f67a3fa2252645ee8065839ea1c3f69e45",
+  "note": "Its own version and state, asked for presenting nothing. An answer is the pass: this is the one service a household member reaches without being an operator, so it has a front door that answers before anybody signs in.",
+  "request": {
+    "method": "GET",
+    "path": "/api/v1/status"
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=utf-8"
+    },
+    "json": {
+      "version": "3.5.0",
+      "commitTag": "e2f24cb46079746936516c723b09820360f95113",
+      "updateAvailable": false,
+      "commitsBehind": 0,
+      "restartRequired": false
+    }
+  }
+}

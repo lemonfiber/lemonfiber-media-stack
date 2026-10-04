@@ -1,0 +1,12 @@
+{
+  "recorded_from": "jellyfin/jellyfin@sha256:aefb67e6a7ff1debdd154a78a7bbb780fd0c873d8639210a7f6a2016ad2b35db",
+  "note": "The accounts it holds, asked for presenting nothing. A refusal is the pass: which server, to anybody; who is on it, to nobody.",
+  "request": {
+    "method": "GET",
+    "path": "/Users"
+  },
+  "response": {
+    "status": 401,
+    "json": null
+  }
+}

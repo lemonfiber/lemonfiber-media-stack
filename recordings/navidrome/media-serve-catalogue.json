@@ -1,0 +1,15 @@
+{
+  "recorded_from": "ghcr.io/navidrome/navidrome@sha256:38dc2727bfcfd5ede290f8ada114fc90368146f265ae4701ddddbcbe2a44ee52",
+  "note": "The same read signed in as the admin its first run made. Recorded with no music in its folder, so the list is empty; what it shows is the catalogue a player reads, in the shape it reads it.",
+  "request": {
+    "method": "GET",
+    "path": "/api/album"
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "json": []
+  }
+}

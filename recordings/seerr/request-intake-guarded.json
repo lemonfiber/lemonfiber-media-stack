@@ -1,0 +1,23 @@
+{
+  "recorded_from": "ghcr.io/seerr-team/seerr@sha256:27602401178d54f1964442287b9f23f67a3fa2252645ee8065839ea1c3f69e45",
+  "note": "What has been requested, asked for presenting nothing. A refusal is the pass: a request list readable by the network is a list of what everybody in the house is waiting to watch.",
+  "request": {
+    "method": "GET",
+    "path": "/api/v1/request"
+  },
+  "response": {
+    "status": 401,
+    "headers": {
+      "content-type": "application/json; charset=utf-8"
+    },
+    "json": {
+      "message": "cookie 'connect.sid' required",
+      "errors": [
+        {
+          "path": "/api/v1/request",
+          "message": "cookie 'connect.sid' required"
+        }
+      ]
+    }
+  }
+}
