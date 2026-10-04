@@ -1,0 +1,22 @@
+{
+  "recorded_from": "lscr.io/linuxserver/lidarr@sha256:5e1235d00b5d1c1f60ca0d472e554a6611aef41aa7b5b6d88260214bf4809af0",
+  "note": "The same read with the API key this instance wrote on first start. Recorded empty, because a fresh instance wants nothing yet; what it shows is that the list is there and answers in the shape a filer reads.",
+  "request": {
+    "method": "GET",
+    "path": "/api/v1/wanted/missing"
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=utf-8"
+    },
+    "json": {
+      "page": 1,
+      "pageSize": 10,
+      "sortKey": "releaseDate",
+      "sortDirection": "descending",
+      "totalRecords": 0,
+      "records": []
+    }
+  }
+}

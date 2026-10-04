@@ -1,0 +1,17 @@
+{
+  "recorded_from": "ghcr.io/vavallee/bindery@sha256:6831d81f588d990639c8cf2c942397894072a6c53632453b8435f9a76a622179",
+  "note": "The wanted list, asked for presenting nothing, on a fresh instance. A refusal is the pass: a curating service holds every key the stack gave it and can be made to download anything, so its API answering an anonymous caller at all is the failure.",
+  "request": {
+    "method": "GET",
+    "path": "/api/v1/wanted/missing"
+  },
+  "response": {
+    "status": 401,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "json": {
+      "error": "unauthorized"
+    }
+  }
+}

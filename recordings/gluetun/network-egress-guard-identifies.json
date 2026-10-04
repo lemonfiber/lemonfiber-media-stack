@@ -1,0 +1,17 @@
+{
+  "recorded_from": "qmcgaw/gluetun@sha256:fa19cc76b2af13d57a8d3dc3066f2ada061b1c761b8aecf989b3877c0486e027",
+  "note": "The tunnel's state, asked of the control server from beside it, presenting nothing. Recorded with a tunnel dialled at a documentation address (192.0.2.1) with keys made for this run, because no provider account is used to record. The tunnel never comes up, so this shows that the guard can be asked and answers in the shape the probe reads, not that a tunnel was up.",
+  "request": {
+    "method": "GET",
+    "path": "/v1/vpn/status"
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "text/plain; charset=utf-8"
+    },
+    "json": {
+      "status": "running"
+    }
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "recorded_from": "lscr.io/linuxserver/sonarr@sha256:f247545d23ba8b233d6604575347e48a623fe6ad75dda02348bf81917f3b5c06",
+  "note": "The wanted list, asked for presenting nothing, on a fresh instance. A refusal is the pass: a curating service holds every key the stack gave it and can be made to download anything, so its API answering an anonymous caller at all is the failure.",
+  "request": {
+    "method": "GET",
+    "path": "/api/v3/wanted/missing"
+  },
+  "response": {
+    "status": 401,
+    "json": null
+  }
+}

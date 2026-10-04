@@ -1,0 +1,16 @@
+{
+  "recorded_from": "lscr.io/linuxserver/sabnzbd@sha256:374051b90f64d107f8658dcd9b9065c28826afe14562647214f45057e119fc04",
+  "note": "The queue, asked for presenting nothing, on a fresh instance started from the template this repository ships. A refusal is the pass: the queue names what the household is downloading and the account paying for it.",
+  "request": {
+    "method": "GET",
+    "path": "/api?mode=queue&output=json"
+  },
+  "response": {
+    "status": 403,
+    "headers": {
+      "content-type": "text/html;charset=utf-8"
+    },
+    "json": null,
+    "body_starts_with": "API Key Required"
+  }
+}
