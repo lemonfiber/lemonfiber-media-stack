@@ -352,6 +352,7 @@ proven to fail when broken by `scripts/test_validate_manifest.py`.
 | A removal says why | `[[removed]]` names the reason and any replacement (`F2-R13`) |
 | Every form resolves | `docker compose config` per form (`REPO-R17`), dragging in nothing outside its profiles (`B1-R14`, `REPO-R19`) |
 | Every profile starts | Brought up with plain `docker compose`, every service answering its declared probe on its published port, then torn down. The torrent profile is excluded by name: it needs a VPN subscription (`F1-R1`) |
+| Every claim holds against its recordings | Judged by lemonfiber's own judge, checked out at a pinned commit: a recording that refutes a probe fails, and one that cannot be judged is reported unproven (`ARCH-R137`, `F9-R2`) |
 | arm64 + amd64 per pin | Read from the pinned index, which must be one (`F2-R6`, `E1-R1`) |
 | A moved pin is its tag's index | The registry resolves the tag to the pinned digest (`E1-R1`) |
 
