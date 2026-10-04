@@ -104,6 +104,62 @@ jobs:
       - name: Validator test suite
         run: python3 scripts/test_validate_manifest.py
 
+  # Every claim in stack.toml judged against the recordings it binds, by the
+  # judge lemonfiber's release gate runs against the stack it embeds (ARCH-R137,
+  # F9-R2). The same judge rather than a second one written here, because a
+  # second evaluator is free to disagree with the first, and the one a release
+  # is refused by is lemonfiber's.
+  #
+  # lemonfiber is checked out at the commit `JUDGE` names and this tree is laid
+  # over the stack it embeds, so the judge reads this change's manifest and
+  # recordings and holds them to the capability vocabulary that commit
+  # publishes. Pinned rather than read from `main`: what the stack is held to
+  # moves when this line does, in a change somebody reviewed. A refuted probe or
+  # a refused claim fails this; a probe nothing could be judged against is
+  # reported unproven and does not (ARCH-R122).
+  claims:
+    runs-on: ubuntu-latest
+    env:
+      # lemonfiber/lemonfiber `main`, 2026-10-04.
+      JUDGE: 37b74e13a528fd75475dc30a983e3a4528b59db6
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          path: stack
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: lemonfiber/lemonfiber
+          ref: ${{ env.JUDGE }}
+          path: judge
+          persist-credentials: false
+          # The stack it embeds is this tree, laid over below; its own pin of
+          # the stack would be judging somebody else's change.
+          submodules: false
+
+      - name: This change, as the stack lemonfiber embeds
+        run: |
+          set -euo pipefail
+          rm -rf judge/assets/media-stack
+          mkdir -p judge/assets/media-stack
+          cp -R stack/. judge/assets/media-stack/
+          rm -rf judge/assets/media-stack/.git
+
+      # The toolchain lemonfiber pins in its rust-toolchain.toml, which rustup
+      # reads from the working directory.
+      - name: The toolchain the judge is built with
+        working-directory: judge
+        run: rustup toolchain install
+
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: judge
+
+      - name: Every claim, against its recordings
+        working-directory: judge
+        run: cargo run --quiet --locked --example bundled_claims -p lemonfiber-core
+
   # The networked half, kept apart so a registry outage reads as a registry
   # outage rather than as a broken manifest (REPO-R20).
   images:
