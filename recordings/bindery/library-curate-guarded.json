@@ -1,5 +1,5 @@
 {
-  "recorded_from": "ghcr.io/vavallee/bindery@sha256:6831d81f588d990639c8cf2c942397894072a6c53632453b8435f9a76a622179",
+  "recorded_from": "ghcr.io/vavallee/bindery@sha256:3dc411e335c239f15f162648a5b32db1c7b5b0e32cef5e811b6efb1be963fd80",
   "note": "The wanted list, asked for presenting nothing, on a fresh instance. A refusal is the pass: a curating service holds every key the stack gave it and can be made to download anything, so its API answering an anonymous caller at all is the failure.",
   "request": {
     "method": "GET",

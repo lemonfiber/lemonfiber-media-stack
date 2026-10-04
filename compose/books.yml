@@ -10,7 +10,7 @@ services:
       # Not `rootless`: the image is distroless and reads no PUID pair, so
       # setting those two would be a silent no-op that reads like a control.
       service: defaults
-    image: ghcr.io/vavallee/bindery:v1.38.0@sha256:6831d81f588d990639c8cf2c942397894072a6c53632453b8435f9a76a622179
+    image: ghcr.io/vavallee/bindery:v1.40.0@sha256:3dc411e335c239f15f162648a5b32db1c7b5b0e32cef5e811b6efb1be963fd80
     profiles: [books]
     # What the image does read is the uid Docker starts it as, and its own is
     # 65532 — a user owning nothing on the host, so both mounts are unwritable
