@@ -851,6 +851,31 @@ def stop(run: Run) -> None:
     subprocess.run(["docker", "rm", "-f", "-v", run.name], capture_output=True, check=False)
 
 
+def probed(run: Run, recipe: Recipe, capability: str, probe: dict, presented: Credential,
+           hidden: set[str]) -> str:
+    """Ask one bound probe, and write what came back to the fixture it names."""
+    asked = probe["request"]
+    headers = {"Accept": asked["accept"]} if "accept" in asked else {}
+    answer = run.ask(asked["method"], asked["path"], headers={**headers, **presented.headers},
+                     query=presented.query)
+    recording = {
+        "recorded_from": run.reference,
+        "note": recipe.notes[(capability, probe["id"])],
+        "request": {key: asked[key] for key in ("method", "path", "accept") if key in asked},
+        "response": response_of(answer, hidden, recipe.redact, recipe.redact_named),
+    }
+    text = json.dumps(recording, indent=2, ensure_ascii=False) + "\n"
+    if still_carries(text, run.secrets):
+        raise RuntimeError(
+            f"{probe['fixture']} still carries a credential this run made after scrubbing, "
+            "so it was not written"
+        )
+    target = ROOT / probe["fixture"]
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(text, encoding="utf-8")
+    return f"{probe['fixture']}: {answer.status}"
+
+
 def record(service: dict, recipe: Recipe, operator: set[tuple[str, str]], hold: bool) -> list[str]:
     sid = service["id"]
     reference = by_digest(service)
@@ -868,31 +893,9 @@ def record(service: dict, recipe: Recipe, operator: set[tuple[str, str]], hold: 
         credential = recipe.setup(run)
         hidden = run.secrets | run.identities()
         for claim in service.get("claim", []):
-            capability = claim["capability"]
             for probe in claim.get("probe", []):
-                asked = probe["request"]
-                headers = {"Accept": asked["accept"]} if "accept" in asked else {}
-                query: dict[str, str] = {}
-                if (capability, probe["id"]) in operator:
-                    headers.update(credential.headers)
-                    query.update(credential.query)
-                answer = run.ask(asked["method"], asked["path"], headers=headers, query=query)
-                recording = {
-                    "recorded_from": reference,
-                    "note": recipe.notes[(capability, probe["id"])],
-                    "request": {key: asked[key] for key in ("method", "path", "accept") if key in asked},
-                    "response": response_of(answer, hidden, recipe.redact, recipe.redact_named),
-                }
-                text = json.dumps(recording, indent=2, ensure_ascii=False) + "\n"
-                if still_carries(text, run.secrets):
-                    raise RuntimeError(
-                        f"{probe['fixture']} still carries a credential this run made after scrubbing, "
-                        "so it was not written"
-                    )
-                target = ROOT / probe["fixture"]
-                target.parent.mkdir(parents=True, exist_ok=True)
-                target.write_text(text, encoding="utf-8")
-                written.append(f"{probe['fixture']}: {answer.status}")
+                presented = credential if (claim["capability"], probe["id"]) in operator else Credential()
+                written.append(probed(run, recipe, claim["capability"], probe, presented, hidden))
         if hold:
             print(f"held: {run.name} at {run.base}, until `docker rm -f -v {run.name}`")
     except Exception as broke:
@@ -940,13 +943,14 @@ def self_test() -> int:
 
     # Echoed back in another case, URL-encoded, base64-encoded or JSON-escaped,
     # at any depth or as a key, a credential is still scrubbed.
-    made = {"S3cret/Key+1"}
+    secret = "S3cret/Key+1"
+    made = {secret}
     echoed = {
-        "upper": "S3CRET/KEY+1",
-        "url": f"/x?k={urllib.parse.quote('S3cret/Key+1', safe='')}",
-        "plus": urllib.parse.quote_plus("S3cret/Key+1"),
-        "b64": base64.b64encode(b"S3cret/Key+1").decode(),
-        "deep": [{"S3cret/Key+1": "value"}],
+        "upper": secret.upper(),
+        "url": f"/x?k={urllib.parse.quote(secret, safe='')}",
+        "plus": urllib.parse.quote_plus(secret),
+        "b64": base64.b64encode(secret.encode()).decode(),
+        "deep": [{secret: "value"}],
     }
     clean = json.dumps(scrubbed(echoed, made))
     assert not still_carries(clean, made) and REDACTED in clean, clean
