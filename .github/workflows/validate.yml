@@ -61,6 +61,13 @@ jobs:
           python3 scripts/pins.py --self-test
           python3 scripts/image_bump.py --self-test
 
+      # What the recorder keeps of an answer, and that nothing a run made — a
+      # key, a session, a container's name or address — reaches a recording,
+      # which is committed here in public. Offline; recording needs Docker and
+      # is `just record`.
+      - name: A recording carries nothing a run made
+        run: python3 scripts/record.py --self-test
+
       # A pin that moved and a date that did not are both well-formed values, and
       # a service that left the stack leaves a manifest that simply no longer
       # mentions it. Only a diff can see either (F2-R13, F2-R14).
