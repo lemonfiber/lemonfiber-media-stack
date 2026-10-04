@@ -60,12 +60,14 @@ changes base="origin/main":
     python3 scripts/check_manifest_change.py --base {{base}}
 
 # Where the networked checks may address a request, and what they may echo out
-# of a reply, and how a registry is addressed. Offline, and the one whose
-# failure would be a token going somewhere it should not.
+# of a reply, how a registry is addressed, and what a recording may carry.
+# Offline, and the one whose failure would be a token going somewhere it should
+# not.
 forge:
     python3 scripts/forge.py --self-test
     python3 scripts/registry.py --self-test
     python3 scripts/pins.py --self-test
+    python3 scripts/record.py --self-test
 
 # Every pinned digest is an index publishing linux/amd64 and linux/arm64, and a
 # pin this branch moves is the index its tag names. Networked — but the
@@ -83,6 +85,16 @@ pins:
 
 pins-apply +services:
     python3 scripts/pins.py --apply {{services}}
+
+# Record what each named service answers to the probes it claims, from a fresh
+# container of its pinned image, into the fixtures stack.toml names. Needs
+# Docker, the network, and the capability vocabulary lemonfiber publishes. A pin
+# that moves is re-recorded in the same change. e.g.
+#
+#   just record ../lemonfiber/contract/capability-vocabulary.json sonarr radarr
+record vocabulary +services:
+    python3 scripts/record.py --self-test
+    python3 scripts/record.py --vocabulary {{vocabulary}} {{services}}
 
 # Shipped config templates parse in the service that reads them. Networked.
 configs:

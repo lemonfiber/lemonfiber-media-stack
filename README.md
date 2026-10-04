@@ -183,6 +183,16 @@ recording kept anywhere but its own service's directory or missing, and a
 recording taken from any other image are all refused, so a pin that moves is
 re-recorded in the same change.
 
+`just record <vocabulary> <service>...` takes the recordings. For each service
+it starts the pinned image fresh, in a scratch directory holding only the
+templates this repository ships, does its first run with credentials made for
+that run alone, asks every probe the claims bind,
+and writes each answer with every credential the run made, and the container's
+name and addresses, replaced by `<redacted>`. The container, its directory and
+any image it pulled are removed afterwards. `<vocabulary>` is the
+`capability-vocabulary.json` lemonfiber publishes, which says which probes are
+asked with the operator's credential.
+
 Recyclarr, Unpackerr, Homepage, Caddy, the request gate and the decline service
 declare nothing. The first two write into other services' configuration and
 watch the filesystem; the next two are configured by lemonfiber writing a file

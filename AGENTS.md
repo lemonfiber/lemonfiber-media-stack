@@ -111,6 +111,11 @@ judges them against the pull request's base:
 - A service that leaves the manifest has to gain a `[[removed]]` entry naming
   the reason and any replacement (`F2-R13`).
 
+A moved `digest` also leaves every recording the service's claims name taken
+from an image the manifest no longer pins, and `validate_manifest.py` refuses
+each one (`ARCH-R136`). `just record <vocabulary> <service>` re-records them
+from a fresh container of the new image, in the same change.
+
 ## Checks
 
 ```
@@ -120,6 +125,7 @@ just images    # each digest an arm64/amd64 index, moved pins their tag's (needs
 just pins      # what the weekly `pins` workflow would move (needs the network)
 just licences  # what each upstream licences itself as now (needs the network)
 just candidate <url>   # judge a candidate on its history (needs the network)
+just record <vocabulary> <services>   # re-record what services answer their claimed probes (needs Docker)
 ```
 
 `scripts/check_runs.py` is the one that starts something. Everything else here
