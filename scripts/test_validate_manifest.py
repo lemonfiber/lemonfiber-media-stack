@@ -20,7 +20,7 @@ import sys
 import tempfile
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-COPIED = ("compose.yml", "stack.toml", "compose", "scripts")
+COPIED = ("compose.yml", "stack.toml", "compose", "scripts", "recordings")
 
 
 def patch(path: str, old: str, new: str):
@@ -103,6 +103,9 @@ def append(path: str, text: str):
 
     return apply
 
+
+# The last line of FlareSolverr's one claim, after which a case writes a second.
+FLARESOLVERR_FIXTURE = 'fixture = "recordings/flaresolverr/indexer-proxy-identifies.json"\n'
 
 # The request gate's networks line in compose/media.yml, beside which a case
 # overrides one of what the `confined` template in compose/_common.yml gives it.
@@ -675,6 +678,60 @@ CASES = [
         "ADR-0033 one of lemonfiber's own images with no containment stated",
         patch("scripts/validate_manifest.py", '    "decline": ("C6-R20", {\n', '    "declined": ("C6-R20", {\n'),
         "service decline: is lemonfiber's own image and its containment is not stated",
+    ),
+    (
+        "ARCH-R136 a claim for a capability the service does not provide",
+        patch("stack.toml", 'capability = "indexer.proxy"', 'capability = "indexer.search"'),
+        "service flaresolverr.claim indexer.search: indexer.search is not in this service's `provides`",
+    ),
+    (
+        "ARCH-R136 one capability claimed twice",
+        patch("stack.toml", FLARESOLVERR_FIXTURE, FLARESOLVERR_FIXTURE + '\n[[service.claim]]\ncapability = "indexer.proxy"\n'),
+        "service flaresolverr.claim indexer.proxy: indexer.proxy is claimed twice",
+    ),
+    (
+        "ARCH-R136 a fixture kept with another service's recordings",
+        patch("stack.toml", 'fixture = "recordings/prowlarr/indexer-search-guarded.json"',
+              'fixture = "recordings/flaresolverr/indexer-proxy-identifies.json"'),
+        "fixture 'recordings/flaresolverr/indexer-proxy-identifies.json' is not under recordings/prowlarr/",
+    ),
+    (
+        "ARCH-R136 a fixture that climbs out of its service's directory",
+        patch("stack.toml", 'fixture = "recordings/prowlarr/indexer-search-guarded.json"',
+              'fixture = "recordings/prowlarr/../flaresolverr/indexer-proxy-identifies.json"'),
+        "is not under recordings/prowlarr/, where this service's recordings are kept",
+    ),
+    (
+        "ARCH-R136 a fixture naming no recording",
+        patch("stack.toml", 'fixture = "recordings/prowlarr/indexer-search-guarded.json"',
+              'fixture = "recordings/prowlarr/absent.json"'),
+        "fixture recordings/prowlarr/absent.json names no recording here",
+    ),
+    (
+        "ARCH-R136 a recording taken from another build",
+        patch("recordings/flaresolverr/indexer-proxy-identifies.json", "@sha256:", "@sha256:0"),
+        "recording recordings/flaresolverr/indexer-proxy-identifies.json was recorded from",
+    ),
+    (
+        "ARCH-R136 a claim that names no capability",
+        patch("stack.toml", FLARESOLVERR_FIXTURE, FLARESOLVERR_FIXTURE + "\n[[service.claim]]\n"),
+        "service flaresolverr: a claim names no capability",
+    ),
+    (
+        "ARCH-R136 a probe that names no fixture",
+        patch("stack.toml", FLARESOLVERR_FIXTURE, ""),
+        "service flaresolverr.claim indexer.proxy.probe identifies: names no fixture",
+    ),
+    (
+        "ARCH-R136 probes written as something other than tables",
+        patch("stack.toml", 'capability = "indexer.proxy"\n\n[[service.claim.probe]]\nid = "identifies"\n',
+              'capability = "indexer.proxy"\nprobe = ["identifies"]\n\n[[unclaimed]]\nid = "identifies"\n'),
+        "service flaresolverr.claim indexer.proxy: probe must be an array of [[service.claim.probe]] tables",
+    ),
+    (
+        "ARCH-R136 claims written as something other than tables",
+        field("caddy", "health", 'health = { kind = "tcp", timeout_s = 30 }\nclaim = ["indexer.proxy"]'),
+        "service caddy: claim must be an array of [[service.claim]] tables",
     ),
 ]
 

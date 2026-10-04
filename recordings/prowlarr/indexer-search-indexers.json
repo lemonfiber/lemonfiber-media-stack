@@ -1,0 +1,15 @@
+{
+  "recorded_from": "lscr.io/linuxserver/prowlarr@sha256:f2b26429893d4c4cb71941b7ee50b1bdecd9d5f9f9e02d5410615e9f4f7c8d95",
+  "note": "The same read with the API key this instance wrote on first start. Recorded from a fresh instance, so the list is empty; what it shows is that the indexers are a list the operator's credential can read.",
+  "request": {
+    "method": "GET",
+    "path": "/api/v1/indexer"
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=utf-8"
+    },
+    "json": []
+  }
+}

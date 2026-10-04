@@ -160,6 +160,21 @@ health = { kind = "http", path = "/ping", timeout_s = 60 }
 api = { kind = "servarr", key_source = "config-xml", path = "/config/config.xml", version = 1 }
 listens = 9696
 
+[[service.claim]]
+capability = "indexer.search"
+
+[[service.claim.probe]]
+id = "guarded"
+request = { method = "GET", path = "/api/v1/indexer" }
+expect = { status = 401 }
+fixture = "recordings/prowlarr/indexer-search-guarded.json"
+
+[[service.claim.probe]]
+id = "indexers"
+request = { method = "GET", path = "/api/v1/indexer" }
+expect = { status = 200, json_array_min = 0 }
+fixture = "recordings/prowlarr/indexer-search-indexers.json"
+
 [[service]]
 id = "flaresolverr"
 name = "FlareSolverr"
@@ -180,6 +195,15 @@ reaches = "the indexer sites that challenge it"
 asks_for = "Fetches a page through a headless browser when an indexer sits behind bot protection, which means it visits that indexer directly."
 provides = ["indexer.proxy"]
 health = { kind = "tcp", timeout_s = 60 }
+
+[[service.claim]]
+capability = "indexer.proxy"
+
+[[service.claim.probe]]
+id = "identifies"
+request = { method = "GET", path = "/" }
+expect = { status = 200, json = { msg = "FlareSolverr is ready!" }, json_types = { version = "str" } }
+fixture = "recordings/flaresolverr/indexer-proxy-identifies.json"
 
 [[service]]
 id = "nzbhydra2"

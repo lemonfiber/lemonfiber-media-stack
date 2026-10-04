@@ -1,0 +1,19 @@
+{
+  "recorded_from": "ghcr.io/flaresolverr/flaresolverr@sha256:c80ae007ce2ccdcd217a12426e4f039ef763ff90738c808d38810c3e59323767",
+  "note": "Its own state, asked for presenting nothing. It holds nothing of the operator's and is reached only from inside the stack, so an answer is the pass, and what the answer has to show is that the thing behind the port is FlareSolverr and which version of it.",
+  "request": {
+    "method": "GET",
+    "path": "/"
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "json": {
+      "msg": "FlareSolverr is ready!",
+      "version": "3.5.2",
+      "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36"
+    }
+  }
+}
