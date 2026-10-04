@@ -158,6 +158,7 @@ asks_for = "Runs the searches everything else asks for, and reads each indexer's
 provides = ["indexer.search"]
 health = { kind = "http", path = "/ping", timeout_s = 60 }
 api = { kind = "servarr", key_source = "config-xml", path = "/config/config.xml", version = 1 }
+listens = 9696
 
 [[service]]
 id = "flaresolverr"
@@ -222,6 +223,7 @@ asks_for = "Signs in with your account and fetches the articles a download is ma
 provides = ["download.usenet"]
 health = { kind = "http", path = "/api?mode=version", timeout_s = 60 }
 api = { kind = "sabnzbd", key_source = "config-ini", path = "/config/sabnzbd.ini" }
+listens = 8080
 
 [[service]]
 id = "gluetun"
@@ -265,6 +267,7 @@ depends_on = ["gluetun"]
 provides = ["download.torrent"]
 health = { kind = "http", path = "/api/v2/app/version", timeout_s = 60 }
 api = { kind = "qbittorrent", key_source = "generated" }
+listens = 8081
 
 [[service]]
 id = "sonarr"
@@ -288,6 +291,7 @@ media_types = ["tv"]
 provides = ["library.curate"]
 health = { kind = "http", path = "/ping", timeout_s = 90 }
 api = { kind = "servarr", key_source = "config-xml", path = "/config/config.xml", version = 3 }
+listens = 8989
 
 [[service]]
 id = "radarr"
@@ -311,6 +315,7 @@ media_types = ["movies"]
 provides = ["library.curate"]
 health = { kind = "http", path = "/ping", timeout_s = 90 }
 api = { kind = "servarr", key_source = "config-xml", path = "/config/config.xml", version = 3 }
+listens = 7878
 
 [[service]]
 id = "lidarr"
@@ -334,6 +339,7 @@ media_types = ["music"]
 provides = ["library.curate"]
 health = { kind = "http", path = "/ping", timeout_s = 90 }
 api = { kind = "servarr", key_source = "config-xml", path = "/config/config.xml", version = 1 }
+listens = 8686
 
 [[service]]
 id = "bindery"
@@ -361,6 +367,7 @@ health = { kind = "http", path = "/", timeout_s = 90 }
 # takes that value, and without one it generates its own into a database that
 # nothing outside the container can read.
 api = { kind = "bindery", key_source = "generated" }
+listens = 8787
 
 [[service]]
 id = "bazarr"
@@ -386,6 +393,7 @@ health = { kind = "http", path = "/", timeout_s = 90 }
 # keeps it that way. The path is inside the container: its /config mount holds a
 # config directory of its own.
 api = { kind = "bazarr", key_source = "config-yaml", path = "/config/config/config.yaml" }
+listens = 6767
 
 [[service]]
 id = "jellyfin"
@@ -408,6 +416,7 @@ asks_for = "Reads artwork and descriptions for what is in your library, and chec
 provides = ["media.serve", "identity.source"]
 health = { kind = "http", path = "/health", timeout_s = 120 }
 api = { kind = "jellyfin", key_source = "generated" }
+listens = 8096
 
 [[service]]
 id = "seerr"
@@ -434,6 +443,7 @@ health = { kind = "http", path = "/api/v1/status", timeout_s = 90 }
 # service keeps it inside its own container — Seerr's config mount is beneath
 # its application directory rather than at /config like the rest.
 api = { kind = "seerr", key_source = "config-json", path = "/app/config/settings.json" }
+listens = 5055
 
 # lemonfiber's own image, built by lemonfiber-request-gate and pinned at the tag
 # the release train published (ADR-0033). It publishes nothing, so it declares no
@@ -526,6 +536,7 @@ health = { kind = "http", path = "/healthcheck", timeout_s = 90 }
 # its dashboard panel uses is handed back on sign-in and is the same every time,
 # so what is kept is the password rather than the token.
 api = { kind = "audiobookshelf", key_source = "generated" }
+listens = 80
 
 [[service]]
 id = "navidrome"

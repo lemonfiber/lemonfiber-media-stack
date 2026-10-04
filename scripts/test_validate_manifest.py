@@ -131,6 +131,16 @@ CASES = [
         "servarr api.version must be",
     ),
     (
+        "a service with an api that says nowhere it listens",
+        field("sabnzbd", "listens", ""),
+        "declares an api but no listens",
+    ),
+    (
+        "a service listening somewhere its published port does not reach",
+        field("sabnzbd", "listens", "listens = 8085"),
+        "but the port it publishes, 8085, reaches 8080",
+    ),
+    (
         "a memory estimate of nothing",
         patch("stack.toml", "memory_mib = 600\n", "memory_mib = 0\n"),
         "memory_mib must be a whole number",
