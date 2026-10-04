@@ -287,8 +287,9 @@ compose fragment. The digest is what runs; the tag is what a reader is shown.
 Each pin follows the newest release of its own major. The `pins` workflow runs
 weekly, and `scripts/pins.py` finds for each service the newest tag in the
 current tag's spelling and major, resolves the digest of the index it names, and
-writes both files. It opens one pull request per service and arms it to merge
-once every required check is green. A major is never crossed: that is the
+writes both files. A service whose claims bind recordings is re-recorded from
+the new image in the same change. It opens one pull request per service and arms
+it to merge once every required check is green. A major is never crossed: that is the
 operator's decision. `just pins` shows what it would move, and `just pins-apply
 <service>` moves one by hand.
 

@@ -121,6 +121,50 @@ jobs:
           fi
           echo "moved=yes" >> "$GITHUB_OUTPUT"
 
+      # A moved digest leaves every recording the service's claims name taken
+      # from an image the manifest no longer pins, and validate_manifest.py
+      # refuses each one (ARCH-R136). So they are re-recorded here, in the same
+      # change, from a fresh container of the new image, with the capability
+      # vocabulary of the lemonfiber commit the `claims` check judges against.
+      - name: The lemonfiber commit the claims are held to
+        id: judge
+        if: steps.move.outputs.moved == 'yes'
+        run: python3 scripts/judge.py --github-output >> "$GITHUB_OUTPUT"
+
+      - name: The capability vocabulary that commit publishes
+        if: steps.move.outputs.moved == 'yes'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: lemonfiber/lemonfiber
+          ref: ${{ steps.judge.outputs.commit }}
+          path: .judge
+          sparse-checkout: contract
+          persist-credentials: false
+
+      - name: The service's claims, re-recorded from the new image
+        if: steps.move.outputs.moved == 'yes'
+        env:
+          SERVICE: ${{ matrix.service }}
+        run: |
+          set -euo pipefail
+          # Untracked either way; removed so nothing of lemonfiber's can ride
+          # along with the commit below.
+          trap 'rm -rf .judge' EXIT
+          python3 scripts/record.py --self-test
+          claimed="$(python3 - "$SERVICE" <<'PY'
+          import sys
+          import tomllib
+
+          manifest = tomllib.load(open("stack.toml", "rb"))
+          print(sum(len(service.get("claim", [])) for service in manifest["service"] if service["id"] == sys.argv[1]))
+          PY
+          )"
+          if [ "$claimed" = "0" ]; then
+            echo "::notice::${SERVICE} claims nothing, so there is nothing to re-record."
+            exit 0
+          fi
+          python3 scripts/record.py "$SERVICE" < .judge/contract/capability-vocabulary.json
+
       # The same offline gate the pull request will meet, so a rewrite that
       # breaks parity is reported here rather than as a red pull request.
       - name: The manifest and the compose model still agree
@@ -166,6 +210,7 @@ jobs:
           changed = subprocess.run(
               ["git", "diff", "--name-only"], capture_output=True, text=True, check=True
           ).stdout.split()
+          rerecorded = any(name.startswith("recordings/") for name in changed)
           was, now = move["from"], move["to"]
           if was["tag"] == now["tag"]:
               headline = f"chore(pins): {move['id']} {now['tag']} rebuilt"
@@ -179,11 +224,17 @@ jobs:
                   f"{move['image']}:{now['tag']} is the newest release in the major "
                   f"{was['tag']} belongs to, and its index is {now['digest']}."
               )
+          if rerecorded:
+              said += (
+                  " Its claims are re-recorded from that image, in a fresh container,"
+                  " so every recording names the digest the manifest now pins."
+              )
+          spec = "Spec: E1-R1, F2-R14, ARCH-R136" if rerecorded else "Spec: E1-R1, F2-R14"
           body = "\n".join([
               said,
               "",
               *reviewed,
-              "Spec: E1-R1, F2-R14",
+              spec,
               "",
               "Signed-off-by: lemonfiber release <release@lemonfiber.app>",
           ])

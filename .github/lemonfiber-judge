@@ -1,0 +1,7 @@
+# The lemonfiber commit this stack's claims are held to. The `claims` job in
+# validate.yml runs the judge it builds, and `pins` re-records a moved pin's
+# claims with the capability vocabulary it publishes, so both read the same
+# vocabulary. Moved by hand, in a change somebody reviews.
+#
+# lemonfiber/lemonfiber `main`, 2026-10-04.
+37b74e13a528fd75475dc30a983e3a4528b59db6
