@@ -556,6 +556,36 @@ health = { kind = "http", path = "/health", timeout_s = 120 }
 api = { kind = "jellyfin", key_source = "generated" }
 listens = 8096
 
+[[service.claim]]
+capability = "media.serve"
+
+[[service.claim.probe]]
+id = "guarded"
+request = { method = "GET", path = "/Items" }
+expect = { status = 401 }
+fixture = "recordings/jellyfin/media-serve-guarded.json"
+
+[[service.claim.probe]]
+id = "catalogue"
+request = { method = "GET", path = "/Items" }
+expect = { status = 200, json_types = { Items = "list", TotalRecordCount = "int" } }
+fixture = "recordings/jellyfin/media-serve-catalogue.json"
+
+[[service.claim]]
+capability = "identity.source"
+
+[[service.claim.probe]]
+id = "identifies"
+request = { method = "GET", path = "/System/Info/Public" }
+expect = { status = 200, json = { ProductName = "Jellyfin Server" }, json_types = { Id = "str", Version = "str" } }
+fixture = "recordings/jellyfin/identity-source-identifies.json"
+
+[[service.claim.probe]]
+id = "guarded"
+request = { method = "GET", path = "/Users" }
+expect = { status = 401 }
+fixture = "recordings/jellyfin/identity-source-guarded.json"
+
 [[service]]
 id = "seerr"
 name = "Seerr"
@@ -582,6 +612,21 @@ health = { kind = "http", path = "/api/v1/status", timeout_s = 90 }
 # its application directory rather than at /config like the rest.
 api = { kind = "seerr", key_source = "config-json", path = "/app/config/settings.json" }
 listens = 5055
+
+[[service.claim]]
+capability = "request.intake"
+
+[[service.claim.probe]]
+id = "identifies"
+request = { method = "GET", path = "/api/v1/status" }
+expect = { status = 200, json_types = { version = "str", commitTag = "str" } }
+fixture = "recordings/seerr/request-intake-identifies.json"
+
+[[service.claim.probe]]
+id = "guarded"
+request = { method = "GET", path = "/api/v1/request" }
+expect = { status = 401 }
+fixture = "recordings/seerr/request-intake-guarded.json"
 
 # lemonfiber's own image, built by lemonfiber-request-gate and pinned at the tag
 # the release train published (ADR-0033). It publishes nothing, so it declares no
@@ -649,6 +694,21 @@ asks_for = "Reads covers and descriptions for the ebooks in your library when yo
 provides = ["media.serve"]
 health = { kind = "http", path = "/", timeout_s = 90 }
 
+[[service.claim]]
+capability = "media.serve"
+
+[[service.claim.probe]]
+id = "guarded"
+request = { method = "GET", path = "/opds" }
+expect = { status = 401 }
+fixture = "recordings/calibre-web-automated/media-serve-guarded.json"
+
+[[service.claim.probe]]
+id = "catalogue"
+request = { method = "GET", path = "/ajax/listbooks" }
+expect = { status = 200, json_types = { rows = "list", total = "int" } }
+fixture = "recordings/calibre-web-automated/media-serve-catalogue.json"
+
 [[service]]
 id = "audiobookshelf"
 name = "Audiobookshelf"
@@ -676,6 +736,21 @@ health = { kind = "http", path = "/healthcheck", timeout_s = 90 }
 api = { kind = "audiobookshelf", key_source = "generated" }
 listens = 80
 
+[[service.claim]]
+capability = "media.serve"
+
+[[service.claim.probe]]
+id = "guarded"
+request = { method = "GET", path = "/api/libraries" }
+expect = { status = 401 }
+fixture = "recordings/audiobookshelf/media-serve-guarded.json"
+
+[[service.claim.probe]]
+id = "catalogue"
+request = { method = "GET", path = "/api/libraries" }
+expect = { status = 200, json_types = { libraries = "list" } }
+fixture = "recordings/audiobookshelf/media-serve-catalogue.json"
+
 [[service]]
 id = "navidrome"
 name = "Navidrome"
@@ -696,6 +771,21 @@ reaches = "music metadata providers, and the background collection its sign-in p
 asks_for = "Reads artist images, biographies and similar-artist lists for the music in your library — Deezer and ListenBrainz, neither of which needs an account of yours. Its anonymous usage report is the one thing it would send about this machine, and the compose entry turns that off rather than leaving it on."
 provides = ["media.serve"]
 health = { kind = "http", path = "/ping", timeout_s = 90 }
+
+[[service.claim]]
+capability = "media.serve"
+
+[[service.claim.probe]]
+id = "guarded"
+request = { method = "GET", path = "/api/album" }
+expect = { status = 401 }
+fixture = "recordings/navidrome/media-serve-guarded.json"
+
+[[service.claim.probe]]
+id = "catalogue"
+request = { method = "GET", path = "/api/album" }
+expect = { status = 200, json_array_min = 0 }
+fixture = "recordings/navidrome/media-serve-catalogue.json"
 
 [[service]]
 id = "recyclarr"

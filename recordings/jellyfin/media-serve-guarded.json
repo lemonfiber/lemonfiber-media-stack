@@ -1,0 +1,12 @@
+{
+  "recorded_from": "jellyfin/jellyfin@sha256:aefb67e6a7ff1debdd154a78a7bbb780fd0c873d8639210a7f6a2016ad2b35db",
+  "note": "The catalogue, asked for presenting nothing, on an instance whose first run is done. A refusal is the pass, and the probe the vocabulary exists for: a media server on the household network that answered this would be publishing the household's library to every device on it.",
+  "request": {
+    "method": "GET",
+    "path": "/Items"
+  },
+  "response": {
+    "status": 401,
+    "json": null
+  }
+}

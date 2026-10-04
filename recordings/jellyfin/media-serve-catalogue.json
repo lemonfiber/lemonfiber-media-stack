@@ -1,0 +1,42 @@
+{
+  "recorded_from": "jellyfin/jellyfin@sha256:aefb67e6a7ff1debdd154a78a7bbb780fd0c873d8639210a7f6a2016ad2b35db",
+  "note": "The same read signed in as the user its first run made. Recorded with no library added, so the catalogue holds only the playlists folder Jellyfin makes itself; what it shows is the catalogue a player reads, in the shape it reads it. The ids the instance gives the folder are redacted, as the server's id is.",
+  "request": {
+    "method": "GET",
+    "path": "/Items"
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=utf-8"
+    },
+    "json": {
+      "Items": [
+        {
+          "Name": "Playlists",
+          "ServerId": "<redacted>",
+          "Id": "<redacted>",
+          "ChannelId": null,
+          "IsFolder": true,
+          "Type": "ManualPlaylistsFolder",
+          "UserData": {
+            "PlaybackPositionTicks": 0,
+            "PlayCount": 0,
+            "IsFavorite": false,
+            "Played": false,
+            "Key": "<redacted>",
+            "ItemId": "<redacted>"
+          },
+          "CollectionType": "playlists",
+          "ImageTags": {},
+          "BackdropImageTags": [],
+          "ImageBlurHashes": {},
+          "LocationType": "FileSystem",
+          "MediaType": "Unknown"
+        }
+      ],
+      "TotalRecordCount": 1,
+      "StartIndex": 0
+    }
+  }
+}

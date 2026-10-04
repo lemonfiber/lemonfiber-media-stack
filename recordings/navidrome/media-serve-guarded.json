@@ -1,0 +1,17 @@
+{
+  "recorded_from": "ghcr.io/navidrome/navidrome@sha256:38dc2727bfcfd5ede290f8ada114fc90368146f265ae4701ddddbcbe2a44ee52",
+  "note": "The albums it serves, asked for presenting nothing, on an instance whose admin exists. A refusal is the pass: a library server on the household network that answered this would be publishing the household's collection to it.",
+  "request": {
+    "method": "GET",
+    "path": "/api/album"
+  },
+  "response": {
+    "status": 401,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "json": {
+      "error": "Not authenticated"
+    }
+  }
+}

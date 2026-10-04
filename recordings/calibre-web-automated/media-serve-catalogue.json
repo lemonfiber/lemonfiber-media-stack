@@ -1,0 +1,19 @@
+{
+  "recorded_from": "crocodilestick/calibre-web-automated@sha256:577e846f104fd21453ef306eefb4a95dd95b3b9ddd2463a150944494284da0fd",
+  "note": "The catalogue as its own views read it, in a session signed in as the administrator every fresh instance ships with. Asked here rather than at /opds, which answers XML and so could not show the body this probe requires; recorded with no books added, so the list is empty.",
+  "request": {
+    "method": "GET",
+    "path": "/ajax/listbooks"
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=utf-8"
+    },
+    "json": {
+      "totalNotFiltered": 0,
+      "total": 0,
+      "rows": []
+    }
+  }
+}
