@@ -1,0 +1,12 @@
+{
+  "recorded_from": "lscr.io/linuxserver/prowlarr@sha256:f2b26429893d4c4cb71941b7ee50b1bdecd9d5f9f9e02d5410615e9f4f7c8d95",
+  "note": "The indexers this instance holds, asked for presenting nothing. A refusal is the pass: an indexer account is an account somebody paid for, and listing them to the network is the failure whether or not it still searches.",
+  "request": {
+    "method": "GET",
+    "path": "/api/v1/indexer"
+  },
+  "response": {
+    "status": 401,
+    "json": null
+  }
+}

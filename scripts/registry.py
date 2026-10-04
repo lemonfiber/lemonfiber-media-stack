@@ -89,6 +89,15 @@ def pinned(service: dict) -> str:
     return f"{reference}@{service['digest']}" if service.get("digest") else reference
 
 
+def by_digest(service: dict) -> str:
+    """The image a manifest's service runs, named by its digest alone.
+
+    What a recording's `recorded_from` names (`ARCH-R136`): the digest decides
+    what ran, and a tag beside it would be a second name that could disagree.
+    """
+    return f"{service.get('image')}@{service.get('digest')}"
+
+
 def digest_of(body: bytes) -> str:
     """The content digest of a manifest, as a registry addresses it."""
     return f"sha256:{hashlib.sha256(body).hexdigest()}"

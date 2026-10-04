@@ -160,6 +160,29 @@ generation, which is how *a capability nothing implements must not be published*
 is enforced by the artefact refusing to be built rather than by review. What is
 checked here is the shape, because which names exist is lemonfiber's to say.
 
+What a service provides, it demonstrates. Each capability gets a
+`[[service.claim]]` that binds every probe the vocabulary declares for it to a
+request on this service and to a recording of the answer, kept under
+`recordings/<service id>/`:
+
+```toml
+[[service.claim]]
+capability = "indexer.search"
+
+[[service.claim.probe]]
+id = "guarded"
+request = { method = "GET", path = "/api/v1/indexer" }
+expect = { status = 401 }
+fixture = "recordings/prowlarr/indexer-search-guarded.json"
+```
+
+A recording is one answer, taken from a fresh container of the image the
+manifest pins, and its `recorded_from` names that `image@digest`. A claim for a
+capability the service does not provide, a capability claimed twice, a
+recording kept anywhere but its own service's directory or missing, and a
+recording taken from any other image are all refused, so a pin that moves is
+re-recorded in the same change.
+
 Recyclarr, Unpackerr, Homepage, Caddy, the request gate and the decline service
 declare nothing. The first two write into other services' configuration and
 watch the filesystem; the next two are configured by lemonfiber writing a file
@@ -323,6 +346,7 @@ proven to fail when broken by `scripts/test_validate_manifest.py`.
 | OSI licence per service | Verified against a vendored SPDX list; lemonfiber's own images carry `Hippocratic-3.0` and nothing else (`F2-R5`) |
 | What each service reaches | `reaches` and `asks_for` together, for every service or for none (`F2-R10`, `F1-R5`) |
 | Capability names are core names | `area.verb`, never a plugin's namespace; which names exist is lemonfiber's to say (`F4-R4`, `ARCH-R110`) |
+| A claim's evidence is its own service's, from its pin | A claim only for a capability the service provides, and one at most; every recording under `recordings/<id>/` and taken from the pinned `image@digest` (`ARCH-R136`) |
 | Upstream licence, where a pin moves | Read from the forge; still OSI-approved, or `Hippocratic-3.0` for lemonfiber's own (`F2-R12`, `F2-R5`) |
 | A bumped pin carries a reviewed date | `last_release` moves with the tag, or the commit re-affirms it (`F2-R14`) |
 | A removal says why | `[[removed]]` names the reason and any replacement (`F2-R13`) |

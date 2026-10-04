@@ -34,7 +34,7 @@ import sys
 import tomllib
 
 from pins import OWN_LICENCE, rides_the_train
-from registry import DIGEST, pinned
+from registry import DIGEST, by_digest, pinned
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 
@@ -89,6 +89,8 @@ SEMVER = re.compile(r"^\d+\.\d+\.\d+(?:[-+].*)?$")
 UNNAMED = "<unnamed>"
 ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 STACK_TOML = "stack.toml"
+# Where the stack keeps each service's recordings, one directory per service id.
+RECORDINGS = "recordings"
 
 # For each of lemonfiber's own services, the requirement that confines it, and
 # every network it is on with every other service on that network, as its ADR
@@ -444,6 +446,90 @@ def validate_service_api(service: dict, where: str, report: Report) -> None:
         )
 
 
+def validate_recording(sid: str, fixture: str, pinned: str, where: str, report: Report) -> None:
+    """One recording a claim names: kept with its own service's, and taken from
+    the image the manifest pins.
+
+    A recording of another build passes while describing software nobody is
+    installing, which is the shape a pin moved without re-recording takes; so it
+    is refused here rather than judged.
+    """
+    kept = f"{RECORDINGS}/{sid}/"
+    beneath = fixture[len(kept):] if fixture.startswith(kept) else ""
+    if not report.check(
+        beneath != "" and ".." not in beneath.split("/"),
+        where,
+        f"fixture {fixture!r} is not under {kept}, where this service's recordings are kept",
+        "ARCH-R136",
+    ):
+        return
+    path = ROOT / fixture
+    if not report.check(path.is_file(), where, f"fixture {fixture} names no recording here", "ARCH-R136"):
+        return
+    try:
+        recorded = json.loads(path.read_text(encoding="utf-8")).get("recorded_from")
+    except (ValueError, AttributeError):
+        recorded = None
+    report.check(
+        recorded == pinned,
+        where,
+        f"recording {fixture} was recorded from {recorded!r}, and this service pins {pinned}; "
+        "a recording of another build is evidence about software nobody is installing, so "
+        "re-record it from the pinned image",
+        "ARCH-R136",
+    )
+
+
+def validate_service_claims(service: dict, where: str, report: Report) -> None:
+    """The evidence for what `provides` declares, held to the declaration.
+
+    Which probes a claim must bind, and what each expectation may say, are the
+    published vocabulary's to decide, and the core's judge holds them; this holds
+    what the manifest alone can show. A claim names a capability the service
+    provides, once, and every recording it names is this service's own and was
+    taken from the image it pins.
+    """
+    claims = service.get("claim", [])
+    if not report.check(
+        isinstance(claims, list) and all(isinstance(claim, dict) for claim in claims),
+        where,
+        "claim must be an array of [[service.claim]] tables",
+        "ARCH-R136",
+    ):
+        return
+    sid = service.get("id", UNNAMED)
+    provides = service.get("provides") or []
+    pinned = by_digest(service)
+    seen: set[str] = set()
+    for claim in claims:
+        capability = claim.get("capability")
+        at = f"{where}.claim {capability}"
+        if not report.check(isinstance(capability, str), where, "a claim names no capability", "ARCH-R136"):
+            continue
+        report.check(
+            capability in provides,
+            at,
+            f"{capability} is not in this service's `provides`, so the claim demonstrates "
+            "something the service has not said it can do",
+            "ARCH-R136",
+        )
+        report.check(capability not in seen, at, f"{capability} is claimed twice", "ARCH-R136")
+        seen.add(capability)
+        probes = claim.get("probe", [])
+        if not report.check(
+            isinstance(probes, list) and all(isinstance(probe, dict) for probe in probes),
+            at,
+            "probe must be an array of [[service.claim.probe]] tables",
+            "ARCH-R136",
+        ):
+            continue
+        for probe in probes:
+            probe_at = f"{at}.probe {probe.get('id', UNNAMED)}"
+            fixture = probe.get("fixture")
+            if report.check(isinstance(fixture, str), probe_at, "names no fixture", "ARCH-R136"):
+                validate_recording(sid, fixture, pinned, probe_at, report)
+
+
 def validate_service(service: dict, profile_ids: set[str], licences: set[str],
                      service_ids: set[str], profile_of: dict[str, str], report: Report) -> None:
     sid = service.get("id", UNNAMED)
@@ -517,6 +603,7 @@ def validate_service(service: dict, profile_ids: set[str], licences: set[str],
     validate_last_release(service, where, report)
     validate_service_errand(service, where, report)
     validate_service_provides(service, where, report)
+    validate_service_claims(service, where, report)
     validate_service_runtime(service, where, report)
     validate_service_health(service, where, report)
     validate_service_api(service, where, report)
