@@ -60,6 +60,14 @@
 /config/navidrome/*
 !/config/navidrome/.gitkeep
 
+!/config/request-gate/
+/config/request-gate/*
+!/config/request-gate/.gitkeep
+
+!/config/decline/
+/config/decline/*
+!/config/decline/.gitkeep
+
 .env
 .planning/
 .DS_Store

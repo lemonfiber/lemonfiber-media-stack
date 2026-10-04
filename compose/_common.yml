@@ -1,8 +1,8 @@
 # Shared service defaults.
 #
 # This file is deliberately NOT in compose.yml's include list. It is reached only
-# through `extends:`, so `defaults` and `rootless` are templates — they never
-# become containers, and they never appear in `docker compose ps`.
+# through `extends:`, so `defaults`, `rootless` and `confined` are templates —
+# they never become containers, and they never appear in `docker compose ps`.
 #
 # Paths here read `compose/_common.yml` rather than `_common.yml` because every
 # include sets `project_directory: .`, making all relative paths root-relative.
@@ -25,3 +25,19 @@ services:
     environment:
       PUID: ${PUID:-1000}
       PGID: ${PGID:-1000}
+
+  # lemonfiber's own images, each of which holds a credential that administers
+  # another service (C6-R20, C6-R22). A read-only root; the operator's uid, who
+  # owns the configuration directory lemonfiber writes into, rather than root or
+  # the image's own non-root user, who owns nothing on the host; every kernel
+  # capability dropped; no privilege gained after start; and a memory limit.
+  # scripts/validate_manifest.py holds every service of lemonfiber's own to all
+  # of it, and to the networks its ADR names.
+  confined:
+    extends:
+      service: defaults
+    user: "${PUID:-1000}:${PGID:-1000}"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 64m

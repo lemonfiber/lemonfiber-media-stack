@@ -9,8 +9,8 @@
 
 <p align="center">
   The Docker Compose stack Lemonfiber orchestrates: indexers, download clients,
-  the *arr automation apps, Jellyfin and Seerr &mdash; 20 services, all
-  open-source, all pinned.
+  the *arr automation apps, Jellyfin and Seerr &mdash; 22 services, all
+  pinned, every one lemonfiber does not build open-source.
 </p>
 
 <p align="center">
@@ -20,8 +20,8 @@
 
 ---
 
-> **Status: eighteen of the twenty are started in CI on every change.** All
-> 20 services are defined, every rule below is enforced, and CI now starts the
+> **Status: twenty of the twenty-two are started in CI on every change.** All
+> 22 services are defined, every rule below is enforced, and CI now starts the
 > stack: each profile is brought up with plain `docker compose` and every
 > service is made to answer the probe `stack.toml` declares for it. The first
 > run of that check found Jellyfin, Seerr and Bindery could not start from a
@@ -92,7 +92,7 @@ CI rejects it. See spec
 | File | What |
 |------|------|
 | `stack.toml` | The manifest Lemonfiber consumes — services, profiles, forms, removals |
-| `compose.yml` | Stitches the fragments together; no services of its own |
+| `compose.yml` | Stitches the fragments together and declares the named networks; no services of its own |
 | `compose/` | One fragment per profile — `tv.yml`, `media.yml`, `torrent.yml`, … |
 | `compose/_common.yml` | Shared service defaults, reached via `extends:` |
 | `.env.example` | Every variable, documented |
@@ -105,7 +105,9 @@ CI rejects it. See spec
 The judgement comes before the edits. A service enters only if it is open source
 under an OSI-approved licence, publishes native `linux/arm64` and `linux/amd64`
 images, is actively maintained, does something nothing here already does, and
-works without a paid tier.
+works without a paid tier. An image lemonfiber builds from its own code is the
+one exception to the first: it carries lemonfiber's own licence,
+`Hippocratic-3.0`, and nothing else (`F2-R5`).
 
 **Maintenance is established from the candidate's own history, never from what it
 says about itself.** Every project's README says it is actively maintained. The
@@ -138,7 +140,7 @@ asks_for = "Searches for subtitles matching what is in your library, signing in 
 ```
 
 Both or neither, and `reaches = ""` where a service talks to nothing at all —
-three of them do, and each still says what it does instead. This is what lets a
+five of them do, and each still says what it does instead. This is what lets a
 service be added with no lemonfiber change and no lemonfiber release: the prose
 an operator reads about a new service arrives with the service, in the manifest,
 rather than being compiled into the binary a release at a time. A manifest that
@@ -158,11 +160,13 @@ generation, which is how *a capability nothing implements must not be published*
 is enforced by the artefact refusing to be built rather than by review. What is
 checked here is the shape, because which names exist is lemonfiber's to say.
 
-Recyclarr, Unpackerr, Homepage and Caddy declare nothing. The first two write
-into other services' configuration and watch the filesystem; the other two are
-configured by lemonfiber writing a file rather than by anything asking them a
-question. A capability is something one service asks another for while both are
-running, and nothing asks any of them.
+Recyclarr, Unpackerr, Homepage, Caddy, the request gate and the decline service
+declare nothing. The first two write into other services' configuration and
+watch the filesystem; the next two are configured by lemonfiber writing a file
+rather than by anything asking them a question; the request gate carries Seerr's
+asks rather than answering any of its own, and the decline service answers an
+invitee's browser rather than another service. A capability is something one
+service asks another for while both are running, and nothing asks any of them.
 
 ## What reaches what
 
@@ -195,20 +199,49 @@ not tell those apart would be wrong about both. `filled_by` is the stack choosin
 between its own claimants, with the reason beside it, and it is a default the
 operator substitutes rather than a rule.
 
-A `to` is by name, and it carries `why`. The stack has six, and every one of
+A `to` is by name, and it carries `why`. The stack has seven, and every one of
 them is genuinely about one service: qBittorrent lives inside Gluetun's network
 namespace, which is a container rather than an errand and so has nothing for an
 ask to resolve to; Unpackerr and Recyclarr are configured per application, in
 each service's own terms, and know Sonarr rather than whatever curates a
-library. Writing the reason down is the point — an exception nobody explained
-reads as an oversight.
+library; the decline service makes three of Jellyfin's own calls with a key
+lemonfiber minted for it alone. Writing the reason down is the point — an
+exception nobody explained reads as an oversight.
 
 **An ordering edge is a by-name wiring.** A `depends_on` names a service, so CI
 refuses one that no `[[wiring]]` shows as by name.
 
 Homepage's panels and Caddy's routes are deliberately absent: lemonfiber writes
 both files from the tier and the description each service already declares,
-which is generation rather than wiring.
+which is generation rather than wiring. The request gate has none either: it is
+how lemonfiber carries Seerr's asks to Sonarr, Radarr and Jellyfin, not a
+capability of its own.
+
+## Networks
+
+Every service is on the project's default network, except where its entry names
+others. Five named networks, declared in `compose.yml`, confine the request gate
+and the decline service, the images lemonfiber builds, each of which holds a
+credential that administers another service:
+
+- **The request gate** publishes no port and is on two internal networks only:
+  `requests-gate`, shared with Seerr alone, and `gate-upstream`, shared with
+  Sonarr, Radarr and Jellyfin. Seerr is not on the default network: it is on
+  `requests-gate` and on `requests`, the bridge that carries its published port,
+  its egress, and Homepage and Caddy, which reach it. The gate is Seerr's only
+  path to Sonarr, Radarr and Jellyfin
+  ([ADR-0032](https://github.com/lemonfiber/spec/blob/main/00-overview/decisions/0032-the-request-service-reaches-the-arrs-through-a-gate.md)).
+- **The decline service** is on `decline-upstream`, an internal network shared
+  with Jellyfin alone, and on `decline`, which carries its published port and
+  nothing else, and translates no address off the host: the port answers, and
+  the service reaches nothing beyond it
+  ([ADR-0029](https://github.com/lemonfiber/spec/blob/main/00-overview/decisions/0029-a-household-service-declines-an-invitation-with-one-key.md)).
+
+Both run with a read-only root, as the operator rather than root, with every
+kernel capability dropped, `no-new-privileges` and a memory limit, and mount
+their own configuration directory and nothing else. `scripts/validate_manifest.py`
+holds each to that, and to exactly the networks and neighbours its ADR names
+(ADR-0033 §4).
 
 ## Bumping a pin
 
@@ -242,7 +275,7 @@ says anything about a service the change did not touch.
   it. Where a bump genuinely needs no new date, say so on the commit that makes
   it: `Pin-reviewed: <service-id>`.
 - **the upstream licence is read from the forge**, and has to still be
-  OSI-approved. A licence that could not be read at all fails the same way — a
+  OSI-approved, or `Hippocratic-3.0` for lemonfiber's own images. A licence that could not be read at all fails the same way — a
   pin bump is where a licence is established, not where it is assumed. A
   licence file the forge cannot identify passes only where it is the same file
   at the new release as at the release pinned before. Recorded identifiers that
@@ -287,10 +320,10 @@ proven to fail when broken by `scripts/test_validate_manifest.py`.
 | Killswitch routing | Nothing shares Gluetun's profile without its namespace, so no client here is one lemonfiber must report as leaking (`C2-R12`) |
 | Pinned by index digest, tag beside it | Nothing changes because time passed, and nothing runs by tag (`E1-R1`) |
 | Kernel capabilities match the manifest | Only Gluetun is granted `NET_ADMIN` (`C6`) |
-| OSI licence per service | Verified against a vendored SPDX list (`F2-R5`) |
+| OSI licence per service | Verified against a vendored SPDX list; lemonfiber's own images carry `Hippocratic-3.0` and nothing else (`F2-R5`) |
 | What each service reaches | `reaches` and `asks_for` together, for every service or for none (`F2-R10`, `F1-R5`) |
 | Capability names are core names | `area.verb`, never a plugin's namespace; which names exist is lemonfiber's to say (`F4-R4`, `ARCH-R110`) |
-| Upstream licence, where a pin moves | Read from the forge; still OSI-approved (`F2-R12`) |
+| Upstream licence, where a pin moves | Read from the forge; still OSI-approved, or `Hippocratic-3.0` for lemonfiber's own (`F2-R12`, `F2-R5`) |
 | A bumped pin carries a reviewed date | `last_release` moves with the tag, or the commit re-affirms it (`F2-R14`) |
 | A removal says why | `[[removed]]` names the reason and any replacement (`F2-R13`) |
 | Every form resolves | `docker compose config` per form (`REPO-R17`), dragging in nothing outside its profiles (`B1-R14`, `REPO-R19`) |
@@ -315,8 +348,10 @@ clone where neither has run has no hook: git cannot read `.githooks/` on its own
 
 ## Licence
 
-[Hippocratic License 3.0](LICENSE). The bundled *services* are each independently
-open-source (GPL/MIT/Apache); this repo distributes configuration, not their code.
+[Hippocratic License 3.0](LICENSE). The bundled *services* lemonfiber does not
+build are each independently open-source (GPL/MIT/Apache); this repo distributes
+configuration, not their code. The request gate and the decline service, whose
+images lemonfiber builds from its own code, carry this licence too (`F2-R5`).
 
 ---
 

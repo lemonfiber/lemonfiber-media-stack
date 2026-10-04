@@ -8,7 +8,8 @@ Two halves:
 
   Parity      the *resolved* Compose model against the manifest — services,
               images, profiles, mounts, bindings and the kernel capabilities a
-              service is granted.
+              service is granted — and lemonfiber's own services held to the
+              containment their ADRs state.
 
 The parity half reads `docker compose config --format json` rather than parsing
 compose.yml. That is deliberate: the resolved model is what Docker will actually
@@ -32,6 +33,7 @@ import subprocess
 import sys
 import tomllib
 
+from pins import OWN_LICENCE, rides_the_train
 from registry import DIGEST, pinned
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
@@ -87,6 +89,37 @@ SEMVER = re.compile(r"^\d+\.\d+\.\d+(?:[-+].*)?$")
 UNNAMED = "<unnamed>"
 ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 STACK_TOML = "stack.toml"
+
+# For each of lemonfiber's own services, the requirement that confines it, and
+# every network it is on with every other service on that network, as its ADR
+# states them (ADR-0033 §4). A service of lemonfiber's own with no entry here is
+# refused: its containment is stated before it runs.
+CONFINED: dict[str, tuple[str, dict[str, set[str]]]] = {
+    # ADR-0032 §4: reachable only from Seerr, reaching only the services it acts
+    # on, publishing nothing.
+    "request-gate": ("C6-R22", {
+        "requests-gate": {"seerr"},
+        "gate-upstream": {"sonarr", "radarr", "jellyfin"},
+    }),
+    # ADR-0029 §6: one network shared only with Jellyfin, and the one its
+    # published port needs.
+    "decline": ("C6-R20", {
+        "decline-upstream": {"jellyfin"},
+        "decline": set(),
+    }),
+}
+# What a service of lemonfiber's own with no entry in CONFINED is refused under.
+UNSTATED = "ADR-0033"
+# The bridge option that turns off address translation off the host: a network
+# carrying a published port still answers, and reaches nothing beyond the host.
+NO_MASQUERADE = "com.docker.network.bridge.enable_ip_masquerade"
+# A service whose only path to some others is through one of lemonfiber's own:
+# Seerr reaches Sonarr, Radarr and Jellyfin through the request gate and no other
+# way (C6-R22).
+ONLY_THROUGH: dict[str, tuple[str, set[str]]] = {
+    "seerr": ("request-gate", {"sonarr", "radarr", "jellyfin"}),
+}
+ROOT_USERS = {"0", "root"}
 
 
 def grants_of(service: dict) -> list:
@@ -448,13 +481,24 @@ def validate_service(service: dict, profile_ids: set[str], licences: set[str],
         "F2-R3",
     )
     licence = service.get("license")
-    report.check(
-        licence in licences,
-        where,
-        f"licence {licence!r} is not a recognised OSI identifier; see "
-        "scripts/spdx_osi.txt",
-        "F2-R5",
-    )
+    if rides_the_train(str(service.get("image", ""))):
+        # Built by lemonfiber from its own code, so it carries lemonfiber's
+        # licence, and nothing else.
+        report.check(
+            licence == OWN_LICENCE,
+            where,
+            f"licence {licence!r} on lemonfiber's own image; it carries lemonfiber's own, "
+            f"{OWN_LICENCE}",
+            "F2-R5",
+        )
+    else:
+        report.check(
+            licence in licences,
+            where,
+            f"licence {licence!r} is not a recognised OSI identifier; see "
+            "scripts/spdx_osi.txt",
+            "F2-R5",
+        )
     report.check(
         str(service.get("upstream", "")).startswith("https://"),
         where,
@@ -812,6 +856,103 @@ def validate_parity(manifest: dict, model: dict, report: Report) -> None:
 
     validate_bindings(declared, compose, gateway_of, report)
     validate_gateways(declared, compose, gateway_of, report)
+    validate_confinement(declared, model, report)
+
+
+def networks_of(service: dict) -> set[str]:
+    """The networks a resolved service is on; the resolved model names `default`
+    for a service whose entry names none."""
+    return set(service.get("networks") or {"default": None})
+
+
+def confined_runtime(sid: str, service: dict, requirement: str, report: Report) -> None:
+    """What every one of lemonfiber's own services runs with: a read-only root, a
+    user that is not root, no kernel capability, no privilege gained after start,
+    a memory limit, and its own configuration directory as its one mount
+    (ADR-0029 §6, ADR-0032 §4)."""
+    where = f"service {sid}"
+    report.check(service.get("read_only") is True, where,
+                 "runs with a writable root; lemonfiber's own images run read_only", requirement)
+    report.check("ALL" in (service.get("cap_drop") or []), where,
+                 "keeps kernel capabilities; lemonfiber's own images drop ALL", requirement)
+    report.check(
+        any(str(option).replace("=", ":") in {"no-new-privileges", "no-new-privileges:true"}
+            for option in service.get("security_opt") or []),
+        where, "can gain privileges after it starts; set no-new-privileges", requirement,
+    )
+    report.check(bool(service.get("mem_limit")), where, "runs with no memory limit", requirement)
+    user = str(service.get("user") or "")
+    report.check(bool(user) and user.split(":", 1)[0] not in ROOT_USERS, where,
+                 f"runs as {user or 'the image default'!r}; run it as ${{PUID}}:${{PGID}}", requirement)
+    mounts = service.get("volumes") or []
+    own = [mount for mount in mounts
+           if mount.get("type") == "bind" and mount.get("target") == "/config"
+           and mount.get("source") == str(ROOT / "config" / sid)]
+    report.check(
+        len(mounts) == 1 and len(own) == 1, where,
+        f"mounts {sorted(str(mount.get('target')) for mount in mounts)}; its one mount is "
+        f"./config/{sid}:/config, with no data root and no engine socket", requirement,
+    )
+
+
+def confined_networks(sid: str, spec: dict, compose: dict, networks: dict, internal: set[str],
+                      requirement: str, stated: dict[str, set[str]], report: Report) -> None:
+    """The networks its ADR puts it on, and nothing else on them but the services
+    the ADR names. A service that publishes nothing sits on internal networks only,
+    and one that publishes a port has one network that is not internal for it."""
+    where = f"service {sid}"
+    joined = networks_of(compose[sid])
+    report.check(joined == set(stated), where,
+                 f"is on {sorted(joined)}; its ADR puts it on {sorted(stated)}", requirement)
+    for network in sorted(joined & set(stated)):
+        peers = {other for other, service in compose.items()
+                 if other != sid and network in networks_of(service)}
+        report.check(peers == stated[network], where,
+                     f"shares {network!r} with {sorted(peers)}; its ADR says {sorted(stated[network])}",
+                     requirement)
+    open_networks = sorted(joined - internal)
+    wanted = 1 if "port" in spec else 0
+    report.check(
+        len(open_networks) == wanted, where,
+        f"is on {len(open_networks)} network(s) that are not internal ({open_networks}); "
+        f"{'one carries its published port' if wanted else 'it publishes nothing and has no egress'}",
+        requirement,
+    )
+    # A published port needs a network that is not internal, and such a network
+    # routes off the host unless it translates no address there. Without that
+    # translation the port still answers, and the service cannot reach out.
+    for network in open_networks:
+        options = (networks.get(network) or {}).get("driver_opts") or {}
+        report.check(
+            str(options.get(NO_MASQUERADE, "")).lower() == "false", where,
+            f"publishes on {network!r}, which reaches off the host; set {NO_MASQUERADE}: "
+            '"false" on it so the service has no egress', requirement,
+        )
+
+
+def validate_confinement(declared: dict, model: dict, report: Report) -> None:
+    """lemonfiber's own services run as their ADRs confine them (ADR-0033 §4)."""
+    compose = model.get("services", {})
+    networks = model.get("networks") or {}
+    internal = {name for name, network in networks.items() if (network or {}).get("internal")}
+    for sid, spec in sorted(declared.items()):
+        if sid not in compose or not rides_the_train(str(spec.get("image", ""))):
+            continue
+        requirement, stated = CONFINED.get(sid, (UNSTATED, None))
+        confined_runtime(sid, compose[sid], requirement, report)
+        if report.check(stated is not None, f"service {sid}",
+                        "is lemonfiber's own image and its containment is not stated in CONFINED",
+                        UNSTATED):
+            confined_networks(sid, spec, compose, networks, internal, requirement, stated, report)
+
+    for sid, (gate, upstreams) in sorted(ONLY_THROUGH.items()):
+        if sid not in compose or gate not in compose:
+            continue
+        reached = {other for other, service in compose.items() if other in upstreams
+                   and networks_of(service) & networks_of(compose[sid])}
+        report.check(not reached, f"service {sid}",
+                     f"shares a network with {sorted(reached)}, which it reaches only through "
+                     f"{gate}", "C6-R22")
 
 
 def validate_mounts(sid: str, service: dict, report: Report) -> None:

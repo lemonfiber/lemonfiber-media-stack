@@ -19,6 +19,8 @@ services:
       # that answers without a key.
       HOMEPAGE_VAR_LAN_HOST: ${HOMEPAGE_VAR_LAN_HOST:-localhost}
     ports: ["${LAN_BIND:-0.0.0.0}:3000:3000"]
+    # `requests` is how it reaches Seerr, which is on no other network it shares.
+    networks: [default, requests]
     volumes:
       - ./config/homepage:/app/config
     # The Docker socket is deliberately NOT mounted. Homepage is published to the
