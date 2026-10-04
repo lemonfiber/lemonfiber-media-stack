@@ -423,6 +423,15 @@ def validate_service_api(service: dict, where: str, report: Report) -> None:
     report.check(key_source in KEY_SOURCES, where, f"api.key_source {key_source!r} unknown")
     if key_source in {"config-xml", "config-ini", "config-json"}:
         report.check("path" in api, where, f"api.key_source {key_source!r} requires a path")
+    # Where lemonfiber and the services that ask reach it: the port it answers on
+    # inside the stack's network, which is not always the one it publishes.
+    listens = service.get("listens")
+    report.check(
+        isinstance(listens, int) and not isinstance(listens, bool) and 1 <= listens <= 65535,
+        where,
+        "declares an api but no listens, the port it answers on inside the stack's network",
+        "ARCH-R144",
+    )
     # The servarr shape spans two API major versions — Sonarr/Radarr are v3,
     # Lidarr/Prowlarr v1 — so the one client cannot assume one; the version is
     # data, and required. The other kinds have a single fixed version their
@@ -855,6 +864,7 @@ def validate_parity(manifest: dict, model: dict, report: Report) -> None:
         validate_grants(sid, spec, service, report)
 
     validate_bindings(declared, compose, gateway_of, report)
+    validate_listening(declared, compose, gateway_of, report)
     validate_gateways(declared, compose, gateway_of, report)
     validate_confinement(declared, model, report)
 
@@ -1090,6 +1100,25 @@ def validate_bindings(declared: dict, compose: dict, gateway_of: dict, report: R
                 check_bind_tier(owner, host_ip, declared, report)
 
     check_declared_published(declared, compose, gateway_of, report)
+
+
+def validate_listening(declared: dict, compose: dict, gateway_of: dict, report: Report) -> None:
+    """A service's `listens` is the inside end of the port it publishes, where it publishes one."""
+    for sid, spec in sorted(declared.items()):
+        listens, port = spec.get("listens"), spec.get("port")
+        if listens is None or port is None:
+            continue
+        publisher = compose.get(gateway_of.get(sid, sid), {})
+        for mapping in publisher.get("ports") or []:
+            if str(mapping.get("published")) != str(port):
+                continue
+            report.check(
+                str(mapping.get("target")) == str(listens),
+                f"service {sid}",
+                f"listens on {listens}, but the port it publishes, {port}, reaches "
+                f"{mapping.get('target')} inside its container",
+                "ARCH-R144",
+            )
 
 
 def validate_gateways(declared: dict, compose: dict, gateway_of: dict, report: Report) -> None:
