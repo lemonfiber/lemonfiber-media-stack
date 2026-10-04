@@ -68,6 +68,7 @@ forge:
     python3 scripts/registry.py --self-test
     python3 scripts/pins.py --self-test
     python3 scripts/record.py --self-test
+    python3 scripts/judge.py --self-test
 
 # Every pinned digest is an index publishing linux/amd64 and linux/arm64, and a
 # pin this branch moves is the index its tag names. Networked — but the

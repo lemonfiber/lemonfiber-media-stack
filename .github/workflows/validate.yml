@@ -68,6 +68,11 @@ jobs:
       - name: A recording carries nothing a run made
         run: python3 scripts/record.py --self-test
 
+      # The one place the lemonfiber commit the claims are held to is named,
+      # read the way `claims` and `pins` read it.
+      - name: The judge's commit is one full commit
+        run: python3 scripts/judge.py --self-test
+
       # A pin that moved and a date that did not are both well-formed values, and
       # a service that left the stack leaves a manifest that simply no longer
       # mentions it. Only a diff can see either (F2-R13, F2-R14).
@@ -117,28 +122,29 @@ jobs:
   # second evaluator is free to disagree with the first, and the one a release
   # is refused by is lemonfiber's.
   #
-  # lemonfiber is checked out at the commit `JUDGE` names and this tree is laid
-  # over the stack it embeds, so the judge reads this change's manifest and
-  # recordings and holds them to the capability vocabulary that commit
-  # publishes. Pinned rather than read from `main`: what the stack is held to
-  # moves when this line does, in a change somebody reviewed. A refuted probe or
-  # a refused claim fails this; a probe nothing could be judged against is
+  # lemonfiber is checked out at the commit .github/lemonfiber-judge names and
+  # this tree is laid over the stack it embeds, so the judge reads this change's
+  # manifest and recordings and holds them to the capability vocabulary that
+  # commit publishes. Pinned rather than read from `main`: what the stack is held
+  # to moves when that file does, in a change somebody reviewed. A refuted probe
+  # or a refused claim fails this; a probe nothing could be judged against is
   # reported unproven and does not (ARCH-R122).
   claims:
     runs-on: ubuntu-latest
-    env:
-      # lemonfiber/lemonfiber `main`, 2026-10-04.
-      JUDGE: 37b74e13a528fd75475dc30a983e3a4528b59db6
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           path: stack
 
+      - name: The lemonfiber commit the stack is held to
+        id: judge
+        run: python3 stack/scripts/judge.py --github-output >> "$GITHUB_OUTPUT"
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: lemonfiber/lemonfiber
-          ref: ${{ env.JUDGE }}
+          ref: ${{ steps.judge.outputs.commit }}
           path: judge
           persist-credentials: false
           # The stack it embeds is this tree, laid over below; its own pin of

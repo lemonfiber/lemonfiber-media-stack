@@ -113,8 +113,11 @@ judges them against the pull request's base:
 
 A moved `digest` also leaves every recording the service's claims name taken
 from an image the manifest no longer pins, and `validate_manifest.py` refuses
-each one (`ARCH-R136`). `just record <vocabulary> <service>` re-records them
-from a fresh container of the new image, in the same change.
+each one (`ARCH-R136`). The `pins` workflow re-records them from a fresh
+container of the new image in the change that moves the pin; by hand, `just
+record <vocabulary> <service>` does the same. The vocabulary is the one the
+lemonfiber commit in `.github/lemonfiber-judge` publishes, which is also the
+commit whose judge the `claims` check runs.
 
 ## Checks
 
