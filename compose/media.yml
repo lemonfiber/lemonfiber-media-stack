@@ -65,7 +65,7 @@ services:
     extends:
       file: compose/_common.yml
       service: confined
-    image: ghcr.io/lemonfiber/request-gate:v0.17.0-pre.1@sha256:c98c54fbbd3b43c73386cc45a8d7dbf03411827675691f67cff228f8ba8ea341
+    image: ghcr.io/lemonfiber/request-gate:v0.17.0@sha256:ff9fd54257cc815be3a438900902aacf8a2c3018ef0e52693d47bb579014876d
     profiles: [media]
     networks: [requests-gate, gate-upstream]
     volumes:
