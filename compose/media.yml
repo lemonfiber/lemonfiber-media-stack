@@ -84,7 +84,7 @@ services:
     extends:
       file: compose/_common.yml
       service: confined
-    image: ghcr.io/lemonfiber/decline:v0.17.0-pre.1@sha256:65b3ea113ca2c6f04e1c434594b10429a545ad915e56981f31a6c2cc8c03e8c2
+    image: ghcr.io/lemonfiber/decline:v0.17.0@sha256:814d551113e93135259ac8e92586938bf88c3bb03bc8ce75b8e0d7e4d14a8147
     profiles: [media]
     ports: ["${LAN_BIND:-0.0.0.0}:5056:8080"]
     # Its published port's network, which holds nothing else, and the one it
