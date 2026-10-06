@@ -43,7 +43,7 @@ def named(text: str) -> str:
 
 
 def self_test() -> int:
-    sha = "37b74e13a528fd75475dc30a983e3a4528b59db6"
+    sha = "07fa30cbac80749e9b101d47adf14d191afe200c"
     assert named(f"# why\n\n{sha}\n") == sha
     for refused in ("", "# only a comment\n", "main\n", sha[:12], f"{sha}\n{sha}\n", sha.upper()):
         try:
