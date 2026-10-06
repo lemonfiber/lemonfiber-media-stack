@@ -224,7 +224,24 @@ without_it = "Search one indexer at a time"
 reaches = "the Usenet indexers you configured"
 asks_for = "Searches several indexers at once and merges what they answer, with the keys you gave it."
 provides = ["indexer.search"]
-health = { kind = "http", path = "/", timeout_s = 60 }
+health = { kind = "http", path = "/internalapi/userinfos", timeout_s = 60 }
+api = { kind = "nzbhydra2", key_source = "config-yaml", path = "/config/nzbhydra.yml" }
+listens = 5076
+
+[[service.claim]]
+capability = "indexer.search"
+
+[[service.claim.probe]]
+id = "guarded"
+request = { method = "GET", path = "/internalapi/config" }
+expect = { status = 401 }
+fixture = "recordings/nzbhydra2/indexer-search-guarded.json"
+
+[[service.claim.probe]]
+id = "indexers"
+request = { method = "GET", path = "/internalapi/config" }
+expect = { status = 200, json_types = { indexers = "list" } }
+fixture = "recordings/nzbhydra2/indexer-search-indexers.json"
 
 [[service]]
 id = "sabnzbd"
