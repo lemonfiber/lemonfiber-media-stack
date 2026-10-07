@@ -94,7 +94,7 @@ jobs:
     permissions:
       contents: read
       security-events: read
-    uses: lemonfiber/spec/.github/workflows/codeql-alerts.yml@999f97e9414290f029391d5d541087b8a6d23bdf # v1.0.29
+    uses: lemonfiber/spec/.github/workflows/codeql-alerts.yml@d8cef38002c9d8cc01481bdb746b4c0674b72ad5 # v1.0.29
     with:
       analysis: ${{ needs.analyze.result }}
       # Whether the analysis above ran at all. Where the change reaches no code
