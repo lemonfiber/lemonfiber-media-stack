@@ -55,7 +55,7 @@ templates never become containers:
   `confined`, mounts `./config/<id>:/config` and nothing else, and is on exactly
   the networks its ADR names, beside exactly the services it names. Seerr is not
   on the default network: the request gate is its only path to Sonarr, Radarr
-  and Jellyfin. `CONFINED` in `scripts/validate_manifest.py` is where each
+  and Jellyfin. `CONFINED` in `scripts/compose_parity.py` is where each
   service's networks are stated, and one of lemonfiber's own without an entry
   there fails CI.
 

@@ -22,8 +22,9 @@
 #
 # Omitting it is caught rather than tolerated: the fragment's `extends:` path
 # rebases too, so Compose cannot find compose/_common.yml and builds no model at
-# all. The mount-source check in scripts/validate_manifest.py is the backstop for
-# any fragment that has no extends to break first.
+# all. The mount-source check in scripts/compose_parity.py, which
+# scripts/validate_manifest.py runs, is the backstop for any fragment that has no
+# extends to break first.
 
 include:
   - path: compose/search.yml
