@@ -270,4 +270,5 @@ proven to fail when broken by `scripts/test_validate_manifest.py`.
 | A moved pin is its tag's index | The registry resolves the tag to the pinned digest (`E1-R1`) |
 
 The parity checks read `docker compose config`'s resolved model rather than the
-YAML, so they check what Docker will run, not what the file appears to say.
+YAML, so they check what Docker will run, not what the file appears to say,
+with every profile enabled.
