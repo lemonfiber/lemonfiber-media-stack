@@ -1,0 +1,56 @@
+# What this repository implements, one row per requirement (OPS-R74).
+#
+# `done` means the requirement is met in full by what is here, `partial` that this
+# repository holds its part and the rest lives elsewhere, `open` that nothing here
+# meets it yet. The release gate and the no-stubs gate read this file; a pull
+# request that changes whether a requirement is met changes its row.
+#
+# This is the stack side: the manifest, the compose fragments and the checks CI
+# runs over them. Where a requirement also binds what lemonfiber does with the
+# manifest (loading it, starting forms, reporting status, seeding, refusing a
+# plugin's declaration, gating a release), the stack's half is here and the row
+# is partial.
+
+requirement = [
+  { id = "B1-R1", state = "done", evidence = ["scripts/manifest_rules.py", "scripts/test_validate_manifest.py::unknown profile"] },
+  { id = "B1-R2", state = "done", evidence = ["stack.toml", "scripts/check_forms.py"] },
+  { id = "B1-R12", state = "partial", evidence = ["scripts/manifest_rules.py", "scripts/test_validate_manifest.py::manifest references a profile that was never declared"] },
+  { id = "B1-R13", state = "partial", evidence = ["stack.toml", "scripts/check_forms.py"] },
+  { id = "B1-R14", state = "done", evidence = ["scripts/manifest_rules.py", "scripts/test_validate_manifest.py::crosses a profile boundary"] },
+  { id = "B1-R15", state = "partial", evidence = ["stack.toml"] },
+  { id = "B1-R18", state = "partial", evidence = ["scripts/manifest_rules.py", "scripts/test_validate_manifest.py::memory_mib must be a whole number"] },
+  { id = "C5-R4", state = "partial", evidence = ["stacks/compose.storage.nas.yml"] },
+  { id = "C6-R1", state = "done", evidence = ["scripts/compose_parity.py", "scripts/test_validate_manifest.py::must be 127.0.0.1"] },
+  { id = "C6-R2", state = "done", evidence = ["scripts/compose_parity.py", "scripts/test_validate_manifest.py::unreachable from a TV"] },
+  { id = "C6-R17", state = "done", evidence = [".env.example::LAN_BIND", "scripts/compose_parity.py"] },
+  { id = "C6-R20", state = "partial", evidence = ["scripts/compose_parity.py", "scripts/test_validate_manifest.py::service request-gate: runs with a writable root"] },
+  { id = "C6-R22", state = "done", evidence = ["compose.yml", "scripts/compose_parity.py", "scripts/test_validate_manifest.py::service request-gate: can gain privileges", "scripts/test_validate_manifest.py::service request-gate: runs as '0:0'"] },
+  { id = "D6-R15", state = "partial", evidence = ["stack.toml", "scripts/test_validate_manifest.py::service decline: keeps kernel capabilities"] },
+  { id = "E1-R1", state = "partial", evidence = ["scripts/manifest_rules.py", "scripts/check_images.py", "scripts/test_validate_manifest.py::floating tag"] },
+  { id = "F1-R1", state = "done", evidence = ["compose.yml", "scripts/check_runs.py"] },
+  { id = "F1-R5", state = "partial", evidence = ["stack.toml", "scripts/test_validate_manifest.py::declares 'reaches' without 'asks_for'"] },
+  { id = "F1-R9", state = "partial", evidence = ["scripts/validate_manifest.py", "scripts/report.py"] },
+  { id = "F2-R1", state = "done", evidence = ["scripts/manifest_rules.py::describes", "scripts/test_validate_manifest.py::missing required field"] },
+  { id = "F2-R2", state = "done", evidence = ["scripts/manifest_rules.py::without_it", "scripts/test_validate_manifest.py::missing required field"] },
+  { id = "F2-R3", state = "done", evidence = ["scripts/manifest_rules.py::criticality", "scripts/test_validate_manifest.py::missing required field"] },
+  { id = "F2-R4", state = "done", evidence = ["scripts/manifest_rules.py::upstream", "scripts/test_validate_manifest.py::missing required field 'digest'"] },
+  { id = "F2-R5", state = "done", evidence = ["scripts/manifest_rules.py", "scripts/spdx_osi.txt", "scripts/test_validate_manifest.py::not a recognised OSI identifier"] },
+  { id = "F2-R6", state = "done", evidence = ["scripts/check_images.py"] },
+  { id = "F2-R7", state = "done", evidence = ["docs/maintaining.md::OSI-approved licence", "scripts/check_candidate.py"] },
+  { id = "F2-R10", state = "done", evidence = ["stack.toml", "scripts/manifest_rules.py::validate_versions"] },
+  { id = "F2-R12", state = "done", evidence = ["scripts/check_licences.py"] },
+  { id = "F2-R13", state = "done", evidence = ["scripts/manifest_rules.py::validate_removals", "scripts/test_validate_manifest.py::missing required field 'reason'"] },
+  { id = "F2-R14", state = "done", evidence = ["scripts/check_releases.py", "scripts/test_validate_manifest.py::missing required field 'last_release'"] },
+  { id = "F2-R15", state = "done", evidence = ["scripts/check_candidate.py"] },
+  { id = "F4-R1", state = "partial", evidence = ["stack.toml", "scripts/wiring_rules.py"] },
+  { id = "F4-R4", state = "partial", evidence = ["scripts/manifest_rules.py", "scripts/test_validate_manifest.py::a capability in a plugin's namespace on a bundled service"] },
+  { id = "F4-R12", state = "partial", evidence = ["scripts/wiring_rules.py", "scripts/test_validate_manifest.py::does not say why"] },
+  { id = "F9-R1", state = "done", evidence = ["scripts/manifest_rules.py::validate_service_provides", "scripts/test_validate_manifest.py::a capability name with no area"] },
+  { id = "F9-R2", state = "partial", evidence = ["scripts/judge.py", "recordings"] },
+  { id = "F9-R3", state = "partial", evidence = ["stack.toml"] },
+  { id = "F9-R4", state = "done", evidence = ["scripts/wiring_rules.py", "scripts/test_validate_manifest.py::a wiring that both asks and names", "scripts/test_validate_manifest.py::does not say why"] },
+  { id = "ARCH-R110", state = "partial", evidence = ["scripts/manifest_rules.py", "scripts/test_validate_manifest.py::is not a core name"] },
+  { id = "ARCH-R136", state = "done", evidence = ["scripts/manifest_rules.py::validate_service_claims", "recordings"] },
+  { id = "ARCH-R137", state = "partial", evidence = ["scripts/judge.py"] },
+  { id = "ARCH-R144", state = "partial", evidence = ["scripts/manifest_rules.py", "scripts/test_validate_manifest.py::declares an api but no listens"] },
+]
