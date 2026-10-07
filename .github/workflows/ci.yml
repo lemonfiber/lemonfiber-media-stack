@@ -35,9 +35,9 @@ jobs:
     permissions:
       contents: read
       pull-requests: write
-    uses: lemonfiber/spec/.github/workflows/spec-check.yml@92ec12769c3fdebc6063a839e9ea7c8bc23e6d3d # v1.0.31
+    uses: lemonfiber/spec/.github/workflows/spec-check.yml@1d944c523bb6382fdd959019583cf71bef5f22c7 # v1.0.39
   hygiene:
-    uses: lemonfiber/spec/.github/workflows/hygiene.yml@92ec12769c3fdebc6063a839e9ea7c8bc23e6d3d # v1.0.31
+    uses: lemonfiber/spec/.github/workflows/hygiene.yml@1d944c523bb6382fdd959019583cf71bef5f22c7 # v1.0.39
   # Every pin this repository holds on a shared workflow, against what the spec's
   # default branch holds now. It fails naming the commits a pin has not taken; a
   # run that could not ask which they are says so rather than reporting clean.
