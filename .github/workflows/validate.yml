@@ -19,6 +19,33 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Whether this change reaches code, for the jobs below that judge nothing else.
+  # Each of them skips where it does not, and runs wherever this job did not
+  # succeed, so an answer that could not be reached runs everything. `stack`
+  # does not ask, and runs on every change: `check_docs.py` in it reads the
+  # readme and the agent guide.
+  scope:
+    name: what changed
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      code: ${{ steps.diff.outputs.code }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          # Every commit, so the base is here to compare against, and no file
+          # contents but the checkout's: the comparison reads trees.
+          fetch-depth: 0
+          filter: blob:none
+      - id: diff
+        env:
+          # A pull request's base, a merge group's, or on a push the commit
+          # before it. Any other event has none, and the answer is then that
+          # everything runs.
+          BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
+        run: python3 scripts/the_code_a_change_touches.py "${BASE}"
+
   # The offline half: contract, parity, every form. No network, no registry.
   stack:
     runs-on: ubuntu-latest
@@ -116,6 +143,13 @@ jobs:
       - name: Validator test suite
         run: python3 scripts/test_validate_manifest.py
 
+      # The answer `what changed` gives, which decides whether the jobs below
+      # and the CodeQL analysis run. Proven here, on every change, rather than
+      # there: that job is not required, and a red one runs everything, so a
+      # broken answer would be paid for and never seen.
+      - name: What reaches code is told from what does not
+        run: python3 scripts/the_code_a_change_touches.py --self-test
+
   # Every claim in stack.toml judged against the recordings it binds, by the
   # judge lemonfiber's release gate runs against the stack it embeds (ARCH-R137,
   # F9-R2). The same judge rather than a second one written here, because a
@@ -130,6 +164,8 @@ jobs:
   # or a refused claim fails this; a probe nothing could be judged against is
   # reported unproven and does not (ARCH-R122).
   claims:
+    needs: scope
+    if: ${{ !cancelled() && (needs.scope.result != 'success' || needs.scope.outputs.code == 'true') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -176,6 +212,8 @@ jobs:
   # The networked half, kept apart so a registry outage reads as a registry
   # outage rather than as a broken manifest (REPO-R20).
   images:
+    needs: scope
+    if: ${{ !cancelled() && (needs.scope.result != 'success' || needs.scope.outputs.code == 'true') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -273,8 +311,13 @@ jobs:
   # One runner per group, so a profile boots on hardware of its own rather than
   # competing with sixteen other services for four cores — and so a failure is
   # named by the check that carries it.
+  #
+  # Skipped where the change reaches no code, since every profile would start
+  # from the same files as on the base. Skipped whole, so the matrix reports
+  # unexpanded; no rule names a leg, and `the stack starts` stands for them.
   runs:
-    needs: runnable
+    needs: [scope, runnable]
+    if: ${{ !cancelled() && needs.runnable.result == 'success' && (needs.scope.result != 'success' || needs.scope.outputs.code == 'true') }}
     name: runs (${{ matrix.group.name }})
     runs-on: ubuntu-latest
     strategy:
@@ -313,13 +356,23 @@ jobs:
   # job vanish, and a skipped required check satisfies branch protection — so
   # the one job standing for the whole matrix would be absent in exactly the
   # case it exists to refuse. It reads the results rather than inheriting them.
+  #
+  # Where the change reaches no code the matrix was skipped on purpose, and this
+  # says so and passes rather than reading a skipped matrix as a failure.
   the-stack-starts:
-    needs: [runnable, runs]
+    needs: [scope, runnable, runs]
     if: ${{ !cancelled() }}
     name: the stack starts
     runs-on: ubuntu-latest
+    env:
+      CODE: ${{ needs.scope.result != 'success' || needs.scope.outputs.code == 'true' }}
     steps:
+      - name: No code changed, so no profile was started
+        if: env.CODE != 'true'
+        run: echo "::notice::Every path this change touches is one no code-judging job reads, so no profile was started."
+
       - name: Every profile the plan named started, answered and came down
+        if: env.CODE == 'true'
         env:
           PLANNED: ${{ needs.runnable.outputs.groups }}
           RUNNABLE: ${{ needs.runnable.result }}

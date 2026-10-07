@@ -23,7 +23,36 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
   cancel-in-progress: true
 jobs:
+  # Whether this change reaches code, for the analysis below. It skips where the
+  # change does not, and runs wherever this job did not succeed, so an answer
+  # that could not be reached runs it.
+  scope:
+    name: what changed
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      code: ${{ steps.diff.outputs.code }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          # Every commit, so the base is here to compare against, and no file
+          # contents but the checkout's: the comparison reads trees.
+          fetch-depth: 0
+          filter: blob:none
+      - id: diff
+        env:
+          # A pull request's base, a merge group's, or on a push the commit
+          # before it. Any other event has none, and the answer is then that
+          # everything runs.
+          BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
+        run: python3 scripts/the_code_a_change_touches.py "${BASE}"
+
+  # Skipped whole where the change reaches no code: it is one job with no
+  # matrix, so a skip reports as `analyze`, the name the rule holds.
   analyze:
+    needs: scope
+    if: ${{ !cancelled() && (needs.scope.result != 'success' || needs.scope.outputs.code == 'true') }}
     runs-on: ubuntu-latest
     permissions:
       security-events: write
@@ -60,7 +89,7 @@ jobs:
   # and by name, so running it after a failed analysis says what is missing
   # rather than passing on an empty list.
   alerts:
-    needs: analyze
+    needs: [scope, analyze]
     if: ${{ !cancelled() }}
     permissions:
       contents: read
@@ -68,3 +97,7 @@ jobs:
     uses: lemonfiber/spec/.github/workflows/codeql-alerts.yml@999f97e9414290f029391d5d541087b8a6d23bdf # v1.0.29
     with:
       analysis: ${{ needs.analyze.result }}
+      # Whether the analysis above ran at all. Where the change reaches no code
+      # it did not, and the gate says so rather than refusing a commit with no
+      # analysis; a skipped call would report as `alerts`, not `alerts / alerts`.
+      code: ${{ needs.scope.result != 'success' || needs.scope.outputs.code == 'true' }}
