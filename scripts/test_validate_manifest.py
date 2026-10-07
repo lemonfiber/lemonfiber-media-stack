@@ -366,8 +366,8 @@ CASES = [
         # Compose itself rejects this before the lint runs: the fragment's paths
         # rebase onto compose/, so `extends: file: compose/_common.yml` becomes
         # compose/compose/_common.yml and no model is produced. The mount-source
-        # check in validate_manifest.py is the backstop for a fragment that has
-        # no extends to break first.
+        # check in compose_parity.py is the backstop for a fragment that has no
+        # extends to break first.
         "include missing project_directory is rejected",
         patch(
             "compose.yml",
@@ -676,7 +676,7 @@ CASES = [
     ),
     (
         "ADR-0033 one of lemonfiber's own images with no containment stated",
-        patch("scripts/validate_manifest.py", '    "decline": ("C6-R20", {\n', '    "declined": ("C6-R20", {\n'),
+        patch("scripts/compose_parity.py", '    "decline": ("C6-R20", {\n', '    "declined": ("C6-R20", {\n'),
         "service decline: is lemonfiber's own image and its containment is not stated",
     ),
     (
