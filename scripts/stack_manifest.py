@@ -152,33 +152,34 @@ def self_test() -> list[str]:
 
     failures = []
     service = '[[service]]\nid = "{id}"\nname = "{id}"\n'
-    root_text = 'schema_version = 1\ninclude = ["services/a.toml", "services/b.toml"]\n\n[[profile]]\nid = "p"\n'
+    a, b, c = (service_file(sid) for sid in "abc")
+    root_text = f'schema_version = 1\ninclude = ["{a}", "{b}"]\n\n[[profile]]\nid = "p"\n'
     cases = {
         "a whole stack": (root_text, {"a": service.format(id="a"), "b": service.format(id="b")}, []),
         "a service in the root": (root_text + "\n" + service.format(id="c"),
                                   {"a": service.format(id="a"), "b": service.format(id="b")},
-                                  [("stack.toml", "declares service c, which belongs in services/c.toml")]),
-        "an entry of the wrong form": (root_text.replace("services/b.toml", "other/b.toml"),
+                                  [("stack.toml", f"declares service c, which belongs in {c}")]),
+        "an entry of the wrong form": (root_text.replace(b, "other/b.toml"),
                                        {"a": service.format(id="a")},
                                        [("include entry other/b.toml", "is not of the form services/<id>.toml")]),
-        "an entry twice": (root_text.replace('"services/b.toml"', '"services/a.toml"'),
+        "an entry twice": (root_text.replace(f'"{b}"', f'"{a}"'),
                            {"a": service.format(id="a")},
-                           [("include entry services/a.toml", "appears more than once")]),
+                           [(f"include entry {a}", "appears more than once")]),
         "a missing file": (root_text, {"a": service.format(id="a")},
-                           [("include entry services/b.toml", "names no file")]),
+                           [(f"include entry {b}", "names no file")]),
         "a stray file": (root_text, {"a": service.format(id="a"), "b": service.format(id="b"),
                                      "c": service.format(id="c")},
-                         [("services/c.toml", "is in services/ and no include entry names it")]),
+                         [(c, "is in services/ and no include entry names it")]),
         "a mismatched id": (root_text, {"a": service.format(id="a"), "b": service.format(id="x")},
-                            [("services/b.toml", "holds service x, and its name says b")]),
+                            [(b, "holds service x, and its name says b")]),
         "two services": (root_text, {"a": service.format(id="a"),
                                      "b": service.format(id="b") + service.format(id="b2")},
-                         [("services/b.toml", "holds 2 [[service]], and a service file holds one")]),
+                         [(b, "holds 2 [[service]], and a service file holds one")]),
         "something else": (root_text, {"a": service.format(id="a"),
                                        "b": service.format(id="b") + '[[profile]]\nid = "q"\n'},
-                           [("services/b.toml", "holds profile, and a service file holds only its [[service]]")]),
+                           [(b, "holds profile, and a service file holds only its [[service]]")]),
         "no service": (root_text, {"a": service.format(id="a"), "b": ""},
-                       [("services/b.toml", "holds no [[service]]")]),
+                       [(b, "holds no [[service]]")]),
     }
     for said, (root_written, files, want) in cases.items():
         with tempfile.TemporaryDirectory() as tmp:
