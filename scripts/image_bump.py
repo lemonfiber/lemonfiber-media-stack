@@ -4,12 +4,12 @@
 `ghcr.io/lemonfiber/<service>` is built by `lemonfiber-<service>` and published
 only from a tag the train cuts, `vX.Y.Z` or `vX.Y.Z-<identifier>` (ADR-0033 §3).
 Each publish dispatches `image-bump` with the service, the tag and the index
-digest it recorded, and this writes that pin: `tag` and `digest` in `stack.toml`,
+digest it recorded, and this writes that pin: `tag` and `digest` in `services/<id>.toml`,
 `image:tag@digest` in the service's compose fragment, and `last_release` as the
 day it was published (`F2-R14`). `pins.py` leaves these images alone; their pin
 moves with the train, not with a registry's newest tag.
 
-The pin is checked before it is written. The service has to be in `stack.toml`
+The pin is checked before it is written. The service has to be in the manifest
 already with lemonfiber's image for its id, and the registry has to answer the
 tag with the same digest, as an index publishing `linux/amd64` and `linux/arm64`
 (`E1-R1`, `F2-R6`). Where the date written is the one already recorded, the
@@ -30,7 +30,8 @@ import tomllib
 from collections.abc import Callable
 
 import registry
-from pins import COMPOSE_DIR, OWN_IMAGES, REQUIRED, STACK_TOML, rewrite_compose, rewrite_manifest
+import stack_manifest
+from pins import COMPOSE_DIR, OWN_IMAGES, REQUIRED, ROOT, rewrite_compose, rewrite_manifest
 
 SERVICE_ID = re.compile(r"\A[a-z0-9]+(?:-[a-z0-9]+)*\Z")
 # A tag the train cuts, and the identifier it refuses: ARCH-R43 gives a release
@@ -56,7 +57,7 @@ def refusal(manifest: dict, service: str, tag: str, digest: str) -> str:
         return f"{digest!r} is not a sha256 digest"
     entries = [entry for entry in manifest.get("service", []) if entry.get("id") == service]
     if not entries:
-        return (f"stack.toml has no service {service!r}. Its [[service]] and compose entry are "
+        return (f"the manifest has no service {service!r}. Its [[service]] and compose entry are "
                 "added in a change of their own; this only moves the pin of a service already there.")
     image = f"{OWN_IMAGES}/{service}"
     if entries[0].get("image") != image:
@@ -67,11 +68,12 @@ def refusal(manifest: dict, service: str, tag: str, digest: str) -> str:
 
 def bump(service: str, tag: str, digest: str, today: str, manifest_text: str,
          fragments: dict[str, str], resolve: Resolve = registry.resolve) -> tuple[dict, str, dict[str, str]]:
-    """The pin written into the manifest and compose fragments given.
+    """The pin written into the service's file and compose fragments given.
 
-    What moved, in the shape `pins.py --apply` reports it, the manifest's new
-    text, and the new text of each fragment that changed, by name. Nothing is
-    read from or written to disk here; `main` does both.
+    `manifest_text` is the service's own file, `services/<id>.toml`. What moved, in
+    the shape `pins.py --apply` reports it, that file's new text, and the new text
+    of each fragment that changed, by name. Nothing is read from or written to disk
+    here; `main` does both.
     """
     manifest = tomllib.loads(manifest_text)
     if why := refusal(manifest, service, tag, digest):
@@ -125,7 +127,7 @@ def refusal_problems(digest: str) -> list[str]:
         (SERVICE, TAG.removeprefix("v"), NOT_A_TRAIN_TAG),
         (SERVICE, f"{TAG} --push", NOT_A_TRAIN_TAG),
         ("Decline", TAG, "not a service id"),
-        ("request-gate", TAG, "stack.toml has no service 'request-gate'"),
+        ("request-gate", TAG, "the manifest has no service 'request-gate'"),
         ("sonarr", TAG, "only lemonfiber's own images"),
     ):
         said = refusal(manifest, service, tag, digest)
@@ -200,15 +202,21 @@ def main() -> int:
     service, tag, digest = args.apply
     today = datetime.datetime.now(datetime.UTC).date().isoformat()
     fragments = {path.name: path.read_text(encoding="utf-8") for path in sorted(COMPOSE_DIR.glob("*.yml"))}
+    # Refused against the whole manifest first, so the service's file is only ever
+    # named from an id that has been held to the shape of one and found in it.
+    if why := refusal(stack_manifest.load(ROOT), service, tag, digest):
+        print(f"::error::{why}", file=sys.stderr)
+        return 1
+    described = ROOT / stack_manifest.service_file(service)
     try:
         moved, text, rewritten = bump(service, tag, digest, today,
-                                      STACK_TOML.read_text(encoding="utf-8"), fragments)
+                                      described.read_text(encoding="utf-8"), fragments)
     except Refused as refused:
         print(f"::error::{refused}", file=sys.stderr)
         return 1
     for name, body in rewritten.items():
         (COMPOSE_DIR / name).write_text(body, encoding="utf-8")
-    STACK_TOML.write_text(text, encoding="utf-8")
+    described.write_text(text, encoding="utf-8")
     print(json.dumps(moved, indent=2))
     return 0
 

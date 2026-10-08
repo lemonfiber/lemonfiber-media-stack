@@ -3,9 +3,10 @@
 
 Two halves:
 
-  Manifest    stack.toml against the contract at
-              spec 20-architecture/contracts/stack-manifest.md, in
-              manifest_rules.py, with its `[[wiring]]` table in wiring_rules.py.
+  Manifest    stack.toml and the service files it includes against the
+              contract at spec 20-architecture/contracts/stack-manifest.md:
+              how the files are laid out in stack_manifest.py, what they say in
+              manifest_rules.py, and the `[[wiring]]` table in wiring_rules.py.
 
   Parity      the *resolved* Compose model against the manifest — services,
               images, profiles, mounts, bindings and the kernel capabilities a
@@ -27,11 +28,10 @@ from __future__ import annotations
 import argparse
 import pathlib
 import sys
-import tomllib
 
+import stack_manifest
 from compose_parity import load_compose_model, validate_parity
 from manifest_rules import (
-    STACK_TOML,
     osi_licences,
     validate_dependencies,
     validate_errands,
@@ -77,7 +77,11 @@ def main() -> int:
     args = parser.parse_args()
 
     report = Report()
-    manifest = tomllib.loads((ROOT / STACK_TOML).read_text(encoding="utf-8"))
+    # The files first: a manifest whose pieces break the rules about them is read
+    # as whatever they do hold, and every fault below is then about that.
+    for where, what in stack_manifest.layout_problems(ROOT):
+        report.fail(where, what, "ARCH-R171")
+    manifest = stack_manifest.load(ROOT)
     validate_manifest(manifest, report)
 
     checked_parity = False

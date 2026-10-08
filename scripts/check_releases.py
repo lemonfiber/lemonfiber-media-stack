@@ -34,8 +34,8 @@ import argparse
 import datetime
 import pathlib
 import sys
-import tomllib
 
+import stack_manifest
 from forge import get_json, repo_of
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
@@ -97,7 +97,7 @@ def main() -> int:
         print("\nself-test passed.")
         return 0
 
-    manifest = tomllib.loads((ROOT / "stack.toml").read_text(encoding="utf-8"))
+    manifest = stack_manifest.load(ROOT)
     failures, drifted, stale = [], [], []
     today = datetime.date.today()
 

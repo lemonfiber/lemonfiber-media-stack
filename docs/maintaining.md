@@ -27,8 +27,8 @@ recorded against it, `reject` belongs in the spec's notable exclusions rather
 than in `stack.toml`.
 
 Then three data edits, no code: a service block in the right
-`compose/<profile>.yml`, a `[[service]]` in `stack.toml`, and its profile added to
-the relevant forms. Then `just ci`. See the specification's
+`compose/<profile>.yml`, its `[[service]]` in `services/<id>.toml` with that file
+added to `stack.toml`'s `include`, and its profile added to the relevant forms. Then `just ci`. See the specification's
 [`30-repos/lemonfiber-media-stack.md`](https://github.com/lemonfiber/spec/blob/main/30-repos/lemonfiber-media-stack.md).
 
 Among the `[[service]]` fields are the two that say what the service does on the
@@ -181,7 +181,7 @@ holds each to that, and to exactly the networks and neighbours its ADR names
 ## Bumping a pin
 
 A pin is the digest of an image's multi-architecture index, with its tag beside
-it for reading: `tag` and `digest` in `stack.toml`, `image:tag@digest` in the
+it for reading: `tag` and `digest` in `services/<id>.toml`, `image:tag@digest` in the
 compose fragment. The digest is what runs; the tag is what a reader is shown.
 
 Each pin follows the newest release of its own major. The `pins` workflow runs
@@ -197,7 +197,7 @@ lemonfiber's own images, under `ghcr.io/lemonfiber`, are the exception: `pins`
 leaves them alone, and they move with the release train. Each publish from a tag
 `lemonfiber-<service>` cuts dispatches the `image-bump` workflow with the tag and
 the index digest it published; `scripts/image_bump.py` checks that the service is
-already in `stack.toml` with that image, and that the registry answers the tag
+already in the manifest with that image, and that the registry answers the tag
 with that digest on both platforms, and writes the pin. Its pull request meets
 the same checks and is armed to merge the same way.
 
@@ -223,8 +223,8 @@ says anything about a service the change did not touch.
 
 ## Removing a service
 
-Delete its block from `compose/<profile>.yml` and its `[[service]]` from
-`stack.toml`; if it was the only service in its profile, remove the profile and
+Delete its block from `compose/<profile>.yml`, its file in `services/` and its
+`include` entry; if it was the only service in its profile, remove the profile and
 every form reference to it too. Then record why it went:
 
 ```toml

@@ -27,8 +27,8 @@ import pathlib
 import re
 import subprocess
 import sys
-import tomllib
 
+import stack_manifest
 from check_manifest_change import pins, read_at, repinned
 from registry import resolve
 
@@ -227,7 +227,7 @@ def moved_since(base: str) -> tuple[set[str], str]:
     found, manifest = read_at(base, "manifest")
     if not found:
         return set(), manifest
-    now = (ROOT / "stack.toml").read_text(encoding="utf-8")
+    now = stack_manifest.text(ROOT)
     return repinned(pins(manifest), pins(now)), ""
 
 
@@ -241,7 +241,7 @@ def main() -> int:
     if args.self_test:
         return self_test()
 
-    manifest = tomllib.loads((ROOT / "stack.toml").read_text(encoding="utf-8"))
+    manifest = stack_manifest.load(ROOT)
     services = [s for s in manifest["service"] if not args.only or s["id"] == args.only]
     if not services:
         print(f"no service matching {args.only!r}", file=sys.stderr)

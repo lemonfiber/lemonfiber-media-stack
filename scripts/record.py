@@ -57,9 +57,9 @@ import re
 import socket
 import subprocess
 import sys
-import tomllib
 import urllib.parse
 
+import stack_manifest
 from record_recipes import RECIPES, TZ, anonymous
 from record_run import HOST, JSON_TYPE, Answer, Credential, Recipe, Run
 from registry import by_digest
@@ -365,7 +365,7 @@ def main() -> int:
     if sys.stdin.isatty():
         parser.error("give lemonfiber's published capability-vocabulary.json on standard input")
 
-    manifest = tomllib.loads((ROOT / STACK_TOML).read_text(encoding="utf-8"))
+    manifest = stack_manifest.load(ROOT)
     services = {service["id"]: service for service in manifest.get("service", [])}
     try:
         operator = operator_probes(json.load(sys.stdin))

@@ -53,4 +53,5 @@ requirement = [
   { id = "ARCH-R136", state = "done", evidence = ["scripts/manifest_rules.py::validate_service_claims", "recordings"] },
   { id = "ARCH-R137", state = "partial", evidence = ["scripts/judge.py"] },
   { id = "ARCH-R144", state = "partial", evidence = ["scripts/manifest_rules.py", "scripts/test_validate_manifest.py::declares an api but no listens"] },
+  { id = "ARCH-R171", state = "done", evidence = ["services", "scripts/stack_manifest.py::layout_problems", "scripts/validate_manifest.py"] },
 ]

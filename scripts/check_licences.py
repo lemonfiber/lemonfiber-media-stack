@@ -72,6 +72,7 @@ import sys
 import tomllib
 import urllib.parse
 
+import stack_manifest
 from check_manifest_change import bumped, pins, read_at
 from forge import NOT_FOUND, get_json, repo_of, safe
 from pins import OWN_LICENCE, rides_the_train
@@ -433,7 +434,7 @@ def main() -> int:
     if args.self_test:
         return self_test()
 
-    manifest_text = (ROOT / "stack.toml").read_text(encoding="utf-8")
+    manifest_text = stack_manifest.text(ROOT)
     manifest = tomllib.loads(manifest_text)
     gated, how, before = gated_services(args.base, args.all, manifest_text)
     if not how:

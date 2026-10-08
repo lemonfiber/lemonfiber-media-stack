@@ -1,0 +1,17 @@
+[[service]]
+id = "recyclarr"
+name = "Recyclarr"
+profile = "tuning"
+image = "ghcr.io/recyclarr/recyclarr"
+tag = "8.7.2"
+digest = "sha256:6e69e009e1cd7493ff6093e8e187b5d3788c75b4a2c0c5127b6a1beda1c19728"
+criticality = "enhancing"
+memory_mib = 100
+license = "MIT"
+upstream = "https://github.com/recyclarr/recyclarr"
+last_release = "2026-09-03"
+describes = "Keeps quality settings in line with community guidance"
+without_it = "Tune quality profiles by hand"
+reaches = "the community quality-guide repository"
+asks_for = "Syncs the quality profiles on its own schedule — its own errand, not one anything else here sets off."
+health = { kind = "container" }
