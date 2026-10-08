@@ -58,8 +58,10 @@ import subprocess
 import sys
 import tomllib
 
+import stack_manifest
+
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-STACK_TOML = "stack.toml"
+STACK_TOML = stack_manifest.ROOT_FILE
 
 # One trailer per line, and a line may name several services. Matched
 # case-insensitively at the start of a line, the way git reads a trailer. The
@@ -214,12 +216,27 @@ def read_at(base: str, wanted: str) -> tuple[bool, str]:
             f"{base!r} is not a base this will hand to git: a commit or a ref name, letters or "
             "digits first — anything that could be read as an option is refused rather than passed on"
         )
-    arguments = {
-        "manifest": ["show", f"{base}:{STACK_TOML}"],
-        "messages": ["log", "--format=%B", f"{base}..HEAD"],
-    }[wanted]
-    result = subprocess.run(["git", *arguments], cwd=ROOT, capture_output=True, text=True, check=False)
-    return result.returncode == 0, (result.stdout if result.returncode == 0 else result.stderr.strip())
+    def git(*arguments: str) -> subprocess.CompletedProcess:
+        return subprocess.run(["git", *arguments], cwd=ROOT, capture_output=True, text=True, check=False)
+
+    if wanted == "messages":
+        result = git("log", "--format=%B", f"{base}..HEAD")
+        return result.returncode == 0, (result.stdout if result.returncode == 0 else result.stderr.strip())
+
+    # The manifest is its root and the service files the root includes, each read as
+    # of the base. Paths come from the base's own `include`, and `git show` takes
+    # them after the `base:` that the check above has already held to a ref.
+    said: list[str] = []
+
+    def shown(path: str) -> str | None:
+        result = git("show", f"{base}:{path}")
+        if result.returncode != 0:
+            said.append(result.stderr.strip())
+            return None
+        return result.stdout
+
+    found = stack_manifest.joined(shown)
+    return (True, found) if found is not None else (False, " ".join(said))
 
 
 def judged_wrongly(cases: tuple) -> list[str]:
@@ -461,7 +478,7 @@ def main() -> int:
         print(f"::error::cannot read the commits since {args.base}: {messages}", file=sys.stderr)
         return 2
 
-    head_manifest = (ROOT / STACK_TOML).read_text(encoding="utf-8")
+    head_manifest = stack_manifest.text(ROOT)
     before, after = pins(base_manifest), pins(head_manifest)
     faults = judge(before, after, recorded_removals(head_manifest), reaffirmations(messages))
 

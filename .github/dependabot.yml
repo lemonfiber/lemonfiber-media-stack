@@ -9,7 +9,7 @@
 #
 # Not configured here, deliberately:
 #   - the container images. Every pin is written twice — `image: repo:tag@digest`
-#     in a compose fragment and `image` + `tag` + `digest` in stack.toml — and
+#     in a compose fragment and `image` + `tag` + `digest` in services/<id>.toml — and
 #     validate_manifest.py fails the run when the two disagree. Dependabot's
 #     docker-compose manager edits the compose half and cannot reach the
 #     manifest, so each pull request it opened would arrive already red. The

@@ -2,7 +2,7 @@
 #
 # Every image is pinned by the digest of its multi-architecture index, with the
 # tag beside it for reading (`E1-R1`), and written twice: `tag` and `digest` in
-# stack.toml, `image:tag@digest` in the service's compose fragment. Dependabot's
+# services/<id>.toml, `image:tag@digest` in the service's compose fragment. Dependabot's
 # docker-compose manager edits the second and cannot reach the first, and
 # validate_manifest.py fails the run when the two disagree — so the stack moves
 # its own pins, here.
@@ -105,7 +105,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          # The service id comes from the plan, which read it from stack.toml;
+          # The service id comes from the plan, which read it from the manifest;
           # held to an id's shape before it reaches a command line or a ref.
           printf '%s' "$SERVICE" | grep -Eq '^[a-z0-9][a-z0-9-]{0,62}$' || {
             echo "::error::'${SERVICE}' is not a service id"
@@ -152,10 +152,13 @@ jobs:
           trap 'rm -rf .judge' EXIT
           python3 scripts/record.py --self-test
           claimed="$(python3 - "$SERVICE" <<'PY'
+          import pathlib
           import sys
-          import tomllib
 
-          manifest = tomllib.load(open("stack.toml", "rb"))
+          sys.path.insert(0, "scripts")
+          import stack_manifest
+
+          manifest = stack_manifest.load(pathlib.Path("."))
           print(sum(len(service.get("claim", [])) for service in manifest["service"] if service["id"] == sys.argv[1]))
           PY
           )"

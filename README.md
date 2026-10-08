@@ -91,7 +91,8 @@ import silently becomes a copy. CI rejects a change that does this.
 
 | Path | What it is |
 |------|------------|
-| `stack.toml` | The manifest lemonfiber reads: services, profiles, forms, and services that were removed |
+| `stack.toml` | The manifest's root: profiles, forms, wiring, services that were removed, and `include`, which names each service's file |
+| `services/` | One file per service, `<id>.toml`, holding its `[[service]]` |
 | `compose.yml` | Includes the fragments below and declares the named networks; no services of its own |
 | `compose/` | One fragment per profile: `tv.yml`, `media.yml`, `torrent.yml`, and the rest |
 | `compose/_common.yml` | Shared service defaults, reached through `extends:` |

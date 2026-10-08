@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Move each pin to the newest release of its own major, by tag and digest together.
 
-A pin is `image:tag@digest`, written twice: in `stack.toml` as `tag` and `digest`,
+A pin is `image:tag@digest`, written twice: in `services/<id>.toml` as `tag` and `digest`,
 and in the service's compose fragment as the reference Compose pulls. This finds,
 for each service, the newest tag the registry publishes that
 
@@ -39,13 +39,12 @@ import json
 import pathlib
 import re
 import sys
-import tomllib
 
 import registry
+import stack_manifest
 from check_releases import github_latest
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-STACK_TOML = ROOT / "stack.toml"
 COMPOSE_DIR = ROOT / "compose"
 REQUIRED = {("linux", "amd64"), ("linux", "arm64")}
 # Where lemonfiber publishes the images it builds (ADR-0033 §1).
@@ -105,7 +104,7 @@ def newest_in_major(current: str, tags: list[str]) -> str:
 
 
 def rewrite_manifest(text: str, sid: str, tag: str, digest: str, last_release: str) -> str:
-    """`stack.toml` with one service's `tag`, `digest` and `last_release` replaced.
+    """A manifest file with one service's `tag`, `digest` and `last_release` replaced.
 
     Edited as text rather than re-serialised, so every comment and every other
     line stays byte for byte what it was. A `digest` line the block does not
@@ -123,7 +122,7 @@ def rewrite_manifest(text: str, sid: str, tag: str, digest: str, last_release: s
         block = re.sub(r'(?m)^last_release = ".*"$', f'last_release = "{last_release}"', block, count=1)
         blocks[number] = block
         return "".join(blocks)
-    raise KeyError(f"stack.toml has no [[service]] with id {sid!r}")
+    raise KeyError(f"no [[service]] with id {sid!r} here")
 
 
 def rewrite_compose(text: str, image: str, reference: str) -> tuple[str, int]:
@@ -133,7 +132,7 @@ def rewrite_compose(text: str, image: str, reference: str) -> tuple[str, int]:
 
 def plan(only: set[str]) -> tuple[list[dict], list[str]]:
     """Every pin that would move, and every service whose next pin could not be read."""
-    manifest = tomllib.loads(STACK_TOML.read_text(encoding="utf-8"))
+    manifest = stack_manifest.load(ROOT)
     moves, problems = [], []
     for service in manifest["service"]:
         sid = service["id"]
@@ -166,17 +165,20 @@ def plan(only: set[str]) -> tuple[list[dict], list[str]]:
 
 
 def apply(moves: list[dict]) -> list[str]:
-    """Write each move into `stack.toml` and its compose fragment; the `Pin-reviewed` ids.
+    """Write each move into its service's file and compose fragment; the `Pin-reviewed` ids.
 
     A service whose tag moved and whose upstream date is the one already recorded
     was reviewed and needed no new date, so it is named for the trailer. One whose
     date could not be read keeps what it had and is not named.
     """
-    text = STACK_TOML.read_text(encoding="utf-8")
     reaffirmed = []
     for move in moves:
         was, now = move["last_release"]["was"], move["last_release"]["now"]
-        text = rewrite_manifest(text, move["id"], move["to"]["tag"], move["to"]["digest"], now or was)
+        described = ROOT / stack_manifest.service_file(move["id"])
+        text = rewrite_manifest(described.read_text(encoding="utf-8"), move["id"],
+                                move["to"]["tag"], move["to"]["digest"], now or was)
+        with described.open("w", encoding="utf-8") as handle:
+            handle.write(text)
         if move["to"]["tag"] != move["from"]["tag"] and now == was:
             reaffirmed.append(move["id"])
         reference = f"{move['image']}:{move['to']['tag']}@{move['to']['digest']}"
@@ -189,8 +191,6 @@ def apply(moves: list[dict]) -> list[str]:
                 changed += count
         if changed != 1:
             raise SystemExit(f"{move['id']}: {changed} compose lines name {move['image']}, not one")
-    with STACK_TOML.open("w", encoding="utf-8") as handle:
-        handle.write(text)
     return reaffirmed
 
 
@@ -239,7 +239,7 @@ def choice_problems() -> list[str]:
 
 
 def manifest_problems(digest: str, rebuilt: str) -> list[str]:
-    """How a move is written into `stack.toml`: in place, once, and nowhere else."""
+    """How a move is written into a manifest file: in place, once, and nowhere else."""
     problems = []
     manifest = (
         '[[profile]]\nid = "tv"\n\n'

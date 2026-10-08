@@ -8,8 +8,8 @@ Guidance for any AI agent working in this repo.
 
 ## What this repo is
 
-The Docker Compose stack — 22 services — plus `stack.toml`, the manifest
-lemonfiber consumes. Spec:
+The Docker Compose stack — 22 services — plus the manifest lemonfiber consumes:
+`stack.toml` and a file per service in `services/`, named by its `include`. Spec:
 [`30-repos/lemonfiber-media-stack.md`](https://github.com/lemonfiber/spec/blob/main/30-repos/lemonfiber-media-stack.md)
 and the
 [manifest contract](https://github.com/lemonfiber/spec/blob/main/20-architecture/contracts/stack-manifest.md).
@@ -49,7 +49,7 @@ templates never become containers:
   services `lan` (`C6`). Only Gluetun holds `NET_ADMIN`, and anything sharing its
   profile must use `network_mode: service:gluetun` — a download client outside the
   tunnel's namespace is one lemonfiber reports as leaking (`C2-R12`).
-- `stack.toml` and the Compose model must stay in parity — every service in one
+- The manifest and the Compose model must stay in parity — every service in one
   is in the other, with the same image, tag, digest and profile.
 - **lemonfiber's own images run confined** (`C6-R20`, `C6-R22`). Each extends
   `confined`, mounts `./config/<id>:/config` and nothing else, and is on exactly
@@ -61,8 +61,9 @@ templates never become containers:
 
 ## Adding a service
 
-A service block in the matching `compose/<profile>.yml` + a `[[service]]` in
-`stack.toml` + add its profile to the relevant forms. No code (`REPO-R23`).
+A service block in the matching `compose/<profile>.yml` + its `[[service]]` in
+`services/<id>.toml`, named in `stack.toml`'s `include` + its profile in the
+relevant forms. No code (`REPO-R23`).
 Then `just ci`.
 
 The `[[service]]` also says what the service can do — `provides`, in lemonfiber's

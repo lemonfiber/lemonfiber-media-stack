@@ -19,7 +19,8 @@ import pathlib
 import subprocess
 import sys
 import tempfile
-import tomllib
+
+import stack_manifest
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 OVERLAYS = ("stacks/compose.storage.nas.yml",)
@@ -158,7 +159,7 @@ def main() -> int:
     if parser.parse_args().self_test:
         return self_test()
 
-    manifest = tomllib.loads((ROOT / "stack.toml").read_text(encoding="utf-8"))
+    manifest = stack_manifest.load(ROOT)
     profile_of = {s["id"]: s["profile"] for s in manifest["service"]}
     errors: list[str] = []
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The service count the docs state matches the one stack.toml defines.
+"""The service count the docs state matches the one the manifest defines.
 
 `19 services` appears in this repo's prose and in several documents outside it.
 The manifest is the only place that knows, so the prose is checked against it
@@ -14,9 +14,10 @@ import pathlib
 import re
 import sys
 import tempfile
-import tomllib
 
-MANIFEST = "stack.toml"
+import stack_manifest
+
+MANIFEST = stack_manifest.ROOT_FILE
 README = "README.md"
 AGENTS = "AGENTS.md"
 DOCS = (README, AGENTS)
@@ -36,8 +37,7 @@ WORDS = [
 
 def defined(root: pathlib.Path) -> int:
     """How many services the manifest declares."""
-    manifest = tomllib.loads((root / MANIFEST).read_text(encoding="utf-8"))
-    return len(manifest["service"])
+    return len(stack_manifest.load(root).get("service", []))
 
 
 def disagreeing(line: str, actual: int, word: str):
@@ -65,7 +65,7 @@ def stated_counts(root: pathlib.Path, actual: int):
 def check(root: pathlib.Path) -> list[str]:
     actual = defined(root)
     return [
-        f"{where}: says {stated} services, {MANIFEST} defines {actual}"
+        f"{where}: says {stated} services, the manifest defines {actual}"
         for where, stated in stated_counts(root, actual)
     ]
 
@@ -75,8 +75,13 @@ def self_test() -> int:
     with tempfile.TemporaryDirectory() as tmp:
         root = pathlib.Path(tmp)
         (root / MANIFEST).write_text(
-            '[[service]]\nname = "A"\n\n[[service]]\nname = "B"\n', encoding="utf-8"
+            'include = ["services/a.toml", "services/b.toml"]\n', encoding="utf-8"
         )
+        (root / stack_manifest.SERVICES).mkdir()
+        for sid in ("a", "b"):
+            (root / stack_manifest.service_file(sid)).write_text(
+                f'[[service]]\nid = "{sid}"\n', encoding="utf-8"
+            )
         for prose, want in (("3 services", True), ("three services", True),
                             ("2 services", False), ("two services", False)):
             (root / README).write_text(f"The stack is {prose}.\n", encoding="utf-8")
@@ -96,7 +101,7 @@ def main() -> int:
         for problem in problems:
             print(f"::error::{problem}")
         return 1
-    print(f"docs: every stated service count is {defined(root)}, as {MANIFEST} defines")
+    print(f"docs: every stated service count is {defined(root)}, as the manifest defines")
     return 0
 
 

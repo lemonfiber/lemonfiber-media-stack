@@ -23,8 +23,8 @@ import re
 import subprocess
 import sys
 import tempfile
-import tomllib
 
+import stack_manifest
 from registry import pinned
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
@@ -35,7 +35,7 @@ SABNZBD_INI = "sabnzbd.ini"
 
 def manifest() -> dict:
     """The stack's own declaration, read once per call and parsed here alone."""
-    return tomllib.loads((ROOT / "stack.toml").read_text(encoding="utf-8"))
+    return stack_manifest.load(ROOT)
 
 
 def pinned_image(service_id: str) -> str:

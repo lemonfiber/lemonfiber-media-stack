@@ -68,6 +68,11 @@ jobs:
       - name: A recording carries nothing a run made
         run: python3 scripts/record.py --self-test
 
+      # How the manifest's files are laid out, and that they read back as one
+      # manifest in `include` order (ARCH-R171). Every script reads through it.
+      - name: The manifest's files are read as one
+        run: python3 scripts/stack_manifest.py
+
       # The one place the lemonfiber commit the claims are held to is named,
       # read the way `claims` and `pins` read it.
       - name: The judge's commit is one full commit
@@ -104,8 +109,8 @@ jobs:
           python3 scripts/check_forms.py
 
       # `19 services` is restated in this repo's prose and in documents outside
-      # it. stack.toml is the only place that knows.
-      - name: The docs state the count stack.toml defines
+      # it. The manifest is the only place that knows.
+      - name: The docs state the count the manifest defines
         run: python3 scripts/check_docs.py
 
       - name: The count check can fail
@@ -116,7 +121,7 @@ jobs:
       - name: Validator test suite
         run: python3 scripts/test_validate_manifest.py
 
-  # Every claim in stack.toml judged against the recordings it binds, by the
+  # Every claim in the manifest judged against the recordings it binds, by the
   # judge lemonfiber's release gate runs against the stack it embeds (ARCH-R137,
   # F9-R2). The same judge rather than a second one written here, because a
   # second evaluator is free to disagree with the first, and the one a release

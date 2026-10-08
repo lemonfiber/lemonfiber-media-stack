@@ -15,7 +15,8 @@ from __future__ import annotations
 import argparse
 import pathlib
 import sys
-import tomllib
+
+import stack_manifest
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 
@@ -26,7 +27,7 @@ def main() -> int:
     parser.add_argument("--list", action="store_true", help="list declared forms")
     args = parser.parse_args()
 
-    manifest = tomllib.loads((ROOT / "stack.toml").read_text(encoding="utf-8"))
+    manifest = stack_manifest.load(ROOT)
     forms = manifest["form"]
 
     if args.list:

@@ -48,10 +48,10 @@ import sys
 import tempfile
 import threading
 import time
-import tomllib
 import urllib.error
 import urllib.request
 
+import stack_manifest
 from registry import pinned
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
@@ -124,7 +124,7 @@ LISTEN_READ_S = 1.5
 
 
 def manifest() -> dict:
-    return tomllib.loads((ROOT / "stack.toml").read_text(encoding="utf-8"))
+    return stack_manifest.load(ROOT)
 
 
 def runnable_profiles(data: dict) -> list[str]:

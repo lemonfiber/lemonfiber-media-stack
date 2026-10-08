@@ -16,8 +16,9 @@ ci: hooks lint validate changes forms docs test forge
 lint:
     uvx ruff@0.16.4 check scripts/
 
-# stack.toml against the contract, and compose.yml held in parity with it.
+# The manifest's files against the contract, and compose.yml held in parity with it.
 validate:
+    python3 scripts/stack_manifest.py
     python3 scripts/validate_manifest.py
 
 # Every form and overlay resolves to a valid project.
@@ -25,7 +26,7 @@ forms:
     python3 scripts/check_forms.py --self-test
     python3 scripts/check_forms.py
 
-# The service count the docs state matches the one stack.toml defines.
+# The service count the docs state matches the one the manifest defines.
 docs:
     python3 scripts/check_docs.py
     python3 scripts/check_docs.py --self-test

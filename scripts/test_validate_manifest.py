@@ -19,28 +19,40 @@ import subprocess
 import sys
 import tempfile
 
+import stack_manifest
+
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-COPIED = ("compose.yml", "stack.toml", "compose", "scripts", "recordings")
+COPIED = ("compose.yml", "stack.toml", "services", "compose", "scripts", "recordings")
+
+# What a mutation names to be made in whichever of the manifest's files holds the text:
+# the root or a service's file (ARCH-R171).
+MANIFEST = "the manifest"
+
+
+def files(root: pathlib.Path, path: str) -> list[pathlib.Path]:
+    """The files `path` names: every one of the manifest's for `MANIFEST`."""
+    if path != MANIFEST:
+        return [root / path]
+    return [root / stack_manifest.ROOT_FILE, *sorted((root / stack_manifest.SERVICES).glob("*.toml"))]
 
 
 def patch(path: str, old: str, new: str):
-    """A mutation that replaces `old` exactly once in `path`."""
+    """A mutation that replaces `old` exactly once in `path`, among all its files."""
 
     def apply(root: pathlib.Path) -> None:
-        target = root / path
-        text = target.read_text(encoding="utf-8")
-        count = text.count(old)
-        if count != 1:
+        holding = [target for target in files(root, path) for _ in range(target.read_text(encoding="utf-8").count(old))]
+        if len(holding) != 1:
             raise AssertionError(
-                f"test fixture is stale: {old!r} appears {count}x in {path}, expected 1"
+                f"test fixture is stale: {old!r} appears {len(holding)}x in {path}, expected 1"
             )
-        target.write_text(text.replace(old, new), encoding="utf-8")
+        target = holding[0]
+        target.write_text(target.read_text(encoding="utf-8").replace(old, new), encoding="utf-8")
 
     return apply
 
 
 def field(service: str, name: str, line: str):
-    """A mutation that replaces one field's line in one `[[service]]` of stack.toml.
+    """A mutation that replaces one field's line in one service's file.
 
     Found by the service and the field rather than by the value, because the
     values here are pins, dates and digests that `pins.py` moves on its own
@@ -49,7 +61,7 @@ def field(service: str, name: str, line: str):
     """
 
     def apply(root: pathlib.Path) -> None:
-        target = root / "stack.toml"
+        target = root / stack_manifest.service_file(service)
         blocks = re.split(r"(?m)^(?=\[\[)", target.read_text(encoding="utf-8"))
         for number, block in enumerate(blocks):
             if block.startswith("[[service]]") and f'\nid = "{service}"\n' in block:
@@ -59,7 +71,7 @@ def field(service: str, name: str, line: str):
                 blocks[number] = replaced
                 target.write_text("".join(blocks), encoding="utf-8")
                 return
-        raise AssertionError(f"test fixture is stale: no [[service]] {service} in stack.toml")
+        raise AssertionError(f"test fixture is stale: no [[service]] {service} in {target.name}")
 
     return apply
 
@@ -82,16 +94,16 @@ def reference(path: str, image: str, new: str):
 
 
 def strip_lines(path: str, prefixes: tuple[str, ...]):
-    """A mutation that removes every line in `path` starting with one of `prefixes`."""
+    """A mutation that removes every line in `path`'s files starting with one of `prefixes`."""
 
     def apply(root: pathlib.Path) -> None:
-        target = root / path
-        kept = [
-            line
-            for line in target.read_text(encoding="utf-8").splitlines(keepends=True)
-            if not line.startswith(prefixes)
-        ]
-        target.write_text("".join(kept), encoding="utf-8")
+        for target in files(root, path):
+            kept = [
+                line
+                for line in target.read_text(encoding="utf-8").splitlines(keepends=True)
+                if not line.startswith(prefixes)
+            ]
+            target.write_text("".join(kept), encoding="utf-8")
 
     return apply
 
@@ -121,7 +133,7 @@ CASES = [
     (
         "a servarr service that declares no API version",
         patch(
-            "stack.toml",
+            MANIFEST,
             'media_types = ["tv"]\n'
             'provides = ["library.curate"]\n'
             'health = { kind = "http", path = "/ping", timeout_s = 90 }\n'
@@ -145,28 +157,28 @@ CASES = [
     ),
     (
         "a memory estimate of nothing",
-        patch("stack.toml", "memory_mib = 600\n", "memory_mib = 0\n"),
+        patch(MANIFEST, "memory_mib = 600\n", "memory_mib = 0\n"),
         "memory_mib must be a whole number",
     ),
     (
         "a memory estimate that is not a number",
-        patch("stack.toml", "memory_mib = 600\n", 'memory_mib = "600"\n'),
+        patch(MANIFEST, "memory_mib = 600\n", 'memory_mib = "600"\n'),
         "memory_mib must be a whole number",
     ),
     (
         "a capability in a plugin's namespace on a bundled service",
-        patch("stack.toml", 'provides = ["download.torrent"]', 'provides = ["qbittorrent:torrent"]'),
+        patch(MANIFEST, 'provides = ["download.torrent"]', 'provides = ["qbittorrent:torrent"]'),
         "is not a core name",
     ),
     (
         "a capability name with no area",
-        patch("stack.toml", 'provides = ["subtitles.fetch"]', 'provides = ["fetch"]'),
+        patch(MANIFEST, 'provides = ["subtitles.fetch"]', 'provides = ["fetch"]'),
         "is not a core name",
     ),
     (
         "the same capability declared twice by one service",
         patch(
-            "stack.toml",
+            MANIFEST,
             'provides = ["media.serve", "identity.source"]',
             'provides = ["media.serve", "media.serve"]',
         ),
@@ -175,7 +187,7 @@ CASES = [
     (
         "an api kind no client here implements",
         patch(
-            "stack.toml",
+            MANIFEST,
             'api = { kind = "bazarr", key_source = "config-yaml", path = "/config/config/config.yaml" }',
             'api = { kind = "subtitler", key_source = "config-yaml", path = "/config/config/config.yaml" }',
         ),
@@ -184,7 +196,7 @@ CASES = [
     (
         "a key source nothing knows how to read",
         patch(
-            "stack.toml",
+            MANIFEST,
             'api = { kind = "bazarr", key_source = "config-yaml", path = "/config/config/config.yaml" }',
             'api = { kind = "bazarr", key_source = "config-runes", path = "/config/config/config.yaml" }',
         ),
@@ -193,7 +205,7 @@ CASES = [
     (
         "B1-R15 a profile claiming a protocol nobody configures",
         patch(
-            "stack.toml",
+            MANIFEST,
             'description = "Usenet downloading"\nprotocol = "usenet"',
             'description = "Usenet downloading"\nprotocol = "carrier-pigeon"',
         ),
@@ -202,7 +214,7 @@ CASES = [
     (
         "B1-R15 two profiles claiming the same protocol",
         patch(
-            "stack.toml",
+            MANIFEST,
             'description = "Torrent downloading, VPN-isolated"\nprotocol = "torrent"',
             'description = "Torrent downloading, VPN-isolated"\nprotocol = "usenet"',
         ),
@@ -230,7 +242,7 @@ CASES = [
     ),
     (
         "a media type outside the published vocabulary",
-        patch("stack.toml", 'media_types = ["tv"]', 'media_types = ["telly"]'),
+        patch(MANIFEST, 'media_types = ["tv"]', 'media_types = ["telly"]'),
         "unknown media type",
     ),
     (
@@ -261,7 +273,7 @@ CASES = [
     (
         "B1-R14 cross-profile depends_on in the manifest",
         patch(
-            "stack.toml",
+            MANIFEST,
             'media_types = ["tv"]',
             'media_types = ["tv"]\ndepends_on = ["prowlarr"]',
         ),
@@ -321,7 +333,7 @@ CASES = [
         # that spelling. A fork that has not renamed its manifest is validated the
         # same way this one is, rather than told its stack is wrong.
         "a stack written before the rename still validates",
-        patch("stack.toml", 'grants = ["NET_ADMIN"]', 'capabilities = ["NET_ADMIN"]'),
+        patch(MANIFEST, 'grants = ["NET_ADMIN"]', 'capabilities = ["NET_ADMIN"]'),
         None,
     ),
     (
@@ -356,7 +368,7 @@ CASES = [
     (
         "F2-R5 non-OSI licence",
         patch(
-            "stack.toml",
+            MANIFEST,
             'license = "MIT"\nupstream = "https://github.com/FlareSolverr/FlareSolverr"',
             'license = "Proprietary"\nupstream = "https://github.com/FlareSolverr/FlareSolverr"',
         ),
@@ -383,13 +395,13 @@ CASES = [
     ),
     (
         "manifest references a profile that was never declared",
-        patch("stack.toml", 'profile = "subs"', 'profile = "subtitles"'),
+        patch(MANIFEST, 'profile = "subs"', 'profile = "subtitles"'),
         "unknown profile",
     ),
     (
         "F2-R10 a service that says where it goes and not what for",
         patch(
-            "stack.toml",
+            MANIFEST,
             'reaches = "music metadata providers"\n'
             'asks_for = "Reads artist, album and track information for the music in your library."\n',
             'reaches = "music metadata providers"\n',
@@ -399,7 +411,7 @@ CASES = [
     (
         "F2-R10 a service that says what it asks for and not of whom",
         patch(
-            "stack.toml",
+            MANIFEST,
             'reaches = "music metadata providers"\n'
             'asks_for = "Reads artist, album and track information for the music in your library."\n',
             'asks_for = "Reads artist, album and track information for the music in your library."\n',
@@ -412,7 +424,7 @@ CASES = [
         # refuse the very entries it exists to collect.
         "F2-R10 a service that reaches nothing is not a service missing a value",
         patch(
-            "stack.toml",
+            MANIFEST,
             'reaches = "music metadata providers"',
             'reaches = ""',
         ),
@@ -421,7 +433,7 @@ CASES = [
     (
         "F2-R10 a service whose errand says nothing at all",
         patch(
-            "stack.toml",
+            MANIFEST,
             'asks_for = "Reads artist, album and track information for the music in your library."',
             'asks_for = "  "',
         ),
@@ -433,7 +445,7 @@ CASES = [
         # the services that said they reach nothing and cannot be told from them.
         "F2-R10 a manifest that answers for some services and not others",
         patch(
-            "stack.toml",
+            MANIFEST,
             'reaches = "music metadata providers"\n'
             'asks_for = "Reads artist, album and track information for the music in your library."\n',
             "",
@@ -445,7 +457,7 @@ CASES = [
         # down still parses, here and in lemonfiber, which reports every service
         # in it as one nothing has described rather than refusing to read it.
         "F2-R10 a manifest that answers for no service at all",
-        strip_lines("stack.toml", ("reaches = ", "asks_for = ")),
+        strip_lines(MANIFEST, ("reaches = ", "asks_for = ")),
         None,
     ),
     (
@@ -454,7 +466,7 @@ CASES = [
         # refuse every fork on its first day.
         "F2-R13 a stack that has removed nothing",
         patch(
-            "stack.toml",
+            MANIFEST,
             '[[removed]]\nid = "readarr"\nremoved_in = "0.1.0"\n'
             'reason = "Discontinued upstream in 2025. Its repository is archived, '
             'so the pin could only ever age."\nreplaced_by = "bindery"\n',
@@ -465,7 +477,7 @@ CASES = [
     (
         "F2-R13 a removal that does not say why",
         patch(
-            "stack.toml",
+            MANIFEST,
             'reason = "Discontinued upstream in 2025. Its repository is archived, '
             'so the pin could only ever age."\n',
             "",
@@ -475,7 +487,7 @@ CASES = [
     (
         "F2-R13 a removal whose reason is empty",
         patch(
-            "stack.toml",
+            MANIFEST,
             'reason = "Discontinued upstream in 2025. Its repository is archived, '
             'so the pin could only ever age."',
             'reason = "   "',
@@ -484,28 +496,28 @@ CASES = [
     ),
     (
         "F2-R13 a removal naming a service the stack still runs",
-        patch("stack.toml", 'id = "readarr"\nremoved_in', 'id = "bazarr"\nremoved_in'),
+        patch(MANIFEST, 'id = "readarr"\nremoved_in', 'id = "bazarr"\nremoved_in'),
         "still declares",
     ),
     (
         "F2-R13 a replacement the stack does not have",
-        patch("stack.toml", 'replaced_by = "bindery"', 'replaced_by = "papyrus"'),
+        patch(MANIFEST, 'replaced_by = "bindery"', 'replaced_by = "papyrus"'),
         "neither a service this stack declares nor a removal it records",
     ),
     (
         "F2-R13 a removal replaced by itself",
-        patch("stack.toml", 'replaced_by = "bindery"', 'replaced_by = "readarr"'),
+        patch(MANIFEST, 'replaced_by = "bindery"', 'replaced_by = "readarr"'),
         "which is the service that was removed",
     ),
     (
         "F2-R13 a removal that does not say which version it went in",
-        patch("stack.toml", 'removed_in = "0.1.0"', 'removed_in = "before Bindery"'),
+        patch(MANIFEST, 'removed_in = "0.1.0"', 'removed_in = "before Bindery"'),
         "removed_in must be the stack version",
     ),
     (
         "a profile no service claims",
         patch(
-            "stack.toml",
+            MANIFEST,
             '[[profile]]\nid = "dash"',
             '[[profile]]\nid = "unclaimed"\nname = "Unclaimed"\ndescription = "Nothing declares this"\n\n[[profile]]\nid = "dash"',
         ),
@@ -513,14 +525,14 @@ CASES = [
     ),
     (
         "F9-R4 an ordering edge no wiring shows as by-name",
-        strip_lines("stack.toml", ('by = "qbittorrent"', 'to = "gluetun"',
+        strip_lines(MANIFEST, ('by = "qbittorrent"', 'to = "gluetun"',
                                    'why = "It has no network namespace')),
         "and no [[wiring]] says so",
     ),
     (
         "F4-R12 a by-name wiring that does not say why",
         patch(
-            "stack.toml",
+            MANIFEST,
             'by = "recyclarr"\nto = "radarr"\nwhy = "The same, in Radarr\'s terms."',
             'by = "recyclarr"\nto = "radarr"',
         ),
@@ -528,13 +540,13 @@ CASES = [
     ),
     (
         "F4-R12 a by-name wiring whose reason is blank",
-        patch("stack.toml", 'why = "The same, in Lidarr\'s terms."', 'why = "   "'),
+        patch(MANIFEST, 'why = "The same, in Lidarr\'s terms."', 'why = "   "'),
         "does not say why",
     ),
     (
         "a wiring that both asks and names",
         patch(
-            "stack.toml",
+            MANIFEST,
             'by = "seerr"\nasks = "identity.source"',
             'by = "seerr"\nasks = "identity.source"\nto = "jellyfin"\nwhy = "both"',
         ),
@@ -542,37 +554,37 @@ CASES = [
     ),
     (
         "a wiring that neither asks nor names",
-        patch("stack.toml", 'by = "bazarr"\nasks = "library.curate"\neach = true',
+        patch(MANIFEST, 'by = "bazarr"\nasks = "library.curate"\neach = true',
               'by = "bazarr"'),
         "exactly one of `asks` and `to`",
     ),
     (
         "F4-R1 a wiring running from a service this stack does not declare",
-        patch("stack.toml", 'by = "bazarr"\nasks = "library.curate"',
+        patch(MANIFEST, 'by = "bazarr"\nasks = "library.curate"',
               'by = "subtitler"\nasks = "library.curate"'),
         "by names 'subtitler', which this stack does not declare",
     ),
     (
         "F4-R1 a by-name wiring pointing at a service this stack does not declare",
-        patch("stack.toml", 'by = "unpackerr"\nto = "lidarr"', 'by = "unpackerr"\nto = "lidaarr"'),
+        patch(MANIFEST, 'by = "unpackerr"\nto = "lidarr"', 'by = "unpackerr"\nto = "lidaarr"'),
         "to names 'lidaarr', which this stack does not declare",
     ),
     (
         "F4-R1 a wiring asking for something shaped like a plugin's own name",
-        patch("stack.toml", 'by = "seerr"\nasks = "identity.source"',
+        patch(MANIFEST, 'by = "seerr"\nasks = "identity.source"',
               'by = "seerr"\nasks = "plex:identity"'),
         "which is not a core capability name",
     ),
     (
         "F4-R8 a chosen filler that does not declare the capability",
-        patch("stack.toml", 'asks = "indexer.search"\nfilled_by = "prowlarr"',
+        patch(MANIFEST, 'asks = "indexer.search"\nfilled_by = "prowlarr"',
               'asks = "indexer.search"\nfilled_by = "sabnzbd"'),
         "which that service does not declare",
     ),
     (
         "F4-R8 a chosen filler with no reason beside it",
         patch(
-            "stack.toml",
+            MANIFEST,
             'filled_by = "prowlarr"\nwhy = "Two services here answer as an indexer',
             'filled_by = "prowlarr"\nignored = "Two services here answer as an indexer',
         ),
@@ -580,24 +592,24 @@ CASES = [
     ),
     (
         "a wiring that reaches every filler and also chooses one",
-        patch("stack.toml", 'by = "prowlarr"\nasks = "library.curate"\neach = true',
+        patch(MANIFEST, 'by = "prowlarr"\nasks = "library.curate"\neach = true',
               'by = "prowlarr"\nasks = "library.curate"\neach = true\nfilled_by = "sonarr"'),
         "does both only by meaning neither",
     ),
     (
         "a by-name wiring carrying something only an ask can say",
-        patch("stack.toml", 'by = "unpackerr"\nto = "sonarr"',
+        patch(MANIFEST, 'by = "unpackerr"\nto = "sonarr"',
               'by = "unpackerr"\nto = "sonarr"\neach = true'),
         "each says something about an ask",
     ),
     (
         "a wiring from a service to itself",
-        patch("stack.toml", 'by = "unpackerr"\nto = "radarr"', 'by = "unpackerr"\nto = "unpackerr"'),
+        patch(MANIFEST, 'by = "unpackerr"\nto = "radarr"', 'by = "unpackerr"\nto = "unpackerr"'),
         "a service does not wire to itself",
     ),
     (
         "the same ask written twice",
-        patch("stack.toml", 'by = "lidarr"\nasks = "download.usenet"',
+        patch(MANIFEST, 'by = "lidarr"\nasks = "download.usenet"',
               'by = "lidarr"\nasks = "download.usenet"\n\n[[wiring]]\nby = "lidarr"\nasks = "download.usenet"'),
         "asks for 'download.usenet' twice",
     ),
@@ -681,29 +693,29 @@ CASES = [
     ),
     (
         "ARCH-R136 a claim for a capability the service does not provide",
-        patch("stack.toml", 'capability = "indexer.proxy"', 'capability = "indexer.search"'),
+        patch(MANIFEST, 'capability = "indexer.proxy"', 'capability = "indexer.search"'),
         "service flaresolverr.claim indexer.search: indexer.search is not in this service's `provides`",
     ),
     (
         "ARCH-R136 one capability claimed twice",
-        patch("stack.toml", FLARESOLVERR_FIXTURE, FLARESOLVERR_FIXTURE + '\n[[service.claim]]\ncapability = "indexer.proxy"\n'),
+        patch(MANIFEST, FLARESOLVERR_FIXTURE, FLARESOLVERR_FIXTURE + '\n[[service.claim]]\ncapability = "indexer.proxy"\n'),
         "service flaresolverr.claim indexer.proxy: indexer.proxy is claimed twice",
     ),
     (
         "ARCH-R136 a fixture kept with another service's recordings",
-        patch("stack.toml", 'fixture = "recordings/prowlarr/indexer-search-guarded.json"',
+        patch(MANIFEST, 'fixture = "recordings/prowlarr/indexer-search-guarded.json"',
               'fixture = "recordings/flaresolverr/indexer-proxy-identifies.json"'),
         "fixture 'recordings/flaresolverr/indexer-proxy-identifies.json' is not under recordings/prowlarr/",
     ),
     (
         "ARCH-R136 a fixture that climbs out of its service's directory",
-        patch("stack.toml", 'fixture = "recordings/prowlarr/indexer-search-guarded.json"',
+        patch(MANIFEST, 'fixture = "recordings/prowlarr/indexer-search-guarded.json"',
               'fixture = "recordings/prowlarr/../flaresolverr/indexer-proxy-identifies.json"'),
         "is not under recordings/prowlarr/, where this service's recordings are kept",
     ),
     (
         "ARCH-R136 a fixture naming no recording",
-        patch("stack.toml", 'fixture = "recordings/prowlarr/indexer-search-guarded.json"',
+        patch(MANIFEST, 'fixture = "recordings/prowlarr/indexer-search-guarded.json"',
               'fixture = "recordings/prowlarr/absent.json"'),
         "fixture recordings/prowlarr/absent.json names no recording here",
     ),
@@ -714,17 +726,17 @@ CASES = [
     ),
     (
         "ARCH-R136 a claim that names no capability",
-        patch("stack.toml", FLARESOLVERR_FIXTURE, FLARESOLVERR_FIXTURE + "\n[[service.claim]]\n"),
+        patch(MANIFEST, FLARESOLVERR_FIXTURE, FLARESOLVERR_FIXTURE + "\n[[service.claim]]\n"),
         "service flaresolverr: a claim names no capability",
     ),
     (
         "ARCH-R136 a probe that names no fixture",
-        patch("stack.toml", FLARESOLVERR_FIXTURE, ""),
+        patch(MANIFEST, FLARESOLVERR_FIXTURE, ""),
         "service flaresolverr.claim indexer.proxy.probe identifies: names no fixture",
     ),
     (
         "ARCH-R136 probes written as something other than tables",
-        patch("stack.toml", 'capability = "indexer.proxy"\n\n[[service.claim.probe]]\nid = "identifies"\n',
+        patch(MANIFEST, 'capability = "indexer.proxy"\n\n[[service.claim.probe]]\nid = "identifies"\n',
               'capability = "indexer.proxy"\nprobe = ["identifies"]\n\n[[unclaimed]]\nid = "identifies"\n'),
         "service flaresolverr.claim indexer.proxy: probe must be an array of [[service.claim.probe]] tables",
     ),
