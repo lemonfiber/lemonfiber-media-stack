@@ -7,11 +7,8 @@
 # is a workflow the gate never waits for and never re-evaluates on. `main`
 # requires twenty-one checks here and they come from four workflows:
 #
-#   ci        spec-check / spec-check, dco / dco, attribution / attribution,
-#             commitlint / commitlint, workflow-pins / workflow-pins,
-#             hygiene / {actionlint, invite, links, markdown, pins,
-#             shared-files, typos},
-#             security / {gitleaks, osv-scanner}
+#   gates   gates / gates
+#   pin-only pin-only / pin-only
 #   sonar     gate / gate
 #   codeql    analyze, alerts / alerts
 #   validate  stack, images, runnable, the stack starts
@@ -35,7 +32,7 @@ on:
   #
   # `validate` is here because four of the required checks come from it.
   workflow_run:
-    workflows: [ci, sonar, codeql, validate]
+    workflows: [gates, pin-only, sonar, codeql, validate]
     types: [completed]
   pull_request_review:
     types: [submitted]
