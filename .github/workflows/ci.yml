@@ -35,22 +35,22 @@ jobs:
     permissions:
       contents: read
       pull-requests: write
-    uses: lemonfiber/spec/.github/workflows/spec-check.yml@c26ed83df4ecfeb0b1a2d4e565011605b67c648b # v1.0.38
+    uses: lemonfiber/spec/.github/workflows/spec-check.yml@9ea0d953458bb79b9afd8b412d7e99c9435cff34 # v1.0.46
   hygiene:
-    uses: lemonfiber/spec/.github/workflows/hygiene.yml@c26ed83df4ecfeb0b1a2d4e565011605b67c648b # v1.0.38
+    uses: lemonfiber/spec/.github/workflows/hygiene.yml@9ea0d953458bb79b9afd8b412d7e99c9435cff34 # v1.0.46
   # Every pin this repository holds on a shared workflow, against what the spec's
   # default branch holds now. It fails naming the commits a pin has not taken; a
   # run that could not ask which they are says so rather than reporting clean.
   workflow-pins:
-    uses: lemonfiber/spec/.github/workflows/workflow-pins.yml@c26ed83df4ecfeb0b1a2d4e565011605b67c648b # v1.0.38
+    uses: lemonfiber/spec/.github/workflows/workflow-pins.yml@9ea0d953458bb79b9afd8b412d7e99c9435cff34 # v1.0.46
   security:
-    uses: lemonfiber/spec/.github/workflows/security.yml@c26ed83df4ecfeb0b1a2d4e565011605b67c648b # v1.0.38
+    uses: lemonfiber/spec/.github/workflows/security.yml@9ea0d953458bb79b9afd8b412d7e99c9435cff34 # v1.0.46
   dco:
-    uses: lemonfiber/spec/.github/workflows/dco.yml@c26ed83df4ecfeb0b1a2d4e565011605b67c648b # v1.0.38
+    uses: lemonfiber/spec/.github/workflows/dco.yml@9ea0d953458bb79b9afd8b412d7e99c9435cff34 # v1.0.46
   attribution:
-    uses: lemonfiber/spec/.github/workflows/attribution.yml@c26ed83df4ecfeb0b1a2d4e565011605b67c648b # v1.0.38
+    uses: lemonfiber/spec/.github/workflows/attribution.yml@9ea0d953458bb79b9afd8b412d7e99c9435cff34 # v1.0.46
   commitlint:
-    uses: lemonfiber/spec/.github/workflows/commitlint.yml@c26ed83df4ecfeb0b1a2d4e565011605b67c648b # v1.0.38
+    uses: lemonfiber/spec/.github/workflows/commitlint.yml@9ea0d953458bb79b9afd8b412d7e99c9435cff34 # v1.0.46
   # Labels describe a pull request, and a merge group is not one. Not required,
   # so skipping it on a merge group leaves no context waiting.
   labeler:
@@ -58,7 +58,7 @@ jobs:
     permissions:
       contents: read
       pull-requests: write
-    uses: lemonfiber/spec/.github/workflows/labeler.yml@c26ed83df4ecfeb0b1a2d4e565011605b67c648b # v1.0.38
+    uses: lemonfiber/spec/.github/workflows/labeler.yml@9ea0d953458bb79b9afd8b412d7e99c9435cff34 # v1.0.46
   # OPS-R39, OPS-R40 and OPS-R42: label a PR that advances the staged version,
   # put it in that version's milestone, comment which goals it moves, and route
   # one that cites only out-of-scope requirements to the next version. The
@@ -81,4 +81,4 @@ jobs:
       contents: read
       pull-requests: write
       issues: write
-    uses: lemonfiber/spec/.github/workflows/goal-automations.yml@c26ed83df4ecfeb0b1a2d4e565011605b67c648b # v1.0.38
+    uses: lemonfiber/spec/.github/workflows/goal-automations.yml@9ea0d953458bb79b9afd8b412d7e99c9435cff34 # v1.0.46
