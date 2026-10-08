@@ -1,10 +1,11 @@
 # AGENTS.md — lemonfiber-media-stack
 
-Guidance for any AI agent working in this repo.
-
-> **Common rules for every lemonfiber repo are canonical in the spec:**
-> [50-governance/ai-contributors.md](https://github.com/lemonfiber/spec/blob/main/50-governance/ai-contributors.md).
-> Read them. This file is the `lemonfiber-media-stack`-specific header only.
+> **Start at the roadmap and board on [lemonfiber.app](https://lemonfiber.app),
+> rendered from the report of where every unreleased version stands. Then the
+> rules** every repository shares:
+> [working in the repositories](https://github.com/lemonfiber/spec/blob/main/50-governance/working-in-the-repositories.md)
+> and [the rules for agents](https://github.com/lemonfiber/spec/blob/main/50-governance/ai-contributors.md).
+> This file holds only what is true of this repository.
 
 ## What this repo is
 
@@ -17,23 +18,17 @@ and the
 ## Layout
 
 `compose.yml` defines no services. It `include:`s one fragment per profile from
-`compose/`, and each entry carries `project_directory: .` so that relative paths
-in a fragment resolve from the repo root rather than from `compose/`. Omitting it
-breaks the fragment's `extends:` path and Compose refuses to build a model —
-loudly, which is the intent.
+`compose/`, each with `project_directory: .` so relative paths resolve from the
+repo root; without it the fragment's `extends:` path breaks and Compose refuses.
 
-Shared defaults live in `compose/_common.yml` as three template services reached
-through `extends:`. That file is deliberately **not** in the include list, so the
-templates never become containers:
+Shared defaults live in `compose/_common.yml`, which is **not** in the include
+list, as three templates reached through `extends:`:
 
 - `defaults` — `restart` and `TZ`. Everything gets these.
-- `rootless` — adds `PUID`/`PGID`, for images that document them. An image that
-  ignores them gets `defaults` and a `user:` pair instead; setting PUID on an
-  image that ignores it is a silent no-op that reads like a security control.
+- `rootless` — adds `PUID`/`PGID`, for images that document them; an image that
+  ignores them gets `defaults` and a `user:` pair instead.
 - `confined` — for lemonfiber's own images: a read-only root, the operator's
-  uid, every kernel capability dropped, `no-new-privileges` and a memory limit.
-  `validate_manifest.py` refuses a service of lemonfiber's own without all of
-  it, or on any network, or beside any service, its ADR does not name.
+  uid, every capability dropped, `no-new-privileges` and a memory limit.
 
 ## The rules you cannot break
 
@@ -52,73 +47,53 @@ templates never become containers:
 - The manifest and the Compose model must stay in parity — every service in one
   is in the other, with the same image, tag, digest and profile.
 - **lemonfiber's own images run confined** (`C6-R20`, `C6-R22`). Each extends
-  `confined`, mounts `./config/<id>:/config` and nothing else, and is on exactly
-  the networks its ADR names, beside exactly the services it names. Seerr is not
-  on the default network: the request gate is its only path to Sonarr, Radarr
-  and Jellyfin. `CONFINED` in `scripts/compose_parity.py` is where each
-  service's networks are stated, and one of lemonfiber's own without an entry
-  there fails CI.
+  `confined`, mounts `./config/<id>:/config` alone, and is on exactly the
+  networks its ADR names, as `CONFINED` in `scripts/compose_parity.py` states.
+  Seerr is not on the default network: the request gate is its only path to
+  Sonarr, Radarr and Jellyfin.
 
 ## Adding a service
 
-A service block in the matching `compose/<profile>.yml` + its `[[service]]` in
-`services/<id>.toml`, named in `stack.toml`'s `include` + its profile in the
+First, `just candidate <url> --image <ref>` judges from its commit and release
+history whether the candidate is maintained (`F2-R15`) and says `admit`, `watch`
+or `reject`, which goes in the pull request; the criteria are in [README.md](README.md#adding-a-service).
+
+Then a service block in the matching `compose/<profile>.yml` (a new profile adds
+its own file and `include:` entry, with `project_directory: .`), its `[[service]]`
+in `services/<id>.toml`, named in `stack.toml`'s `include`, and its profile in the
 relevant forms. No code (`REPO-R23`).
-Then `just ci`.
 
 The `[[service]]` also says what the service can do — `provides`, in lemonfiber's
-published capability vocabulary — so that wiring can ask for a capability rather
-than name a service. That file is generated from this field, so a capability
-nothing here declares cannot be published. Recyclarr, Unpackerr, Homepage,
-Caddy, the request gate and the decline service declare nothing, because nothing
-asks them anything: the first two act on the filesystem and on other services'
-configuration, the next two are configured by lemonfiber writing a file, the
-gate carries Seerr's asks, and the decline service answers an invitee's browser.
+published capability vocabulary — so wiring can ask for a capability rather than
+name a service. A service nothing asks anything (Recyclarr, Unpackerr, Homepage,
+Caddy, the request gate, the decline service) declares nothing.
 
-The `[[service]]` says what the service reaches on the network and what it asks
-for there — `reaches` and `asks_for`, both or neither, `reaches = ""` for one
-that talks to nothing (`F2-R10`). That prose used to be a table compiled into
-lemonfiber, which meant a new service needed a lemonfiber release before anything
-could describe it; carrying it here is what makes `F1-R5` true.
+It says what the service reaches on the network and what it asks for there —
+`reaches` and `asks_for`, both or neither, `reaches = ""` for one that talks to
+nothing (`F2-R10`).
 
 A service something reaches, or that reaches something, also needs a
-`[[wiring]]`: `by` is where the link runs from, and then either `asks` (a
-capability, `each = true` where it reaches every filler rather than the one) or
-`to` with a `why` (by name, which is the exception and has to say it is one).
-A `depends_on` is a by-name wiring and CI refuses one that no `[[wiring]]`
-shows as such.
-
-If the service is the first of a new profile, add a `compose/<profile>.yml` and
-an `include:` entry — with `project_directory: .`.
-
-Before any of that, establish that the candidate is maintained — from its commit
-and release history, never from its own description of itself (`F2-R15`). `just
-candidate <url> --image <ref>` reads the history and says `admit`, `watch` or
-`reject`; its answer belongs in the pull request. The full admission criteria are
-in [README.md](README.md#adding-a-service).
+`[[wiring]]`: `by` where the link runs from, then `asks` (a capability, `each =
+true` to reach every filler) or `to` with a `why` (by name, the exception). CI
+refuses a `depends_on` no `[[wiring]]` shows.
 
 ## Bumping a pin, and removing a service
 
-Both are changes only a diff can judge, and `scripts/check_manifest_change.py`
-judges them against the pull request's base:
+`scripts/check_manifest_change.py` judges both against the pull request's base:
 
-- A moved `tag` (or `image`) has to carry a refreshed `last_release`, or a
-  `Pin-reviewed: <service-id>` trailer on the commit that moves it (`F2-R14`),
-  and a new `digest` — the index the new tag names, which `just images` asks
-  the registry for (`E1-R1`). `just pins-apply <service>` writes all three.
-  A moved pin also has its upstream licence read from the forge and held to the
-  OSI list (`F2-R12`), or to `Hippocratic-3.0` for lemonfiber's own images
-  (`F2-R5`) — that half is networked and lives in `just licences`.
+- A moved `tag` (or `image`) carries a refreshed `last_release` or a
+  `Pin-reviewed: <service-id>` trailer (`F2-R14`), and the new tag's index
+  `digest` (`E1-R1`); `just pins-apply <service>` writes all three. Its upstream
+  licence is held to the OSI list (`F2-R12`), or to `Hippocratic-3.0` for
+  lemonfiber's own images (`F2-R5`), by `just licences`.
 - A service that leaves the manifest has to gain a `[[removed]]` entry naming
   the reason and any replacement (`F2-R13`).
 
-A moved `digest` also leaves every recording the service's claims name taken
-from an image the manifest no longer pins, and `validate_manifest.py` refuses
-each one (`ARCH-R136`). The `pins` workflow re-records them from a fresh
-container of the new image in the change that moves the pin; by hand, `just
-record <vocabulary> <service>` does the same. The vocabulary is the one the
-lemonfiber commit in `.github/lemonfiber-judge` publishes, which is also the
-commit whose judge the `claims` check runs.
+A moved `digest` stales every recording the service's claims name, and
+`validate_manifest.py` refuses each one (`ARCH-R136`). The `pins` workflow
+re-records them in the change that moves the pin; by hand, `just record
+<vocabulary> <service>`, with the vocabulary the lemonfiber commit in
+`.github/lemonfiber-judge` publishes.
 
 ## Checks
 
@@ -132,34 +107,14 @@ just candidate <url>   # judge a candidate on its history (needs the network)
 just record <vocabulary> <services>   # re-record what services answer their claimed probes (needs Docker)
 ```
 
-`scripts/check_runs.py` is the one that starts something. Everything else here
-reads the project; that brings each profile up with plain `docker compose` on a
-path holding no lemonfiber binary, makes every service answer the probe
-`stack.toml` declares for it, and takes it down again. A profile no machine
-without an account can start — `torrent`, which needs a real VPN subscription —
-is named in that script with the reason, and left out of what CI fans over.
-
-`KNOWN_BROKEN` in the same script is the other register, and it points the other
-way. It is empty now; it held Jellyfin, Seerr and Bindery, which could not start
-from a clean clone on Linux because Docker creates a missing bind-mount source
-as `root:root` and a container running as a fixed non-root user cannot write its
-own `/config`. An entry there reports rather than fails — and **fails as soon as
-that service works**, which is what proved those three fixed. Nothing goes in
-there to make a run pass.
-
-The cure is worth knowing before adding a service: a config directory shipped in
-the repo belongs to whoever cloned it, and every service that drops privileges
-is started as `${PUID}:${PGID}`, so an image with a non-root user baked in gets
-a `user:` pair rather than the uid its author chose.
+`scripts/check_runs.py` brings each profile up with plain `docker compose`, makes
+every service answer the probe its service file declares, and takes it down again;
+`torrent`, which needs a real VPN subscription, is left out of what CI fans over.
+Its `KNOWN_BROKEN` register reports an entry rather than failing, until it works.
 
 `scripts/validate_manifest.py` reads `docker compose config`'s **resolved**
-model, not the YAML, so it checks what Docker will run rather than what the file
-appears to say. Every rule it enforces has a negative test in
-`scripts/test_validate_manifest.py` — if you add a rule, add the test that proves
-it fails when broken.
+model; each rule it enforces has a negative test beside it.
 
 ## Before you open a PR
 
 - `just ci` is clean, and `just images` if you touched a pin.
-- Cite a spec identifier in a commit `Spec:` trailer and the PR body.
-- No AI attribution in commits.
