@@ -218,6 +218,16 @@ jobs:
       - name: The template check can fail
         run: python3 scripts/check_configs.py --self-test
 
+      # The door started on its two networks in front of a stand-in for
+      # Jellyfin, and asked every case it must refuse or pass on both ports,
+      # each held to its recording of Jellyfin itself. Then broken doors and
+      # recordings, each of which has to be caught.
+      - name: The door refuses what it must and passes what it may
+        run: python3 scripts/check_door.py
+
+      - name: The door check can fail
+        run: python3 scripts/check_door.py --self-test
+
       # A recorded release date newer than upstream's latest was guessed rather
       # than looked up. Drifting behind upstream is reported, never failed.
       - name: Recorded release dates agree with upstream

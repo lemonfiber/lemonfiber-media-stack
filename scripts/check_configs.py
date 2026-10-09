@@ -24,6 +24,7 @@ import subprocess
 import sys
 import tempfile
 
+import door_pair
 import stack_manifest
 from registry import pinned
 
@@ -43,22 +44,30 @@ def pinned_image(service_id: str) -> str:
     return pinned(service)
 
 
-def validate_caddyfile(path: pathlib.Path) -> tuple[bool, str]:
+def validate_caddyfile(path: pathlib.Path, service_id: str = "caddy") -> tuple[bool, str]:
     """Adapt the Caddyfile exactly as Caddy would, with nothing in the environment.
 
     Deliberately no variables: a template that only parses once the operator has
     filled in .env is a template that breaks on first run, which is the failure
     this catches.
+
+    It is read where the service reads it, /etc/caddy, beside a throwaway
+    certificate pair in the place lemonfiber writes the door's, because Caddy
+    loads every certificate a Caddyfile names before it calls it valid.
     """
-    result = subprocess.run(
-        [
-            "docker", "run", "--rm", "--network", "none",
-            "-v", f"{path}:/etc/caddy/Caddyfile:ro",
-            pinned_image("caddy"),
-            "caddy", "validate", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile",
-        ],
-        capture_output=True, text=True, check=False,
-    )
+    with tempfile.TemporaryDirectory() as tmp:
+        directory = pathlib.Path(tmp)
+        (directory / "Caddyfile").write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
+        door_pair.write(directory)
+        result = subprocess.run(
+            [
+                "docker", "run", "--rm", "--network", "none",
+                "-v", f"{directory}:/etc/caddy:ro",
+                pinned_image(service_id),
+                "caddy", "validate", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile",
+            ],
+            capture_output=True, text=True, check=False,
+        )
     output = (result.stdout + result.stderr).strip()
     if result.returncode != 0:
         error = next(
@@ -364,6 +373,16 @@ def main() -> int:
         )
         return 1
     print("  ok   config/caddy/Caddyfile adapts with an empty environment")
+
+    ok, error = validate_caddyfile(ROOT / "config" / "door" / "Caddyfile", "door")
+    if not checked(
+        "config/door/Caddyfile",
+        ok,
+        error,
+        "The door would not start, and with it down nothing in the house reaches Jellyfin.",
+        "config/door/Caddyfile adapts with an empty environment and a certificate pair beside it",
+    ):
+        return 1
 
     sabnzbd = ROOT / "config" / "sabnzbd" / SABNZBD_INI
     ok, error = validate_sabnzbd_whitelist(sabnzbd)

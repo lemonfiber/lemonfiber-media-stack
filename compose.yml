@@ -67,6 +67,17 @@ include:
 #                     It translates no address off the host, so the port answers
 #                     and the service cannot reach out.
 #   decline-upstream  The decline service and Jellyfin, and nothing else (ADR-0029).
+#   door              The door's published ports, and the proxy's way to it. Both
+#                     hold a fixed address there, and the door believes the client
+#                     a request names only when it comes from the proxy's.
+#   door-upstream     The door and Jellyfin, and nothing else. The door's fixed
+#                     address here is the one proxy Jellyfin trusts to say which
+#                     client a request came from, so its local-network rules see
+#                     the household device rather than the door.
+#
+# The two door networks are the only ones with a fixed subnet, because a fixed
+# address needs one. Docker hands out the upper half of each and never the
+# addresses held in the lower half.
 networks:
   requests: {}
   requests-gate:
@@ -78,3 +89,14 @@ networks:
       com.docker.network.bridge.enable_ip_masquerade: "false"
   decline-upstream:
     internal: true
+  door:
+    ipam:
+      config:
+        - subnet: 10.80.96.0/28
+          ip_range: 10.80.96.8/29
+  door-upstream:
+    internal: true
+    ipam:
+      config:
+        - subnet: 10.80.96.16/28
+          ip_range: 10.80.96.24/29

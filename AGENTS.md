@@ -9,7 +9,7 @@
 
 ## What this repo is
 
-The Docker Compose stack — 22 services — plus the manifest lemonfiber consumes:
+The Docker Compose stack — 23 services — plus the manifest lemonfiber consumes:
 `stack.toml` and a file per service in `services/`, named by its `include`. Spec:
 [`30-repos/lemonfiber-media-stack.md`](https://github.com/lemonfiber/spec/blob/main/30-repos/lemonfiber-media-stack.md)
 and the
@@ -66,7 +66,7 @@ relevant forms. No code (`REPO-R23`).
 The `[[service]]` also says what the service can do — `provides`, in lemonfiber's
 published capability vocabulary — so wiring can ask for a capability rather than
 name a service. A service nothing asks anything (Recyclarr, Unpackerr, Homepage,
-Caddy, the request gate, the decline service) declares nothing.
+Caddy, the door, the request gate, the decline service) declares nothing.
 
 It says what the service reaches on the network and what it asks for there —
 `reaches` and `asks_for`, both or neither, `reaches = ""` for one that talks to
@@ -105,6 +105,8 @@ just pins      # what the weekly `pins` workflow would move (needs the network)
 just licences  # what each upstream licences itself as now (needs the network)
 just candidate <url>   # judge a candidate on its history (needs the network)
 just record <vocabulary> <services>   # re-record what services answer their claimed probes (needs Docker)
+just door      # ask the door every case it must refuse or pass (needs Docker)
+just record-door   # ask Jellyfin itself behind the door, into recordings/door/ (needs Docker)
 ```
 
 `scripts/check_runs.py` brings each profile up with plain `docker compose`, makes

@@ -51,6 +51,7 @@ import time
 import urllib.error
 import urllib.request
 
+import door_pair
 import stack_manifest
 from registry import pinned
 
@@ -65,11 +66,17 @@ PROJECT = "lemonfiber-runs-check"
 # ${LAN_BIND} for the household one; the loopback address reaches both.
 HOST = "127.0.0.1"
 
-# Plain, and deliberately: nothing in this stack terminates TLS. Certificates
-# are Caddy's job on the operator's own domain, and self-signed ones are
-# refused on purpose — see the proxy profile. A probe speaks what the service
-# speaks, and here that is cleartext across a loopback interface.
+# Plain: every port the manifest declares speaks cleartext. The door also
+# serves TLS on 8920, which is not the port it declares, and check_door.py asks
+# it there. A probe speaks what the service speaks on its declared port, and
+# here that is cleartext across a loopback interface.
 SCHEME = "http"
+
+# What lemonfiber writes before `up`, by the service that reads it. No lemonfiber
+# binary is involved here, so this writes it in lemonfiber's place, as an
+# operator running the stack without lemonfiber does: only where none is there
+# yet, and taking away only what it wrote.
+WRITTEN_BEFORE_UP = {"door": door_pair.DIRECTORY}
 
 # A profile nobody without an account can start, and why. Naming it here is what
 # keeps the omission visible: --plan leaves it out, and asking for it by hand is
@@ -452,6 +459,20 @@ def judge_everything(expected: dict[str, str], answers: list[dict], observed: li
     return errors + judge_known(broken, answers, observed)
 
 
+def stand_in(chosen: list[dict]) -> list[pathlib.Path]:
+    """The files lemonfiber would have written for these services, and only those
+    this wrote: a pair already there is somebody's own, and stays as it is."""
+    made: list[pathlib.Path] = []
+    for service in chosen:
+        directory = WRITTEN_BEFORE_UP.get(service["id"])
+        if directory is None:
+            continue
+        target = ROOT / directory
+        if not any((target / name).exists() for name in (door_pair.CERTIFICATE, door_pair.KEY)):
+            made += door_pair.write(target)
+    return made
+
+
 def run(profiles: list[str]) -> int:
     data = manifest()
 
@@ -465,6 +486,15 @@ def run(profiles: list[str]) -> int:
         print(f"::error::profiles {profiles} hold no services")
         return 1
 
+    made = stand_in(chosen)
+    try:
+        return started_and_judged(profiles, chosen)
+    finally:
+        for path in made:
+            path.unlink(missing_ok=True)
+
+
+def started_and_judged(profiles: list[str], chosen: list[dict]) -> int:
     expected = {s["id"]: pinned(s) for s in chosen}
     probes = [probe_of(service) for service in chosen]
     errors: list[str] = []

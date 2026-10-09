@@ -15,9 +15,11 @@
 # written next to them.
 #
 # Set DOMAIN in .env. With a real domain whose DNS points here, Caddy obtains
-# genuine certificates automatically. Self-signed TLS is not offered: teaching a
-# household to click through certificate warnings is a worse outcome than honest
-# HTTP on a trusted LAN.
+# genuine certificates automatically. For a name no public authority issues a
+# certificate for, this proxy serves plain HTTP rather than a certificate a
+# browser warns about. Jellyfin's own TLS is the door's: it serves 8920 with a
+# certificate lemonfiber issues from the stack's own root, which a client pins
+# by its fingerprint (config/door/Caddyfile).
 #
 # The default below keeps this file valid before DOMAIN is set. A `.local` name
 # cannot be issued a public certificate, so Caddy serves plain HTTP until you
@@ -31,8 +33,11 @@
 
 # ── household ────────────────────────────────────────────────────────────────
 
+# Jellyfin is reached through the door, which guards every byte it serves and
+# trusts this proxy's fixed address alone to say which client a request came
+# from. Caddy names the client in X-Forwarded-For and ignores one a client sends.
 watch.{$DOMAIN:home.local} {
-	reverse_proxy jellyfin:8096
+	reverse_proxy door:8096
 }
 
 requests.{$DOMAIN:home.local} {

@@ -98,6 +98,19 @@ record vocabulary +services:
     python3 scripts/record.py --self-test
     python3 scripts/record.py {{services}} < {{vocabulary}}
 
+# The door, started on its two networks in front of a stand-in for Jellyfin, and
+# asked every case it must refuse or pass on both of its ports; then broken
+# doors and recordings, each of which has to be caught. Needs Docker and the
+# pinned Caddy image.
+door:
+    python3 scripts/check_door.py
+    python3 scripts/check_door.py --self-test
+
+# What Jellyfin itself answers behind the door, case by case, into
+# recordings/door/. Needs Docker and the pinned Jellyfin image.
+record-door:
+    python3 scripts/record_door.py
+
 # Shipped config templates parse in the service that reads them. Networked.
 configs:
     python3 scripts/check_configs.py

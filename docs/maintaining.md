@@ -95,12 +95,13 @@ volume and any image it pulled are removed afterwards. `<vocabulary>` is the
 `capability-vocabulary.json` lemonfiber publishes, which says which probes are
 asked with the operator's credential.
 
-Recyclarr, Unpackerr, Homepage, Caddy, the request gate and the decline service
-declare nothing. The first two write into other services' configuration and
-watch the filesystem; the next two are configured by lemonfiber writing a file
-rather than by anything asking them a question; the request gate carries Seerr's
-asks rather than answering any of its own, and the decline service answers an
-invitee's browser rather than another service. A capability is something one
+Recyclarr, Unpackerr, Homepage, Caddy, the door, the request gate and the decline
+service declare nothing. The first two write into other services' configuration
+and watch the filesystem; the next two are configured by lemonfiber writing a
+file rather than by anything asking them a question; the door and the request
+gate stand in front of other services rather than answering anything of their
+own, and the decline service answers an invitee's browser rather than another
+service. A capability is something one
 service asks another for while both are running, and nothing asks any of them.
 
 ## What reaches what
@@ -134,13 +135,14 @@ not tell those apart would be wrong about both. `filled_by` is the stack choosin
 between its own claimants, with the reason beside it, and it is a default the
 operator substitutes rather than a rule.
 
-A `to` is by name, and it carries `why`. The stack has seven, and every one of
+A `to` is by name, and it carries `why`. The stack has eight, and every one of
 them is genuinely about one service: qBittorrent lives inside Gluetun's network
 namespace, which is a container rather than an errand and so has nothing for an
 ask to resolve to; Unpackerr and Recyclarr are configured per application, in
 each service's own terms, and know Sonarr rather than whatever curates a
 library; the decline service makes three of Jellyfin's own calls with a key
-lemonfiber minted for it alone. Writing the reason down is the point — an
+lemonfiber minted for it alone; the door asks Jellyfin's own question about an
+item and guards Jellyfin's own routes, path by path. Writing the reason down is the point — an
 exception nobody explained reads as an oversight.
 
 **An ordering edge is a by-name wiring.** A `depends_on` names a service, so CI
@@ -155,7 +157,7 @@ capability of its own.
 ## Networks
 
 Every service is on the project's default network, except where its entry names
-others. Five named networks, declared in `compose.yml`, confine the request gate
+others. Five of the named networks declared in `compose.yml` confine the request gate
 and the decline service, the images lemonfiber builds, each of which holds a
 credential that administers another service:
 
@@ -177,6 +179,28 @@ kernel capability dropped, `no-new-privileges` and a memory limit, and mount
 their own configuration directory and nothing else. `scripts/validate_manifest.py`
 holds each to that, and to exactly the networks and neighbours its ADR names
 (ADR-0033 §4).
+
+Two more networks put Jellyfin behind its door
+([ADR-0027](https://github.com/lemonfiber/spec/blob/main/00-overview/decisions/0027-a-member-plays-what-the-core-authorised.md)).
+Jellyfin publishes on loopback alone, and the door, which is not on the default
+network, publishes its household ports:
+
+- **`door-upstream`** is internal and shared by the door and Jellyfin alone. The
+  door is fixed at 10.80.96.18 on it, and that is the one proxy Jellyfin trusts
+  to say which client a request came from, so Jellyfin's local-network rules,
+  a member's remote access among them, judge the household device rather than
+  the door. lemonfiber sets it as Jellyfin's known proxy.
+- **`door`** carries the door's published ports, and the proxy's way to it. The
+  door is fixed at 10.80.96.2 and the proxy at 10.80.96.3, and the door trusts
+  the client the proxy names from that address and from no other.
+
+Both have a fixed subnet, because a fixed address needs one, and Docker hands
+out only the upper half of each. `scripts/validate_manifest.py` holds the door
+to those two networks and those neighbours, every fixed address outside what
+Docker hands out, and the address the door trusts to the proxy's.
+`scripts/check_door.py` starts the door on both networks and asks it every case
+it must refuse or pass; `scripts/record_door.py` asks the same of Jellyfin itself
+and keeps the answers in `recordings/door/`.
 
 ## Bumping a pin
 
@@ -265,6 +289,8 @@ proven to fail when broken by `scripts/test_validate_manifest.py`.
 | A removal says why | `[[removed]]` names the reason and any replacement (`F2-R13`) |
 | Every form resolves | `docker compose config` per form (`REPO-R17`), dragging in nothing outside its profiles (`B1-R14`, `REPO-R19`) |
 | Every profile starts | Brought up with plain `docker compose`, every service answering its declared probe on its published port, then torn down. The torrent profile is excluded by name: it needs a VPN subscription (`F1-R1`) |
+| Jellyfin is reached through its door alone | The door on `door` and `door-upstream` and no other network, beside the proxy and Jellyfin alone, at fixed addresses Docker never hands out, trusting the proxy's address and no other to name the client (`D11-R2`) |
+| The door refuses what it must | Started on both its networks in front of a stand-in for Jellyfin and asked every case on both ports: each item's bytes refused without a session that may see the item, everything else passed, the client Jellyfin is told the one the door may believe, the certificate on 8920 the one written beside it, and a refusal when Jellyfin does not answer; each case held to its recording of Jellyfin itself (`D11-R2`, `D11-R7`) |
 | Every claim holds against its recordings | Judged by lemonfiber's own judge, checked out at a pinned commit: a recording that refutes a probe fails, and one that cannot be judged is reported unproven (`ARCH-R137`, `F9-R2`) |
 | arm64 + amd64 per pin | Read from the pinned index, which must be one (`F2-R6`, `E1-R1`) |
 | A moved pin is its tag's index | The registry resolves the tag to the pinned digest (`E1-R1`) |

@@ -26,6 +26,8 @@ requirement = [
   { id = "C6-R20", state = "partial", evidence = ["scripts/compose_parity.py", "scripts/test_validate_manifest.py::service request-gate: runs with a writable root"] },
   { id = "C6-R22", state = "done", evidence = ["compose.yml", "scripts/compose_parity.py", "scripts/test_validate_manifest.py::service request-gate: can gain privileges", "scripts/test_validate_manifest.py::service request-gate: runs as '0:0'"] },
   { id = "D6-R15", state = "partial", evidence = ["stack.toml", "scripts/test_validate_manifest.py::service decline: keeps kernel capabilities"] },
+  { id = "D11-R2", state = "done", evidence = ["config/door/Caddyfile", "compose/media.yml", "scripts/compose_parity.py::validate_door", "scripts/check_door.py", "scripts/test_validate_manifest.py::service door: is on ['default', 'door', 'door-upstream']"] },
+  { id = "D11-R7", state = "partial", evidence = ["config/door/Caddyfile::https://:8920", "scripts/check_door.py::presented_fingerprint"] },
   { id = "E1-R1", state = "partial", evidence = ["scripts/manifest_rules.py", "scripts/check_images.py", "scripts/test_validate_manifest.py::floating tag"] },
   { id = "F1-R1", state = "done", evidence = ["compose.yml", "scripts/check_runs.py"] },
   { id = "F1-R5", state = "partial", evidence = ["stack.toml", "scripts/test_validate_manifest.py::declares 'reaches' without 'asks_for'"] },

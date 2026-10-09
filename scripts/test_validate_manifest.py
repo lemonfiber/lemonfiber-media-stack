@@ -22,7 +22,7 @@ import tempfile
 import stack_manifest
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-COPIED = ("compose.yml", "stack.toml", "services", "compose", "scripts", "recordings")
+COPIED = ("compose.yml", "stack.toml", "services", "compose", "scripts", "recordings", "config/door/Caddyfile")
 
 # What a mutation names to be made in whichever of the manifest's files holds the text:
 # the root or a service's file (ARCH-R171).
@@ -667,7 +667,7 @@ CASES = [
     ),
     (
         "ADR-0029 another service on the decline service's published network",
-        patch("compose/proxy.yml", "networks: [default, requests]", "networks: [default, requests, decline]"),
+        patch("compose/proxy.yml", "      requests: {}\n", "      requests: {}\n      decline: {}\n"),
         "shares 'decline' with ['caddy']",
     ),
     (
@@ -675,6 +675,48 @@ CASES = [
         patch("compose.yml", '  decline:\n    driver_opts:\n      com.docker.network.bridge.enable_ip_masquerade: "false"\n',
               "  decline: {}\n"),
         "service decline: publishes on 'decline', which reaches off the host",
+    ),
+    (
+        "D11-R2 the door on the default network, beside Jellyfin at an address Jellyfin does not trust",
+        patch("compose/media.yml", "    networks:\n      door:\n        ipv4_address: 10.80.96.2\n",
+              "    networks:\n      default: {}\n      door:\n        ipv4_address: 10.80.96.2\n"),
+        "service door: is on ['default', 'door', 'door-upstream']",
+    ),
+    (
+        "D11-R2 another service beside the door and Jellyfin on the network between them",
+        patch("compose/dash.yml", "networks: [default, requests]", "networks: [default, requests, door-upstream]"),
+        "shares 'door-upstream' with ['homepage', 'jellyfin']",
+    ),
+    (
+        "D11-R2 the network between the door and Jellyfin routed off the host",
+        patch("compose.yml", "  door-upstream:\n    internal: true\n", "  door-upstream:\n"),
+        "'door-upstream' is not internal",
+    ),
+    (
+        "D11-R2 the door at an address Docker hands out",
+        patch("compose/media.yml", "ipv4_address: 10.80.96.18", "ipv4_address: 10.80.96.25"),
+        "is fixed at 10.80.96.25 on 'door-upstream'",
+    ),
+    (
+        "D11-R2 the door's address left to Docker",
+        patch("compose/media.yml", "      door-upstream:\n        ipv4_address: 10.80.96.18\n",
+              "      door-upstream: {}\n"),
+        "service door: holds no fixed address on 'door-upstream'",
+    ),
+    (
+        "D11-R2 the door trusting an address the proxy does not hold",
+        patch("config/door/Caddyfile", "trusted_proxies static 10.80.96.3", "trusted_proxies static 10.80.96.4"),
+        "trusts ['10.80.96.4'] to name the client, and the proxy is fixed at 10.80.96.3",
+    ),
+    (
+        "D11-R2 the door trusting a whole range to name the client",
+        patch("config/door/Caddyfile", "trusted_proxies static 10.80.96.3", "trusted_proxies static 10.80.96.3 private_ranges"),
+        "trusts ['10.80.96.3', 'private_ranges']",
+    ),
+    (
+        "D11-R2 the proxy reaching the door from an address Docker hands out",
+        patch("compose/proxy.yml", "ipv4_address: 10.80.96.3", "ipv4_address: 10.80.96.9"),
+        "service caddy: is fixed at 10.80.96.9 on 'door'",
     ),
     (
         "F2-R5 an OSI licence on lemonfiber's own image",
@@ -757,6 +799,7 @@ def run_case(name, mutation, expected) -> bool:
             if source.is_dir():
                 shutil.copytree(source, root / item)
             else:
+                (root / item).parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(source, root / item)
         if mutation is not None:
             mutation(root)

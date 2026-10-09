@@ -35,6 +35,12 @@
 /config/caddy/*
 !/config/caddy/Caddyfile
 
+# The door's Caddyfile is a template we ship. The certificate and key beside it
+# are lemonfiber's, written before `up`, and never tracked.
+!/config/door/
+/config/door/*
+!/config/door/Caddyfile
+
 !/config/sabnzbd/
 /config/sabnzbd/*
 !/config/sabnzbd/sabnzbd.ini

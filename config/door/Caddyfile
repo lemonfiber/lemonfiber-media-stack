@@ -1,0 +1,127 @@
+# The door: Jellyfin's household ports, and the guard on every byte it serves.
+#
+# Jellyfin answers its byte endpoints (a stream, a segment, a subtitle, an
+# attachment, an item's image) without asking who is there; its own policy holds
+# only for discovery. So the household reaches Jellyfin only through here.
+# Jellyfin publishes on loopback alone, and this publishes:
+#
+#   8096  plain HTTP, the address TVs and players already use for Jellyfin
+#   8920  TLS, with the certificate lemonfiber writes beside this file
+#
+# Before a request for an item's bytes goes on, the door asks Jellyfin for that
+# item, `GET /Items/{id}`, with the token the request presented, and Jellyfin
+# answers it as that token's own user sees it. A 2xx passes the request on.
+# Anything else is handed back as the refusal: 404 for an item the session may
+# not see, 401 for a token that is absent, ended or wrong, 403 for a member
+# Jellyfin will not serve from where the request came from, and 502 or 504
+# where Jellyfin does not answer. Every other path goes to Jellyfin unchanged,
+# and Jellyfin holds the member to their policy there itself.
+#
+# The paths below are Jellyfin's routes at its root, and under /emby and
+# /mediabrowser, which Jellyfin strips and serves the same. Jellyfin here carries
+# no base URL: with one, its routes move out from under these matchers.
+{
+	# Nothing is configured at run time and no certificate is fetched.
+	admin off
+	persist_config off
+	auto_https off
+	servers {
+		# Only TCP is published, so there is no HTTP/3 listener to offer.
+		protocols h1 h2
+		# The proxy's fixed address on the `door` network, and no other, may
+		# say which client a request came from (compose/proxy.yml). Anybody
+		# else's X-Forwarded-For is ignored, and the client is who connected.
+		trusted_proxies static 10.80.96.3
+		trusted_proxies_strict
+		client_ip_headers X-Forwarded-For
+	}
+}
+
+# What Jellyfin is told about the client. The door reaches it from its fixed
+# address on `door-upstream`, which Jellyfin trusts as its one proxy, and names
+# the client it resolved above as the whole of X-Forwarded-For. Jellyfin's
+# local-network rules, a member's remote access among them, then judge the
+# household device rather than the door.
+(client) {
+	header_up X-Forwarded-For {client_ip}
+}
+
+(guard) {
+	# An item id is 32 hexadecimal digits, with or without the dashes Jellyfin
+	# also accepts, and only those digits reach the question's path.
+	#
+	# Everything Jellyfin serves under /Videos/{id}/ and /Audio/{id}/ (streams,
+	# HLS playlists and segments, subtitles, attachments, trickplay, lyrics) and
+	# the two live-TV file routes.
+	@keyed path_regexp keyed (?i)^(?:/emby|/mediabrowser)?/(?:Videos|Audio|LiveTv/LiveStreamFiles|LiveTv/LiveRecordings)/([0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12})(?:/|$)
+
+	# An item's images, and the item's file itself.
+	@owned path_regexp owned (?i)^(?:/emby|/mediabrowser)?/Items/([0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12})/(?:Images|Download|File)(?:/|$)
+
+	# The same routes naming anything else. Jellyfin also reads an id in braces,
+	# in parentheses or padded with spaces, so a shape the door cannot ask about
+	# is refused rather than passed. Two routes under /Videos name no item and
+	# stay open; Jellyfin requires a session for both.
+	@unkeyed {
+		path_regexp (?i)^(?:/emby|/mediabrowser)?/(?:(?:Videos|Audio|LiveTv/LiveStreamFiles|LiveTv/LiveRecordings)/[^/]|Items/[^/]+/(?:Images|Download|File)(?:/|$))
+		not path_regexp (?i)^(?:/emby|/mediabrowser)?/Videos/(?:ActiveEncodings|MergeVersions)$
+	}
+
+	handle @keyed {
+		forward_auth jellyfin:8096 {
+			uri /Items/{re.keyed.1}?ApiKey={query.ApiKey}&api_key={query.api_key}
+			import question
+		}
+		reverse_proxy jellyfin:8096 {
+			import client
+		}
+	}
+
+	handle @owned {
+		forward_auth jellyfin:8096 {
+			uri /Items/{re.owned.1}?ApiKey={query.ApiKey}&api_key={query.api_key}
+			import question
+		}
+		reverse_proxy jellyfin:8096 {
+			import client
+		}
+	}
+
+	handle @unkeyed {
+		respond 403
+	}
+
+	handle {
+		reverse_proxy jellyfin:8096 {
+			import client
+		}
+	}
+}
+
+# How the question is put. The request's headers carry over, a token among them;
+# a token in the query is placed in the question's own query above, which Caddy
+# escapes. What would make the answer anything but a yes or a no about the item
+# is taken off, since a range or a condition turns a yes into a 206 or a 304.
+(question) {
+	import client
+	header_up Accept application/json
+	header_up -Range
+	header_up -If-Range
+	header_up -If-Match
+	header_up -If-None-Match
+	header_up -If-Modified-Since
+	header_up -If-Unmodified-Since
+	transport http {
+		dial_timeout 5s
+		response_header_timeout 15s
+	}
+}
+
+http://:8096 {
+	import guard
+}
+
+https://:8920 {
+	tls /etc/caddy/certificate.pem /etc/caddy/key.pem
+	import guard
+}

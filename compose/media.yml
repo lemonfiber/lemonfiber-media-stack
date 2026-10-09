@@ -4,8 +4,9 @@
 # a library nobody can reach from the TV is not a library. Homepage (dash) and
 # Caddy (proxy) publish there too — `bind = "lan"` in stack.toml is the list of
 # record. Set LAN_BIND in .env to pin them to one interface address rather than
-# all of them. The request gate is the exception: it publishes nothing, and only
-# Seerr reaches it.
+# all of them. Two are the exception. Jellyfin publishes on loopback alone: the
+# door publishes its household ports, 8096 and 8920, and guards every byte it
+# serves. The request gate publishes nothing, and only Seerr reaches it.
 
 services:
   jellyfin:
@@ -16,21 +17,63 @@ services:
     profiles: [media]
     # The official image takes a uid:gid pair rather than PUID/PGID.
     user: "${PUID:-1000}:${PGID:-1000}"
-    ports: ["${LAN_BIND:-0.0.0.0}:8096:8096"]
+    # This machine only, for lemonfiber. Jellyfin answers an item's bytes to
+    # anybody holding its id, so the household reaches it through the door.
+    ports: ["127.0.0.1:8095:8096"]
     volumes:
       # One mount, like everything else. Jellyfin writes artwork and NFO files
       # back into the library by default, so this is deliberately not read-only.
       - ${DATA_ROOT:-./data}:/data
       - ./config/jellyfin:/config
       - ./config/jellyfin/cache:/cache
-    # The default network for everything that reaches it by name, and the two
-    # that are each shared with one confined service: the request gate's and the
-    # decline service's.
-    networks: [default, gate-upstream, decline-upstream]
+    # The default network for everything that reaches it by name, the two that
+    # are each shared with one confined service, the request gate's and the
+    # decline service's, and the one it shares with the door alone.
+    networks: [default, gate-upstream, decline-upstream, door-upstream]
     # Hardware transcoding: uncomment both lines and set RENDER_GID in .env to
     # the host's render group id (`getent group render`). Intel/AMD VA-API.
     # devices: ["/dev/dri:/dev/dri"]
     # group_add: ["${RENDER_GID:-0}"]
+
+  # The door: Jellyfin's household ports, and the guard on every byte it serves.
+  # Before an item's stream, segment, subtitle or image goes on, it asks Jellyfin
+  # whether the session the request presents may see that item, and refuses
+  # anything but a yes (config/door/Caddyfile). 8096 is plain HTTP, the address
+  # TVs and players already use; 8920 is TLS, with the certificate lemonfiber
+  # writes to config/door/ before `up`.
+  door:
+    extends:
+      file: compose/_common.yml
+      service: defaults
+    image: caddy:2.11.6@sha256:3422ce6de165df66534f9b9ba50efaf457114ec961763cc52f5dbdaac2972d73
+    profiles: [media]
+    # The operator, who owns the key lemonfiber writes, rather than root. Its
+    # kernel capabilities are not dropped: the image's binary carries the one
+    # that binds a low port, and without it the binary does not execute, though
+    # nothing here binds below 1024.
+    user: "${PUID:-1000}:${PGID:-1000}"
+    read_only: true
+    security_opt: ["no-new-privileges:true"]
+    ports:
+      - "${LAN_BIND:-0.0.0.0}:8096:8096"
+      - "${LAN_BIND:-0.0.0.0}:8920:8920"
+    # Not on the default network: it reaches Jellyfin only on door-upstream, from
+    # the address Jellyfin trusts to name the client, and the proxy reaches it on
+    # `door`, from the one address the door trusts the same way.
+    networks:
+      door:
+        ipv4_address: 10.80.96.2
+      door-upstream:
+        ipv4_address: 10.80.96.18
+    volumes:
+      # The Caddyfile, and the certificate and key lemonfiber writes beside it.
+      # A directory rather than a file per mount, because lemonfiber replaces
+      # each file whole and a file mount would keep showing the one it replaced.
+      - ./config/door:/etc/caddy:ro
+    # Caddy's own stores. Nothing in them outlives the container: no certificate
+    # is fetched and no configuration is changed at run time.
+    tmpfs: ["/data:mode=1777", "/config:mode=1777"]
+    # No data mount: it passes bytes on, it never reads the library.
 
   seerr:
     extends:
