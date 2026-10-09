@@ -9,7 +9,8 @@
 #   8920  TLS, with the certificate lemonfiber writes beside this file
 #
 # Before a request for an item's bytes goes on, the door asks Jellyfin for that
-# item, `GET /Items/{id}`, with the token the request presented, and Jellyfin
+# item, `GET /Items/{id}`, with the token the request presented (a member's
+# bearer grant put in Jellyfin's own form first, below), and Jellyfin
 # answers it as that token's own user sees it. A 2xx passes the request on.
 # Anything else is handed back as the refusal: 404 for an item the session may
 # not see, 401 for a token that is absent, ended or wrong, 403 for a member
@@ -47,6 +48,15 @@
 }
 
 (guard) {
+	# A member's player presents its grant as `Authorization: Bearer <token>`,
+	# which names no media server; Jellyfin reads a token only in its own
+	# `MediaBrowser Token="…"` form. A bearer value of exactly the shape
+	# Jellyfin issues, 32 lower-case hexadecimal digits, is put in that form
+	# before anything else reads the request. Any other bearer value is left as
+	# it came, which Jellyfin does not read as a token, so nothing written after
+	# `Bearer` can reach the header's other fields.
+	request_header Authorization "^(?i:bearer) ([0-9a-f]{32})$" "MediaBrowser Token=\"${1}\""
+
 	# An item id is 32 hexadecimal digits, with or without the dashes Jellyfin
 	# also accepts, and only those digits reach the question's path.
 	#
