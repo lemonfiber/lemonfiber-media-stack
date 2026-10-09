@@ -28,7 +28,7 @@ each recording is held to its case's verdict here.
 Then the stand-in is stopped, and a request it would have passed is refused.
 
     python3 scripts/check_door.py              # needs Docker
-    python3 scripts/check_door.py --self-test  # four broken doors and three bad recordings, each caught
+    python3 scripts/check_door.py --self-test  # six broken doors and three bad recordings, each caught
 
 The two door networks are made with the subnets compose.yml states, so this
 cannot run beside a stack that already holds them. Exit 0 = the door holds,
@@ -106,6 +106,9 @@ PRESENTS = {
     "x-mediabrowser-token": "the member's session, in X-MediaBrowser-Token",
     "query": "the member's session, in the path's query",
     "unknown": "a token Jellyfin does not know, in X-Emby-Token",
+    "bearer": "the member's session, as a bearer grant in the Authorization header",
+    "bearer-unknown": "a token Jellyfin does not know, as a bearer grant",
+    "bearer-smuggled": "the member's session as a bearer grant, with a field written after it",
 }
 
 
@@ -146,6 +149,16 @@ CASES = (
          presents="x-emby-token"),
     Case("stream-with-x-mediabrowser-token", STREAM, PASS,
          "The member's session in the legacy X-MediaBrowser-Token header.", presents="x-mediabrowser-token"),
+    Case("stream-with-a-bearer-grant", STREAM, PASS,
+         "The member's session as the player presents it, a bearer grant the door puts in Jellyfin's own form.",
+         presents="bearer"),
+    Case("stream-outside-the-member-libraries-with-a-bearer-grant", "/Videos/{closed}/stream?static=true", REFUSE,
+         "A film the member may not see, with their session as a bearer grant.", presents="bearer"),
+    Case("stream-with-an-unknown-bearer-grant", STREAM, REFUSE,
+         "A bearer grant Jellyfin never issued, or one it has ended.", presents="bearer-unknown"),
+    Case("stream-with-a-field-smuggled-after-the-bearer-grant", STREAM, REFUSE,
+         "A bearer value that is the member's token and more; only a token of Jellyfin's shape is carried over.",
+         presents="bearer-smuggled"),
     Case("stream-with-apikey-in-the-query", "/Videos/{open}/stream?static=true&ApiKey={token}", PASS,
          "The member's session in the query, the way an HLS playlist's own URLs carry it. The door puts it in the question's query.",
          presents="query"),
@@ -233,6 +246,9 @@ def request_of(case: Case, open_item: str, closed_item: str, token: str) -> tupl
         "x-emby-token": {"X-Emby-Token": token},
         "x-mediabrowser-token": {"X-MediaBrowser-Token": token},
         "unknown": {"X-Emby-Token": UNKNOWN_TOKEN},
+        "bearer": {"Authorization": f"Bearer {token}"},
+        "bearer-unknown": {"Authorization": f"Bearer {UNKNOWN_TOKEN}"},
+        "bearer-smuggled": {"Authorization": f'Bearer {token}", DeviceId="door'},
     }.get(case.presents, {})
     if case.forwarded_for:
         headers = {**headers, "X-Forwarded-For": case.forwarded_for}
@@ -614,6 +630,10 @@ BROKEN = (
      lambda text: text.replace("trusted_proxies static 10.80.96.3", "trusted_proxies static private_ranges")),
     ("a door that hands on the proxy's chain as it came", "proxy-naming-a-remote-client",
      lambda text: text.replace("\theader_up X-Forwarded-For {client_ip}\n", "")),
+    ("a door that hands a bearer grant on as it came", "stream-with-a-bearer-grant",
+     lambda text: text.replace("\trequest_header Authorization ", "\t# request_header Authorization ")),
+    ("a door that carries over anything written after Bearer", "stream-with-a-field-smuggled-after-the-bearer-grant",
+     lambda text: text.replace("([0-9a-f]{32})", "(.+)")),
 )
 
 
