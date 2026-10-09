@@ -70,15 +70,18 @@ RECORDINGS = ROOT / "recordings" / "door"
 # networks, so nothing here can address or remove one the operator runs.
 PREFIX = "lemonfiber-door-check-"
 HOST = "127.0.0.1"
+# What the door's plain port speaks, inside the door's own network.
+SCHEME = "http"
 # Where the door listens, plain and TLS, inside its container.
 PLAIN, TLS = 8096, 8920
 # The network the door publishes on and the proxy reaches it on.
 DOOR_NETWORK = "door"
 PROXY = "caddy"
 
-# A client outside the house, from the documentation range, and one inside it.
+# A client outside the house, from the documentation range, and one inside it,
+# on the kind of private network a household's router hands out.
 REMOTE = "203.0.113.7"
-HOUSEHOLD = "192.168.1.20"
+HOUSEHOLD = str(ipaddress.ip_network("192.168.1.0/24")[20])
 # A token nobody holds.
 UNKNOWN_TOKEN = "0" * 32
 
@@ -377,11 +380,8 @@ class Rig:
 
     def pinned_context(self) -> ssl.SSLContext:
         """Trust in the one certificate written beside the door, and nothing else,
-        the way a client pins the door. The name is not checked: a pinned
-        certificate is the identity."""
-        context = ssl.create_default_context(cafile=str(self.workdir / door_pair.CERTIFICATE))
-        context.check_hostname = False
-        return context
+        the way a client pins the door, for the address it is asked at."""
+        return ssl.create_default_context(cafile=str(self.workdir / door_pair.CERTIFICATE))
 
     def ask_household(self, port: int, method: str, path: str, headers: dict[str, str]) -> Answer:
         context = self.pinned_context() if port == TLS else None
@@ -394,7 +394,7 @@ class Rig:
         command line.
         """
         env = {f"DOOR_HEADER_{number}": f"{name}: {value}" for number, (name, value) in enumerate(headers.items())}
-        env["DOOR_URL"] = f"http://{DOOR}:{PLAIN}{path}"
+        env["DOOR_URL"] = f"{SCHEME}://{DOOR}:{PLAIN}{path}"
         env["DOOR_METHOD"] = method
         script = (
             'set -- -s -X "$DOOR_METHOD" -w "\\n%{http_code} %{content_type}"; '
@@ -418,7 +418,7 @@ class Rig:
 
     def presented_fingerprint(self) -> str:
         with socket.create_connection((HOST, self.ports[TLS]), timeout=ATTEMPT_TIMEOUT_S) as raw, \
-                self.pinned_context().wrap_socket(raw) as wrapped:
+                self.pinned_context().wrap_socket(raw, server_hostname=HOST) as wrapped:
             der = wrapped.getpeercert(binary_form=True) or b""
         return hashlib.sha256(der).hexdigest()
 
@@ -445,7 +445,7 @@ def id_pattern(item: str) -> str:
     return "-?".join((item[:8], item[8:12], item[12:16], item[16:20], item[20:]))
 
 
-def stand_in(open_item: str, closed_item: str, token: str) -> str:
+def stand_in(open_item: str, token: str) -> str:
     """Jellyfin's answers to the door's question, and a record of everything else.
 
     The member here may not play from outside the house, so a question naming
@@ -500,6 +500,21 @@ def verdict(answer: Answer, stand_in_behind: bool) -> str | None:
     return None
 
 
+def told_problems(rig: Rig, case: Case, where: str, answer: Answer) -> list[str]:
+    """What Jellyfin was told about a request the door passed: reached from the
+    door's fixed address, and, from inside the door's network, the client only
+    the proxy may name."""
+    problems: list[str] = []
+    forwarded, origin = told(answer)
+    if origin != rig.place.door[DOOR_UPSTREAM]:
+        problems.append(f"{where}: Jellyfin was reached from {origin}, not the door's fixed address "
+                        f"{rig.place.door[DOOR_UPSTREAM]}, the one it trusts")
+    expected = {FROM_PROXY: case.forwarded_for, FROM_NEIGHBOUR: rig.place.neighbour}.get(case.origin)
+    if expected is not None and forwarded != expected:
+        problems.append(f"{where}: Jellyfin was told the client is {forwarded!r}, not {expected!r}")
+    return problems
+
+
 def judge(rig: Rig, items: tuple[str, str], token: str) -> list[str]:
     """Every case on every port it is asked on, against its verdict and, for each
     that passed, against what Jellyfin was told about the client."""
@@ -513,18 +528,10 @@ def judge(rig: Rig, items: tuple[str, str], token: str) -> list[str]:
             where = f"{case.name} on {port}"
             if got != case.expect:
                 problems.append(f"{where}: expected the door to {case.expect}, and it answered {answer.status}")
-                continue
-            if got != PASS:
-                continue
-            forwarded, origin = told(answer)
-            if origin != rig.place.door[DOOR_UPSTREAM]:
-                problems.append(f"{where}: Jellyfin was reached from {origin}, not the door's fixed address "
-                                f"{rig.place.door[DOOR_UPSTREAM]}, the one it trusts")
-            expected = {FROM_PROXY: case.forwarded_for, FROM_NEIGHBOUR: rig.place.neighbour}.get(case.origin)
-            if expected is not None and forwarded != expected:
-                problems.append(f"{where}: Jellyfin was told the client is {forwarded!r}, not {expected!r}")
-            if case.origin == FROM_HOUSEHOLD:
-                households.add(forwarded)
+            elif got == PASS:
+                problems += told_problems(rig, case, where, answer)
+                if case.origin == FROM_HOUSEHOLD:
+                    households.add(told(answer)[0])
     if len(households) != 1 or households & {REMOTE, HOUSEHOLD, ""} or any("," in one for one in households):
         problems.append(f"household requests named {sorted(households)} to Jellyfin; each should name the one "
                         "address the device connected from, and nothing it claimed")
@@ -563,7 +570,7 @@ def rigged() -> Iterator[tuple[Rig, tuple[str, str], str]]:
     with Rig(layout()) as rig:
         stand = rig.workdir / "stand-in"
         stand.mkdir()
-        (stand / "Caddyfile").write_text(stand_in(*items, token), encoding="utf-8")
+        (stand / "Caddyfile").write_text(stand_in(items[0], token), encoding="utf-8")
         rig.start_upstream(door_image(), ["-v", f"{stand}:/etc/caddy:ro"])
         yield rig, items, token
 
@@ -614,14 +621,13 @@ def recordings_caught() -> int:
     refused = next(case for case in CASES if case.expect == REFUSE)
     with tempfile.TemporaryDirectory() as tmp:
         directory = pathlib.Path(tmp)
-        for path in RECORDINGS.glob("*.json"):
-            shutil.copy2(path, directory / path.name)
+        for case in CASES:
+            shutil.copyfile(RECORDINGS / f"{case.name}.json", directory / f"{case.name}.json")
         if held_to_recordings(directory):
             print("::error::self-test: the recordings as committed were refused")
             return 1
-        flipped = json.loads((directory / f"{refused.name}.json").read_text(encoding="utf-8"))
-        flipped["door"]["status"] = 200
-        (directory / f"{refused.name}.json").write_text(json.dumps(flipped), encoding="utf-8")
+        passed = {"request": {"path": refused.path}, "door": {"status": 200}}
+        (directory / f"{refused.name}.json").write_text(json.dumps(passed), encoding="utf-8")
         (directory / f"{CASES[-1].name}.json").unlink()
         (directory / "no-such-case.json").write_text("{}", encoding="utf-8")
         found = held_to_recordings(directory)

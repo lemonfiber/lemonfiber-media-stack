@@ -9,7 +9,6 @@ import ipaddress
 import json
 import os
 import pathlib
-import re
 import subprocess
 
 from manifest_rules import grants_of
@@ -65,7 +64,7 @@ DOOR_NETWORKS = {"door": {"caddy"}, "door-upstream": {"jellyfin"}}
 DOOR_UPSTREAM = "door-upstream"
 # Where the door's trust in the proxy is written.
 DOOR_CADDYFILE = pathlib.PurePosixPath("config/door/Caddyfile")
-TRUSTED = re.compile(r"(?m)^\s*trusted_proxies\s+static\s+(.+?)\s*$")
+TRUSTED = ["trusted_proxies", "static"]
 
 
 def load_compose_model(report: Report) -> dict | None:
@@ -438,29 +437,31 @@ def fixed_address(service: dict, network: str) -> str | None:
     return attached.get("ipv4_address")
 
 
+def fixed_outside_handed_out(network: str, pool: dict, compose: dict, report: Report) -> None:
+    """Every fixed address on one network inside its subnet and outside the range
+    Docker hands out, so no container is given one by chance."""
+    subnet = ipaddress.ip_network(pool["subnet"])
+    handed_out = ipaddress.ip_network(pool["ip_range"])
+    for sid, service in sorted(compose.items()):
+        address = fixed_address(service, network)
+        if address is not None and (ipaddress.ip_address(address) not in subnet
+                                    or ipaddress.ip_address(address) in handed_out):
+            report.fail(f"service {sid}", f"is fixed at {address} on {network!r}, which is not in {subnet} "
+                        f"outside {handed_out}; Docker could hand it to another container", "D11-R2")
+
+
 def door_addressing(model: dict, trusted: list[str], report: Report) -> None:
-    """Each fixed address on the door's networks inside its subnet and outside the
-    range Docker hands out, so no container is given one by chance; the door
-    holding one on each network; and the door trusting the proxy's alone."""
+    """The door's networks holding fixed addresses only where Docker never hands
+    one out, the door holding one on each, and the door trusting the proxy's alone."""
     compose = model.get("services", {})
     networks = model.get("networks") or {}
     where = f"service {DOOR}"
     for network in sorted(DOOR_NETWORKS):
         pools = ((networks.get(network) or {}).get("ipam") or {}).get("config") or []
-        if not report.check(len(pools) == 1 and pools[0].get("subnet") and pools[0].get("ip_range"), where,
-                            f"{network!r} states no single subnet and ip_range, so no address on it is fixed",
-                            "D11-R2"):
-            continue
-        subnet = ipaddress.ip_network(pools[0]["subnet"])
-        handed_out = ipaddress.ip_network(pools[0]["ip_range"])
-        for sid, service in sorted(compose.items()):
-            address = fixed_address(service, network)
-            if address is None:
-                continue
-            held = ipaddress.ip_address(address)
-            report.check(held in subnet and held not in handed_out, f"service {sid}",
-                         f"is fixed at {address} on {network!r}, which is not in {subnet} outside "
-                         f"{handed_out}; Docker could hand it to another container", "D11-R2")
+        if report.check(len(pools) == 1 and pools[0].get("subnet") and pools[0].get("ip_range"), where,
+                        f"{network!r} states no single subnet and ip_range, so no address on it is fixed",
+                        "D11-R2"):
+            fixed_outside_handed_out(network, pools[0], compose, report)
         report.check(fixed_address(compose.get(DOOR, {}), network) is not None, where,
                      f"holds no fixed address on {network!r}", "D11-R2")
     proxy = fixed_address(compose.get("caddy", {}), "door")
@@ -491,5 +492,5 @@ def validate_door(model: dict, report: Report) -> None:
                  "off the host", "D11-R2")
     caddyfile = ROOT / DOOR_CADDYFILE
     text = caddyfile.read_text(encoding="utf-8") if caddyfile.is_file() else ""
-    trusted = [address for line in TRUSTED.findall(text) for address in line.split()]
+    trusted = [word for line in text.splitlines() if (words := line.split())[:2] == TRUSTED for word in words[2:]]
     door_addressing(model, trusted, report)

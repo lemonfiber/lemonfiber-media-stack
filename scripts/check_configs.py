@@ -20,6 +20,7 @@ import json
 import os
 import pathlib
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -57,7 +58,7 @@ def validate_caddyfile(path: pathlib.Path, service_id: str = "caddy") -> tuple[b
     """
     with tempfile.TemporaryDirectory() as tmp:
         directory = pathlib.Path(tmp)
-        (directory / "Caddyfile").write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
+        shutil.copyfile(path, directory / "Caddyfile")
         door_pair.write(directory)
         result = subprocess.run(
             [

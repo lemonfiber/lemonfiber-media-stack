@@ -18,6 +18,8 @@ import subprocess
 
 CERTIFICATE = "certificate.pem"
 KEY = "key.pem"
+# The names a check asks the door at, so it verifies the name as well as the pin.
+NAMES = "subjectAltName=DNS:door,DNS:localhost,IP:127.0.0.1"
 # What lemonfiber writes into, relative to the stack root.
 DIRECTORY = pathlib.PurePosixPath("config/door")
 
@@ -37,7 +39,7 @@ def write(directory: pathlib.Path) -> list[pathlib.Path]:
                    check=True, capture_output=True)
     key.chmod(0o600)
     subprocess.run([openssl, "req", "-new", "-x509", "-key", str(key), "-out", str(certificate),
-                    "-days", "1", "-subj", "/CN=door"],
+                    "-days", "1", "-subj", "/CN=door", "-addext", NAMES],
                    check=True, capture_output=True)
     return [certificate, key]
 

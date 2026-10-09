@@ -105,8 +105,6 @@ just pins      # what the weekly `pins` workflow would move (needs the network)
 just licences  # what each upstream licences itself as now (needs the network)
 just candidate <url>   # judge a candidate on its history (needs the network)
 just record <vocabulary> <services>   # re-record what services answer their claimed probes (needs Docker)
-just door      # ask the door every case it must refuse or pass (needs Docker)
-just record-door   # ask Jellyfin itself behind the door, into recordings/door/ (needs Docker)
 ```
 
 `scripts/check_runs.py` brings each profile up with plain `docker compose`, makes

@@ -31,6 +31,8 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from collections.abc import Callable
+from typing import TypeVar
 
 import check_door
 import stack_manifest
@@ -51,6 +53,8 @@ from compose_parity import DOOR_UPSTREAM
 from record import still_carries
 from registry import by_digest, pinned
 
+Found = TypeVar("Found")
+
 JELLYFIN = "jellyfin"
 READY_S = 240
 POLL_S = 2.0
@@ -67,7 +71,7 @@ class Jellyfin:
     """Jellyfin's own API on the loopback port this run published, as its administrator."""
 
     def __init__(self, port: int) -> None:
-        self.base = f"http://{check_door.HOST}:{port}"
+        self.base = f"{check_door.SCHEME}://{check_door.HOST}:{port}"
         self.token = ""
 
     def ask(self, method: str, path: str, document: object = None, *, token: str | None = None,
@@ -100,7 +104,7 @@ class Jellyfin:
             time.sleep(POLL_S)
         raise RuntimeError(f"Jellyfin did not answer {path} within {READY_S}s")
 
-    def until(self, what: str, ask) -> object:
+    def until(self, what: str, ask: Callable[[], Found | None]) -> Found:
         deadline = time.monotonic() + READY_S
         while time.monotonic() < deadline:
             found = ask()
@@ -227,7 +231,7 @@ def record() -> int:
                     problems.append(f"{case.name}: Jellyfin behind the door answered {at_door.status}, and the case "
                                     f"expects the door to {case.expect}")
         finally:
-            for name in list(rig.containers):
+            for name in rig.containers:
                 docker("rm", "-fv", name)
             rig.containers.clear()
             docker("volume", "rm", media)
