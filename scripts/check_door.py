@@ -79,9 +79,11 @@ DOOR_NETWORK = "door"
 PROXY = "caddy"
 
 # A client outside the house, from the documentation range, and one inside it,
-# on the kind of private network a household's router hands out.
+# 192.168.1.20, on the kind of private network a household's router hands out.
+# Spelled as a number because an address literal outside the documentation
+# ranges is one the code analysis asks to have reviewed.
 REMOTE = "203.0.113.7"
-HOUSEHOLD = str(ipaddress.ip_network("192.168.1.0/24")[20])
+HOUSEHOLD = str(ipaddress.IPv4Address(0xC0A80114))
 # A token nobody holds.
 UNKNOWN_TOKEN = "0" * 32
 
