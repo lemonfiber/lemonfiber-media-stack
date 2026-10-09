@@ -20,10 +20,11 @@
 
 ---
 
-This repository defines a self-hosted media stack of 22 services: twenty
+This repository defines a self-hosted media stack of 23 services: twenty
 open-source projects, such as Prowlarr, SABnzbd, qBittorrent, Sonarr, Radarr,
-Jellyfin and Seerr, plus two small services lemonfiber builds for it. Every image
-is pinned to an exact version.
+Jellyfin and Seerr, with Caddy run twice, as the proxy and as Jellyfin's door,
+plus two small services lemonfiber builds for it. Every image is pinned to an
+exact version.
 
 The [`lemonfiber`](https://github.com/lemonfiber/lemonfiber) tool sets this
 stack up, wires the services together and checks them. You do not need it: the
@@ -49,6 +50,23 @@ docker compose --profile media up -d
 That starts the library services, with no third-party accounts needed:
 Jellyfin on port 8096, plus Seerr, Navidrome, Audiobookshelf and
 Calibre-Web-Automated. `.env.example` documents every variable.
+
+Jellyfin is reached through its door, which publishes 8096 and 8920 and asks
+Jellyfin, before any item's stream or picture goes on, whether the session
+presented may see that item. Its TLS port reads a certificate and key from
+`config/door/`, which lemonfiber writes. Without lemonfiber, make your own pair
+before `up`:
+
+```sh
+openssl ecparam -name prime256v1 -genkey -noout -out config/door/key.pem
+openssl req -new -x509 -key config/door/key.pem -out config/door/certificate.pem \
+        -days 825 -subj /CN=door
+```
+
+Jellyfin trusts the door's fixed address, 10.80.96.18, to say which client a
+request came from. Set it under Dashboard → Networking → Known proxies, and
+restart Jellyfin, so its local-network rules see the household device rather
+than the door.
 
 ### Forms
 
@@ -98,7 +116,7 @@ import silently becomes a copy. CI rejects a change that does this.
 | `compose/_common.yml` | Shared service defaults, reached through `extends:` |
 | `.env.example` | Every variable, documented |
 | `stacks/` | An overlay for NAS and copy mode |
-| `config/` | Starting configuration for Recyclarr, Homepage, Caddy and SABnzbd |
+| `config/` | Starting configuration for Recyclarr, Homepage, Caddy, the door and SABnzbd |
 | `recordings/` | Recorded answers from each service, which prove what it can do |
 | `scripts/` | The checks CI runs, each runnable locally through `just` |
 

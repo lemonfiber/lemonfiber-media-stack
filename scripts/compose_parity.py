@@ -5,6 +5,7 @@ lemonfiber's own services held to the containment their ADRs state.
 
 from __future__ import annotations
 
+import ipaddress
 import json
 import os
 import pathlib
@@ -52,6 +53,18 @@ ONLY_THROUGH: dict[str, tuple[str, set[str]]] = {
     "seerr": ("request-gate", {"sonarr", "radarr", "jellyfin"}),
 }
 ROOT_USERS = {"0", "root"}
+
+# The door, every network it is on with every other service on that network, and
+# the network whose fixed address of the door's Jellyfin trusts to name the
+# client. Jellyfin reaches nobody through it and the proxy reaches Jellyfin only
+# through it, and both trust exactly one fixed address to say who the client is:
+# Jellyfin the door's on `door-upstream`, the door the proxy's on `door`.
+DOOR = "door"
+DOOR_NETWORKS = {"door": {"caddy"}, "door-upstream": {"jellyfin"}}
+DOOR_UPSTREAM = "door-upstream"
+# Where the door's trust in the proxy is written.
+DOOR_CADDYFILE = pathlib.PurePosixPath("config/door/Caddyfile")
+TRUSTED = ["trusted_proxies", "static"]
 
 
 def load_compose_model(report: Report) -> dict | None:
@@ -144,6 +157,7 @@ def validate_parity(manifest: dict, model: dict, report: Report) -> None:
     validate_listening(declared, compose, gateway_of, report)
     validate_gateways(declared, compose, gateway_of, report)
     validate_confinement(declared, model, report)
+    validate_door(model, report)
 
 
 def networks_of(service: dict) -> set[str]:
@@ -415,3 +429,68 @@ def validate_gateways(declared: dict, compose: dict, gateway_of: dict, report: R
                 "the killswitch, and lemonfiber would report it as leaking",
                 "C2-R12",
             )
+
+
+def fixed_address(service: dict, network: str) -> str | None:
+    """The address a resolved service is pinned to on one network, if any."""
+    attached = (service.get("networks") or {}).get(network) or {}
+    return attached.get("ipv4_address")
+
+
+def fixed_outside_handed_out(network: str, pool: dict, compose: dict, report: Report) -> None:
+    """Every fixed address on one network inside its subnet and outside the range
+    Docker hands out, so no container is given one by chance."""
+    subnet = ipaddress.ip_network(pool["subnet"])
+    handed_out = ipaddress.ip_network(pool["ip_range"])
+    for sid, service in sorted(compose.items()):
+        address = fixed_address(service, network)
+        if address is not None and (ipaddress.ip_address(address) not in subnet
+                                    or ipaddress.ip_address(address) in handed_out):
+            report.fail(f"service {sid}", f"is fixed at {address} on {network!r}, which is not in {subnet} "
+                        f"outside {handed_out}; Docker could hand it to another container", "D11-R2")
+
+
+def door_addressing(model: dict, trusted: list[str], report: Report) -> None:
+    """The door's networks holding fixed addresses only where Docker never hands
+    one out, the door holding one on each, and the door trusting the proxy's alone."""
+    compose = model.get("services", {})
+    networks = model.get("networks") or {}
+    where = f"service {DOOR}"
+    for network in sorted(DOOR_NETWORKS):
+        pools = ((networks.get(network) or {}).get("ipam") or {}).get("config") or []
+        if report.check(len(pools) == 1 and pools[0].get("subnet") and pools[0].get("ip_range"), where,
+                        f"{network!r} states no single subnet and ip_range, so no address on it is fixed",
+                        "D11-R2"):
+            fixed_outside_handed_out(network, pools[0], compose, report)
+        report.check(fixed_address(compose.get(DOOR, {}), network) is not None, where,
+                     f"holds no fixed address on {network!r}", "D11-R2")
+    proxy = fixed_address(compose.get("caddy", {}), "door")
+    expected = [proxy] if proxy else []
+    report.check(trusted == expected, where,
+                 f"{DOOR_CADDYFILE} trusts {trusted} to name the client, and the proxy is fixed at "
+                 f"{proxy or 'no address'}; the door trusts the proxy's fixed address and no other", "D11-R2")
+
+
+def validate_door(model: dict, report: Report) -> None:
+    """The door alone between the household and Jellyfin, on the networks stated
+    for it, at the fixed addresses each side trusts."""
+    compose = model.get("services", {})
+    if DOOR not in compose:
+        return
+    where = f"service {DOOR}"
+    joined = networks_of(compose[DOOR])
+    report.check(joined == set(DOOR_NETWORKS), where,
+                 f"is on {sorted(joined)}; it is on {sorted(DOOR_NETWORKS)} and no other, so it reaches "
+                 "Jellyfin from the one address Jellyfin trusts", "D11-R2")
+    for network in sorted(joined & set(DOOR_NETWORKS)):
+        peers = {other for other, service in compose.items() if other != DOOR and network in networks_of(service)}
+        report.check(peers == DOOR_NETWORKS[network], where,
+                     f"shares {network!r} with {sorted(peers)}; only {sorted(DOOR_NETWORKS[network])} belong there",
+                     "D11-R2")
+    report.check(bool(((model.get("networks") or {}).get(DOOR_UPSTREAM) or {}).get("internal")), where,
+                 f"{DOOR_UPSTREAM!r} is not internal; it carries the door's questions to Jellyfin and nothing "
+                 "off the host", "D11-R2")
+    caddyfile = ROOT / DOOR_CADDYFILE
+    text = caddyfile.read_text(encoding="utf-8") if caddyfile.is_file() else ""
+    trusted = [word for line in text.splitlines() if (words := line.split())[:2] == TRUSTED for word in words[2:]]
+    door_addressing(model, trusted, report)

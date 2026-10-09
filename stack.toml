@@ -21,6 +21,7 @@ include = [
   "services/bindery.toml",
   "services/bazarr.toml",
   "services/jellyfin.toml",
+  "services/door.toml",
   "services/seerr.toml",
   "services/request-gate.toml",
   "services/decline.toml",
@@ -237,7 +238,7 @@ asks = "library.curate"
 each = true
 
 # ── By name ──────────────────────────────────────────────────────────────────
-# Seven links that are genuinely about one service each, and say so.
+# Eight links that are genuinely about one service each, and say so.
 
 [[wiring]]
 by = "qbittorrent"
@@ -273,6 +274,11 @@ why = "The same, in Radarr's terms."
 by = "decline"
 to = "jellyfin"
 why = "It makes three of Jellyfin's own calls, reading an account and its activity log and writing the account's policy back disabled, with a key lemonfiber minted for it alone. What it acts on is Jellyfin, not whatever serves identity."
+
+[[wiring]]
+by = "door"
+to = "jellyfin"
+why = "It asks Jellyfin's own question, an item fetched with the session a request presents, and passes what it lets through to Jellyfin's own routes, which it names path by path. What it guards is Jellyfin, not whatever serves media."
 
 # ─────────────────────────── Removed (1) ─────────────────────────────────────
 # What the catalogue used to carry, why it went, and what took the job over. A

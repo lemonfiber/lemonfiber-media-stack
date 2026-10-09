@@ -1,0 +1,24 @@
+{
+  "recorded_from": "caddy@sha256:3422ce6de165df66534f9b9ba50efaf457114ec961763cc52f5dbdaac2972d73",
+  "behind": "jellyfin/jellyfin@sha256:aefb67e6a7ff1debdd154a78a7bbb780fd0c873d8639210a7f6a2016ad2b35db",
+  "note": "A household device naming a client outside the house in X-Forwarded-For. The door trusts nobody but the proxy to say that, so Jellyfin is told the device's own address.",
+  "request": {
+    "method": "GET",
+    "path": "/Videos/{open}/stream?static=true",
+    "presents": "the member's session, in the Authorization header",
+    "from": "household",
+    "forwarded_for": "203.0.113.7"
+  },
+  "door": {
+    "status": 200,
+    "headers": {
+      "content-type": "video/mp4"
+    }
+  },
+  "jellyfin_alone": {
+    "status": 200,
+    "headers": {
+      "content-type": "video/mp4"
+    }
+  }
+}
