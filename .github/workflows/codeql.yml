@@ -13,7 +13,7 @@ on:
   # branch.
   merge_group:
   schedule:
-    - cron: "0 6 * * 2"
+    - cron: "40 6 * * 2"
 permissions:
   contents: read
 # A pull request pushed again cancels the run on its old head, which nobody
@@ -25,6 +25,7 @@ concurrency:
 jobs:
   analyze:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       security-events: write
     steps:
