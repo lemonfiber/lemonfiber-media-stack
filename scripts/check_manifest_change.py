@@ -196,7 +196,8 @@ def reaffirmations(messages: str) -> set[str]:
 
 
 def read_at(base: str, wanted: str) -> tuple[bool, str]:
-    """What git says about `base` — the manifest there, or the messages since.
+    """What git says about `base` — the manifest there, the messages since, or the
+    commits up to it that changed the manifest, newest first.
 
     The base comes from a command line: this is run by hand and by `just
     changes` as well as by a workflow, so the workflow checking the shape of its
@@ -207,7 +208,7 @@ def read_at(base: str, wanted: str) -> tuple[bool, str]:
     pattern defined elsewhere, so a shared one gets a guarded call reported as
     unguarded — and a second caller can always forget to make the call.
 
-    A refusal is a failure and never a skip. The two things git is asked for are
+    A refusal is a failure and never a skip. The things git is asked for are
     built here from that one value and literals, so a base that got past this
     would be the only way an argument could arrive.
     """
@@ -221,6 +222,10 @@ def read_at(base: str, wanted: str) -> tuple[bool, str]:
 
     if wanted == "messages":
         result = git("log", "--format=%B", f"{base}..HEAD")
+        return result.returncode == 0, (result.stdout if result.returncode == 0 else result.stderr.strip())
+
+    if wanted == "revisions":
+        result = git("log", "--format=%H", base, "--", STACK_TOML, stack_manifest.SERVICES)
         return result.returncode == 0, (result.stdout if result.returncode == 0 else result.stderr.strip())
 
     # The manifest is its root and the service files the root includes, each read as
