@@ -34,11 +34,16 @@ concurrency:
 jobs:
   bump:
     runs-on: ubuntu-latest
+    outputs:
+      branch: ${{ steps.commit.outputs.branch }}
+      head: ${{ steps.commit.outputs.head }}
+      title: ${{ steps.commit.outputs.title }}
+      body: ${{ steps.commit.outputs.body }}
     steps:
-      # `main` requires signed commits and only commits GitHub makes are signed,
-      # and a pull request opened with `GITHUB_TOKEN` triggers no workflows. Both
-      # want an app token.
-      - name: Mint a token that can open a pull request here
+      # `main` requires signed commits, and only a commit GitHub makes for an
+      # app is signed. This token writes that commit and nothing else; the pull
+      # request is opened in the next job, with a token of its own.
+      - name: Mint a token that can commit here
         id: token
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
@@ -46,6 +51,7 @@ jobs:
           private-key: ${{ secrets.RELEASE_APP_KEY }}
           owner: ${{ github.repository_owner }}
           repositories: ${{ github.event.repository.name }}
+          permission-contents: write
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -85,7 +91,8 @@ jobs:
         if: steps.move.outputs.moved == 'yes'
         run: python3 scripts/validate_manifest.py
 
-      - name: Put the change on the branch, signed, and open or update its pull request
+      - name: Put the change on the branch, signed
+        id: commit
         if: steps.move.outputs.moved == 'yes'
         env:
           GH_TOKEN: ${{ steps.token.outputs.token }}
@@ -173,18 +180,33 @@ jobs:
           fi
           gh api --method DELETE "repos/${REPO}/git/refs/heads/${staging}" >/dev/null 2>&1 || true
 
-          headline="$(cat "$RUNNER_TEMP/headline.txt")"
-          existing="$(gh pr list --repo "${REPO}" --head "${branch}" --state open --json number --jq '.[0].number // ""')"
-          if [ -n "$existing" ]; then
-            gh pr edit "${existing}" --repo "${REPO}" --title "${headline}" --body-file "$RUNNER_TEMP/body.md" >/dev/null
-            echo "::notice::#${existing} updated"
-          else
-            created="$(gh pr create --repo "${REPO}" --head "${branch}" --base main \
-              --title "${headline}" --body-file "$RUNNER_TEMP/body.md" --label dependencies)"
-            existing="${created##*/}"
-            echo "::notice::opened #${existing}"
-          fi
+          # Handed to the next job, which opens or edits the pull request. The
+          # delimiter is random, so no line of the body can end the value.
+          delimiter="body_$(openssl rand -hex 16)"
+          {
+            echo "branch=${branch}"
+            echo "head=${built}"
+            echo "title=$(cat "$RUNNER_TEMP/headline.txt")"
+            echo "body<<${delimiter}"
+            cat "$RUNNER_TEMP/body.md"
+            echo "${delimiter}"
+          } >> "$GITHUB_OUTPUT"
 
-          gh pr merge "${existing}" --repo "${REPO}" --auto \
-            && echo "auto-merge armed on #${existing}" \
-            || echo "::warning::could not arm auto-merge on #${existing}; it waits for a maintainer."
+  # The pull request is opened, or the open one edited, only where it is this
+  # bump's own: the release app opened it from this repository's branch and it
+  # is at the commit above (OPS-R87). It is armed to merge at that commit.
+  pull-request:
+    needs: bump
+    if: needs.bump.outputs.head != ''
+    permissions:
+      contents: read
+    uses: lemonfiber/spec/.github/workflows/rolling-pull-request.yml@be0b484aa5c2a7e2a6cee4b33866143634e6e1df # v1.0.70
+    with:
+      branch: ${{ needs.bump.outputs.branch }}
+      head: ${{ needs.bump.outputs.head }}
+      title: ${{ needs.bump.outputs.title }}
+      body: ${{ needs.bump.outputs.body }}
+      labels: dependencies
+      auto-merge: true
+    secrets:
+      RELEASE_APP_KEY: ${{ secrets.RELEASE_APP_KEY }}

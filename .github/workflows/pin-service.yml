@@ -1,0 +1,257 @@
+# One service's pin moved, on its own branch, and its pull request opened or
+# edited (OPS-R87). `pins` calls this once for each service its plan names, so a
+# bump that fails holds back that service and nothing else.
+name: pin-service
+
+on:
+  workflow_call:
+    inputs:
+      service:
+        description: The service id in the manifest whose pin moves.
+        type: string
+        required: true
+    secrets:
+      RELEASE_APP_KEY:
+        description: The release app's private key, which mints the token the commit and the pull request are written with.
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    outputs:
+      branch: ${{ steps.commit.outputs.branch }}
+      head: ${{ steps.commit.outputs.head }}
+      title: ${{ steps.commit.outputs.title }}
+      body: ${{ steps.commit.outputs.body }}
+    steps:
+      # `main` requires signed commits, and only a commit GitHub makes for an
+      # app is signed. This token writes that commit and nothing else; the pull
+      # request is opened in the next job, with a token of its own.
+      - name: Mint a token that can commit here
+        id: token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.RELEASE_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_APP_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+          permission-contents: write
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Move the pin
+        id: move
+        env:
+          SERVICE: ${{ inputs.service }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          # The service id comes from the plan, which read it from the manifest;
+          # held to an id's shape before it reaches a command line or a ref.
+          printf '%s' "$SERVICE" | grep -Eq '^[a-z0-9][a-z0-9-]{0,62}$' || {
+            echo "::error::'${SERVICE}' is not a service id"
+            exit 1
+          }
+          # Outside the checkout, so the commit below cannot carry it.
+          python3 scripts/pins.py --apply "$SERVICE" > "$RUNNER_TEMP/applied.json"
+          cat "$RUNNER_TEMP/applied.json"
+          if git diff --quiet; then
+            echo "moved=no" >> "$GITHUB_OUTPUT"
+            echo "::notice::${SERVICE} no longer moves; the registry answered differently since the plan."
+            exit 0
+          fi
+          echo "moved=yes" >> "$GITHUB_OUTPUT"
+
+      # A moved digest leaves every recording the service's claims name taken
+      # from an image the manifest no longer pins, and validate_manifest.py
+      # refuses each one (ARCH-R136). So they are re-recorded here, in the same
+      # change, from a fresh container of the new image, with the capability
+      # vocabulary of the lemonfiber commit the `claims` check judges against.
+      - name: The lemonfiber commit the claims are held to
+        id: judge
+        if: steps.move.outputs.moved == 'yes'
+        run: python3 scripts/judge.py --github-output >> "$GITHUB_OUTPUT"
+
+      - name: The capability vocabulary that commit publishes
+        if: steps.move.outputs.moved == 'yes'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: lemonfiber/lemonfiber
+          ref: ${{ steps.judge.outputs.commit }}
+          path: .judge
+          sparse-checkout: contract
+          persist-credentials: false
+
+      - name: The service's claims, re-recorded from the new image
+        if: steps.move.outputs.moved == 'yes'
+        env:
+          SERVICE: ${{ inputs.service }}
+        run: |
+          set -euo pipefail
+          # Untracked either way; removed so nothing of lemonfiber's can ride
+          # along with the commit below.
+          trap 'rm -rf .judge' EXIT
+          python3 scripts/record.py --self-test
+          claimed="$(python3 - "$SERVICE" <<'PY'
+          import pathlib
+          import sys
+
+          sys.path.insert(0, "scripts")
+          import stack_manifest
+
+          manifest = stack_manifest.load(pathlib.Path("."))
+          print(sum(len(service.get("claim", [])) for service in manifest["service"] if service["id"] == sys.argv[1]))
+          PY
+          )"
+          if [ "$claimed" = "0" ]; then
+            echo "::notice::${SERVICE} claims nothing, so there is nothing to re-record."
+            exit 0
+          fi
+          python3 scripts/record.py "$SERVICE" < .judge/contract/capability-vocabulary.json
+
+      # The same offline gate the pull request will meet, so a rewrite that
+      # breaks parity is reported here rather than as a red pull request.
+      - name: The manifest and the compose model still agree
+        if: steps.move.outputs.moved == 'yes'
+        run: python3 scripts/validate_manifest.py
+
+      - name: Put the change on the branch, signed
+        id: commit
+        if: steps.move.outputs.moved == 'yes'
+        env:
+          GH_TOKEN: ${{ steps.token.outputs.token }}
+          SERVICE: ${{ inputs.service }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          branch="chore/pin-${SERVICE}"
+          staging="${branch}-staging"
+          # The commit the files were read from, not whatever `main` is now: the
+          # change below carries whole files, and laid onto a later `main` they
+          # would undo whatever landed in between.
+          base="$(git rev-parse HEAD)"
+
+          # Built on a scratch ref and moved across in one step. Resetting the
+          # pull request's own branch to `main` first would leave it briefly
+          # holding no commits, and GitHub closes a pull request in that state.
+          if gh api "repos/${REPO}/git/ref/heads/${staging}" >/dev/null 2>&1; then
+            gh api --method PATCH "repos/${REPO}/git/refs/heads/${staging}" \
+              -F sha="${base}" -F force=true >/dev/null
+          else
+            gh api --method POST "repos/${REPO}/git/refs" \
+              -f ref="refs/heads/${staging}" -f sha="${base}" >/dev/null
+          fi
+
+          python3 - "$REPO" "$staging" "$base" "$RUNNER_TEMP" <<'PY' > "$RUNNER_TEMP/request.json"
+          import base64
+          import json
+          import subprocess
+          import sys
+
+          repo, branch, base, scratch = sys.argv[1:5]
+          applied = json.load(open(f"{scratch}/applied.json"))
+          move = applied["moves"][0]
+          reviewed = [f"Pin-reviewed: {sid}" for sid in applied["reviewed"]]
+          changed = subprocess.run(
+              ["git", "diff", "--name-only"], capture_output=True, text=True, check=True
+          ).stdout.split()
+          rerecorded = any(name.startswith("recordings/") for name in changed)
+          was, now = move["from"], move["to"]
+          if was["tag"] == now["tag"]:
+              headline = f"chore(pins): {move['id']} {now['tag']} rebuilt"
+              said = (
+                  f"{move['image']}:{now['tag']} was re-published, and its index is now "
+                  f"{now['digest']}. The release is the same; the build is newer."
+              )
+          else:
+              headline = f"chore(pins): {move['id']} {was['tag']} -> {now['tag']}"
+              said = (
+                  f"{move['image']}:{now['tag']} is the newest release in the major "
+                  f"{was['tag']} belongs to, and its index is {now['digest']}."
+              )
+          if rerecorded:
+              said += (
+                  " Its claims are re-recorded from that image, in a fresh container,"
+                  " so every recording names the digest the manifest now pins."
+              )
+          spec = "Spec: E1-R1, F2-R14, ARCH-R136" if rerecorded else "Spec: E1-R1, F2-R14"
+          body = "\n".join([
+              said,
+              "",
+              *reviewed,
+              spec,
+              "",
+              "Signed-off-by: lemonfiber release <release@lemonfiber.app>",
+          ])
+          print(json.dumps({
+              "query": (
+                  "mutation($input: CreateCommitOnBranchInput!) "
+                  "{ createCommitOnBranch(input: $input) { commit { oid } } }"
+              ),
+              "variables": {"input": {
+                  "branch": {"repositoryNameWithOwner": repo, "branchName": branch},
+                  "expectedHeadOid": base,
+                  "message": {"headline": headline, "body": body},
+                  "fileChanges": {"additions": [
+                      {"path": name, "contents": base64.b64encode(open(name, "rb").read()).decode()}
+                      for name in changed
+                  ]},
+              }},
+          }))
+          with open(f"{scratch}/headline.txt", "w") as handle:
+              handle.write(headline)
+          with open(f"{scratch}/body.md", "w") as handle:
+              handle.write(body.replace("Signed-off-by: lemonfiber release <release@lemonfiber.app>", "").rstrip())
+              handle.write("\n\nOpened by `pins`, which moves each pin to the newest release of its major.\n")
+          PY
+
+          built="$(gh api graphql --input "$RUNNER_TEMP/request.json" --jq '.data.createCommitOnBranch.commit.oid')"
+          if ! printf '%s' "$built" | grep -Eq '^[0-9a-f]{40}$'; then
+            echo "::error::the commit was not created; got '${built}'"
+            exit 1
+          fi
+
+          if gh api "repos/${REPO}/git/ref/heads/${branch}" >/dev/null 2>&1; then
+            gh api --method PATCH "repos/${REPO}/git/refs/heads/${branch}" \
+              -F sha="${built}" -F force=true >/dev/null
+          else
+            gh api --method POST "repos/${REPO}/git/refs" \
+              -f ref="refs/heads/${branch}" -f sha="${built}" >/dev/null
+          fi
+          gh api --method DELETE "repos/${REPO}/git/refs/heads/${staging}" >/dev/null 2>&1 || true
+
+          # Handed to the next job, which opens or edits the pull request. The
+          # delimiter is random, so no line of the body can end the value.
+          delimiter="body_$(openssl rand -hex 16)"
+          {
+            echo "branch=${branch}"
+            echo "head=${built}"
+            echo "title=$(cat "$RUNNER_TEMP/headline.txt")"
+            echo "body<<${delimiter}"
+            cat "$RUNNER_TEMP/body.md"
+            echo "${delimiter}"
+          } >> "$GITHUB_OUTPUT"
+
+  # The pull request is opened, or the open one edited, only where it is this
+  # bump's own: the release app opened it from this repository's branch and it
+  # is at the commit above (OPS-R87). It is armed to merge at that commit.
+  pull-request:
+    needs: bump
+    if: needs.bump.outputs.head != ''
+    permissions:
+      contents: read
+    uses: lemonfiber/spec/.github/workflows/rolling-pull-request.yml@be0b484aa5c2a7e2a6cee4b33866143634e6e1df # v1.0.70
+    with:
+      branch: ${{ needs.bump.outputs.branch }}
+      head: ${{ needs.bump.outputs.head }}
+      title: ${{ needs.bump.outputs.title }}
+      body: ${{ needs.bump.outputs.body }}
+      labels: dependencies
+      auto-merge: true
+    secrets:
+      RELEASE_APP_KEY: ${{ secrets.RELEASE_APP_KEY }}
