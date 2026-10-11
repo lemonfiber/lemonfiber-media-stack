@@ -34,6 +34,7 @@ concurrency:
 jobs:
   bump:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     outputs:
       branch: ${{ steps.commit.outputs.branch }}
       head: ${{ steps.commit.outputs.head }}
