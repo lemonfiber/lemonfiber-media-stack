@@ -17,3 +17,9 @@ without_it = "Remember a dozen URLs and ports"
 reaches = ""
 asks_for = "Nothing beyond this machine. It reads the other services' own APIs over the stack's internal network to draw their status."
 health = { kind = "http", path = "/", timeout_s = 60 }
+user_mode = "puid-env"
+config_path = "/app/config"
+
+[service.env]
+HOMEPAGE_ALLOWED_HOSTS = { setting = "homepage:allowed-hosts", default = "localhost:3000" }
+HOMEPAGE_VAR_LAN_HOST = { setting = "lan-host", default = "localhost" }

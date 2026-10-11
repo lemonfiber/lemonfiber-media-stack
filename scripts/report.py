@@ -13,6 +13,7 @@ class Report:
 
     def __init__(self) -> None:
         self.errors: list[str] = []
+        self.notes: list[str] = []
 
     def fail(self, where: str, message: str, requirement: str = "") -> None:
         suffix = f" ({requirement})" if requirement else ""
@@ -22,3 +23,7 @@ class Report:
         if not ok:
             self.fail(where, message, requirement)
         return ok
+
+    def note(self, where: str, message: str) -> None:
+        """Something found that fails nothing, and is said on every run."""
+        self.notes.append(f"{where}: {message}")

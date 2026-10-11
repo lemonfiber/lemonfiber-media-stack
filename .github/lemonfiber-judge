@@ -3,6 +3,6 @@
 # claims with the capability vocabulary it publishes, so both read the same
 # vocabulary. Moved by hand, in a change somebody reviews.
 #
-# lemonfiber/lemonfiber `main`, 2026-10-08: lemonfiber#935, which reads a manifest
-# written as a root and a file per service.
-ad4e5f20666a8a10e0d0ed61f6a1a6a118614162
+# lemonfiber/lemonfiber `main`, 2026-10-11: lemonfiber#1002, which reads every
+# service's container in the one typed service model.
+256bcc7bd5475c433542b8f6c63de66b43decdf0

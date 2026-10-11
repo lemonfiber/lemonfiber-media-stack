@@ -122,29 +122,30 @@ def validate_wiring(entry: dict, service_ids: set[str], provides_of: dict[str, l
 
 def validate_wirings(wirings: list, services: list, service_ids: set[str],
                      report: Report) -> None:
-    """Every link, and the one rule that holds the two halves together.
-
-    A `depends_on` is a link by any reading: it names a service, and Compose acts
-    on it. So one that is not also declared here would be a by-name wiring that
-    never had to say it was one — which is the whole of what this table is for.
-    """
+    """Every link between two of the stack's services."""
     provides_of = {
         str(service.get("id", UNNAMED)): service.get("provides", []) for service in services
     }
     seen: set[tuple] = set()
     for entry in wirings:
         validate_wiring(entry, service_ids, provides_of, seen, report)
+    validate_each_addressed(wirings, services, report)
 
-    named = {
-        (entry.get("by"), entry.get("to")) for entry in wirings if entry.get("to") is not None
-    }
+
+def validate_each_addressed(wirings: list, services: list, report: Report) -> None:
+    """A variable holds one address, so none names a capability its service asks
+    `each` of: the rule `crates/lemonfiber-plugin/src/refusing/asking.rs` holds a
+    plugin's `[[ask]]` to, held here to the stack's `[[wiring]]`."""
+    each = {(entry.get("by"), entry.get("asks")) for entry in wirings if entry.get("each")}
     for service in services:
         sid = service.get("id", UNNAMED)
-        for dep in service.get("depends_on", []):
+        env = service.get("env")
+        for name, value in (env.items() if isinstance(env, dict) else ()):
+            capability = value.get("url_of") if isinstance(value, dict) else None
             report.check(
-                (sid, dep) in named,
-                f"service {sid}",
-                f"depends_on {dep!r} and no [[wiring]] says so; an ordering edge names a "
-                "service, so it is a by-name wiring and has to be shown as one",
-                "F4-R12",
+                (sid, capability) not in each,
+                f"service {sid}.env.{name}",
+                f"asks for the address of {capability}, which {sid} asks each of; a variable holds "
+                "one address",
+                "ARCH-R232",
             )

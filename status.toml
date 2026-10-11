@@ -16,7 +16,7 @@ requirement = [
   { id = "B1-R2", state = "done", evidence = ["stack.toml", "scripts/check_forms.py"] },
   { id = "B1-R12", state = "partial", evidence = ["scripts/manifest_rules.py", "scripts/test_validate_manifest.py::manifest references a profile that was never declared"] },
   { id = "B1-R13", state = "partial", evidence = ["stack.toml", "scripts/check_forms.py"] },
-  { id = "B1-R14", state = "done", evidence = ["scripts/manifest_rules.py", "scripts/test_validate_manifest.py::crosses a profile boundary"] },
+  { id = "B1-R14", state = "done", evidence = ["scripts/compose_parity.py", "scripts/test_validate_manifest.py::crosses a profile boundary in compose"] },
   { id = "B1-R15", state = "partial", evidence = ["stack.toml"] },
   { id = "B1-R18", state = "partial", evidence = ["scripts/manifest_rules.py", "scripts/test_validate_manifest.py::memory_mib must be a whole number"] },
   { id = "C5-R4", state = "partial", evidence = ["stacks/compose.storage.nas.yml"] },
@@ -56,4 +56,6 @@ requirement = [
   { id = "ARCH-R137", state = "partial", evidence = ["scripts/judge.py"] },
   { id = "ARCH-R144", state = "partial", evidence = ["scripts/manifest_rules.py", "scripts/test_validate_manifest.py::declares an api but no listens"] },
   { id = "ARCH-R171", state = "done", evidence = ["services", "scripts/stack_manifest.py::layout_problems", "scripts/validate_manifest.py"] },
+  { id = "ARCH-R246", state = "partial", evidence = ["services", "scripts/container_rules.py::def retired", "scripts/model_parity.py::OPEN", "scripts/test_validate_manifest.py::ARCH-R246 depends_on, refused naming network.via", "scripts/test_service_model.py::ARCH-R246 a difference held open that no longer differs"] },
+  { id = "REPO-R93", state = "partial", evidence = ["scripts/check_runs.py::def posture_overlay", "scripts/container_rules.py::def written_posture", "scripts/check_runs.py::KNOWN_BROKEN"] },
 ]

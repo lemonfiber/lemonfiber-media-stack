@@ -15,3 +15,7 @@ without_it = "Tune quality profiles by hand"
 reaches = "the community quality-guide repository"
 asks_for = "Syncs the quality profiles on its own schedule — its own errand, not one anything else here sets off."
 health = { kind = "container" }
+user_mode = "uid"
+
+[service.env]
+CRON_SCHEDULE = { setting = "recyclarr:cron", default = "@daily" }

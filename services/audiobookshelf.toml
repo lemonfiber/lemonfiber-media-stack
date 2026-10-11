@@ -24,6 +24,11 @@ health = { kind = "http", path = "/healthcheck", timeout_s = 90 }
 # so what is kept is the password rather than the token.
 api = { kind = "audiobookshelf", key_source = "generated" }
 listens = 80
+takes_data = true
+
+[[service.mount]]
+from = "metadata"
+to = "/metadata"
 
 [[service.claim]]
 capability = "media.serve"

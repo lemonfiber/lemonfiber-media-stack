@@ -20,6 +20,8 @@ provides = ["download.usenet"]
 health = { kind = "http", path = "/api?mode=version", timeout_s = 60 }
 api = { kind = "sabnzbd", key_source = "config-ini", path = "/config/sabnzbd.ini" }
 listens = 8080
+takes_data = true
+user_mode = "puid-env"
 
 [[service.claim]]
 capability = "download.usenet"

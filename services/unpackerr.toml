@@ -15,3 +15,11 @@ without_it = "Some downloads never import"
 reaches = ""
 asks_for = "Nothing. It watches the download directories and extracts archived releases where it finds them, entirely on this machine."
 health = { kind = "container" }
+takes_data = true
+user_mode = "puid-env"
+
+[service.env]
+UMASK = { setting = "unpackerr:umask", default = "002" }
+UN_SONARR_0_URL = { url_of = "library.curate", files = "tv", native = "servarr" }
+UN_RADARR_0_URL = { url_of = "library.curate", files = "movies", native = "servarr" }
+UN_LIDARR_0_URL = { url_of = "library.curate", files = "music", native = "servarr" }

@@ -20,6 +20,8 @@ provides = ["indexer.search"]
 health = { kind = "http", path = "/internalapi/userinfos", timeout_s = 60 }
 api = { kind = "nzbhydra2", key_source = "config-yaml", path = "/config/nzbhydra.yml" }
 listens = 5076
+takes_data = true
+user_mode = "puid-env"
 
 [[service.claim]]
 capability = "indexer.search"

@@ -20,3 +20,6 @@ without_it = "An invitation carries no way to refuse it, and stays claimable unt
 reaches = ""
 asks_for = "Nothing beyond this machine. When an invitee refuses, it switches that one account off in Jellyfin, over a network the two share alone, and records the refusal for lemonfiber."
 health = { kind = "http", path = "/health", timeout_s = 30 }
+listens = 8080
+posture = "confined"
+mem_limit_mib = 64

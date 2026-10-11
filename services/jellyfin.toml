@@ -20,6 +20,12 @@ provides = ["media.serve", "identity.source"]
 health = { kind = "http", path = "/health", timeout_s = 120 }
 api = { kind = "jellyfin", key_source = "generated" }
 listens = 8096
+takes_data = true
+user_mode = "uid"
+
+[[service.mount]]
+from = "cache"
+to = "/cache"
 
 [[service.claim]]
 capability = "media.serve"

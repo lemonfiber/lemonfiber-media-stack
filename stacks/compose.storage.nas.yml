@@ -70,5 +70,7 @@ services:
     volumes: *nas-data
   audiobookshelf:
     volumes: *nas-data
+  navidrome:
+    volumes: *nas-data
   unpackerr:
     volumes: *nas-data

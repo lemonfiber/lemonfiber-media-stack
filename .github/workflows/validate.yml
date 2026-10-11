@@ -158,6 +158,12 @@ jobs:
           # the stack would be judging somebody else's change.
           submodules: false
 
+      # The default bundle's catalogue, which lemonfiber's build reads beside
+      # the stack, at the commit that lemonfiber commit pins it to. Public, so
+      # fetched without a credential.
+      - name: The catalogue lemonfiber builds the bundle from
+        run: git -C judge submodule update --init --depth 1 assets/plugins
+
       - name: This change, as the stack lemonfiber embeds
         run: |
           set -euo pipefail

@@ -23,6 +23,8 @@ health = { kind = "http", path = "/", timeout_s = 90 }
 # config directory of its own.
 api = { kind = "bazarr", key_source = "config-yaml", path = "/config/config/config.yaml" }
 listens = 6767
+takes_data = true
+user_mode = "puid-env"
 
 [[service.claim]]
 capability = "subtitles.fetch"

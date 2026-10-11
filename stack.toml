@@ -181,7 +181,9 @@ profiles = ["proxy"]
 # rather than wiring, and a plugin's service is given the same on the same terms.
 # The request gate has none either: it is how lemonfiber carries Seerr's asks to
 # Sonarr, Radarr and Jellyfin, not a capability of its own, so Seerr's wiring is
-# what states those links (ADR-0032 §5).
+# what states those links (ADR-0032 §5). qBittorrent's link to the tunnel is not
+# here either: `network = { via = "network.egress-guard" }` on its own service
+# asks for whatever fills that capability and runs inside its network.
 
 # ── Asks ─────────────────────────────────────────────────────────────────────
 # The links lemonfiber makes, when it seeds. Each is written against what the
@@ -218,6 +220,18 @@ asks = "library.curate"
 each = true
 
 [[wiring]]
+by = "prowlarr"
+asks = "indexer.proxy"
+
+[[wiring]]
+by = "bindery"
+asks = "download.usenet"
+
+[[wiring]]
+by = "bindery"
+asks = "download.torrent"
+
+[[wiring]]
 by = "bindery"
 asks = "indexer.search"
 filled_by = "prowlarr"
@@ -238,12 +252,7 @@ asks = "library.curate"
 each = true
 
 # ── By name ──────────────────────────────────────────────────────────────────
-# Eight links that are genuinely about one service each, and say so.
-
-[[wiring]]
-by = "qbittorrent"
-to = "gluetun"
-why = "It has no network namespace of its own — it is inside this one container's, which is what makes the tunnel a killswitch rather than a route. What is shared is a container, not an errand, so there is nothing for an ask to resolve to and nothing to substitute at."
+# Seven links that are genuinely about one service each, and say so.
 
 [[wiring]]
 by = "unpackerr"

@@ -35,17 +35,17 @@ list, as three templates reached through `extends:`:
 - **One `${DATA_ROOT}:/data` mount per service.** Never split downloads and media
   into separate mounts — it breaks hardlinks (ADR-0006). CI rejects it.
 - **One profile per service** (`B1-R1`); **no `depends_on` across profiles**
-  except `qbittorrent → gluetun`, which share the `torrent` profile (`B1-R14`).
+  (`B1-R14`). The one edge is qBittorrent's, inside the egress guard's network.
 - **Pinned by digest, never by tag alone** (`E1-R1`). `digest` is the
   multi-architecture index's, beside a non-floating `tag`, and the compose
   fragment pulls `image:tag@digest`. A digest that is not an index publishing
   `linux/amd64` and `linux/arm64` fails CI (`F2-R6`).
 - **`bind` matches the manifest tier** — admin services `loopback`, household
-  services `lan` (`C6`). Only Gluetun holds `NET_ADMIN`, and anything sharing its
-  profile must use `network_mode: service:gluetun` — a download client outside the
-  tunnel's namespace is one lemonfiber reports as leaking (`C2-R12`).
+  services `lan` (`C6`). Only Gluetun holds `NET_ADMIN`, by its `egress-guard`
+  shape, and anything sharing its profile must use `network_mode: service:gluetun`
+  — a download client outside the tunnel's namespace leaks (`C2-R12`).
 - The manifest and the Compose model must stay in parity — every service in one
-  is in the other, with the same image, tag, digest and profile.
+  is in the other, with the same image, tag, digest, profile and container.
 - **lemonfiber's own images run confined** (`C6-R20`, `C6-R22`). Each extends
   `confined`, mounts `./config/<id>:/config` alone, and is on exactly the
   networks its ADR names, as `CONFINED` in `scripts/compose_parity.py` states.
@@ -63,7 +63,8 @@ its own file and `include:` entry, with `project_directory: .`), its `[[service]
 in `services/<id>.toml`, named in `stack.toml`'s `include`, and its profile in the
 relevant forms. No code (`REPO-R23`).
 
-The `[[service]]` also says what the service can do — `provides`, in lemonfiber's
+The `[[service]]` declares its container in the service model (ADR-0043), as
+its Compose entry says it. It also says what the service can do — `provides`, in lemonfiber's
 published capability vocabulary — so wiring can ask for a capability rather than
 name a service. A service nothing asks anything (Recyclarr, Unpackerr, Homepage,
 Caddy, the door, the request gate, the decline service) declares nothing.
@@ -74,8 +75,7 @@ nothing (`F2-R10`).
 
 A service something reaches, or that reaches something, also needs a
 `[[wiring]]`: `by` where the link runs from, then `asks` (a capability, `each =
-true` to reach every filler) or `to` with a `why` (by name, the exception). CI
-refuses a `depends_on` no `[[wiring]]` shows.
+true` to reach every filler) or `to` with a `why` (by name, the exception).
 
 ## Bumping a pin, and removing a service
 
@@ -107,9 +107,9 @@ just candidate <url>   # judge a candidate on its history (needs the network)
 just record <vocabulary> <services>   # re-record what services answer their claimed probes (needs Docker)
 ```
 
-`scripts/check_runs.py` brings each profile up with plain `docker compose`, makes
-every service answer the probe its service file declares, and takes it down again;
-`torrent`, which needs a real VPN subscription, is left out of what CI fans over.
+`scripts/check_runs.py` brings each profile up with plain `docker compose`, each
+service under its declared posture (`REPO-R93`), makes it answer its probe, and
+takes it down again; `torrent`, which needs a VPN subscription, is left out.
 Its `KNOWN_BROKEN` register reports an entry rather than failing, until it works.
 
 `scripts/validate_manifest.py` reads `docker compose config`'s **resolved**
