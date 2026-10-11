@@ -212,6 +212,8 @@ def apply(moves: list[dict]) -> list[str]:
 
 # A newer tag in the same spelling and major, used by more than one self-test case.
 UNPACKERR_NEXT = "release-0.15.2"
+# Two fixed build tags of successive releases, used by more than one self-test case.
+SONARR_BUILD, SONARR_NEXT_BUILD = "4.0.20.3014-ls326", "4.0.21.3020-ls327"
 
 
 def choice_problems() -> list[str]:
@@ -220,7 +222,7 @@ def choice_problems() -> list[str]:
     published = [
         "latest", "4.0.15", "4.0.20", "4.0.21-develop", "4.0.20.3014-ls300", "5.0.0",
         "v3.41.3", "3.99.0", "10.11.11", "12.1", "12.0-rc7", UNPACKERR_NEXT, "release-1.0.0",
-        "V3.1.4", "V4.0.0", "0.64.2", "0.65.0", "4.0.20.3014-ls326", "4.0.21.3020-ls327",
+        "V3.1.4", "V4.0.0", "0.64.2", "0.65.0", SONARR_BUILD, SONARR_NEXT_BUILD,
         "5.0.0.4000-ls1", "4.0.21.3020", "5.2.4_v2.0.15-ls479", "5.2.5_v2.0.15-ls480", "5.2.5-libtorrentv1",
         "1.6.3-ls370",
     ]
@@ -234,14 +236,14 @@ def choice_problems() -> list[str]:
         ("4.0.20", "4.0.20"),         # already newest
         ("12.1", "12.1"),             # two numbers, and nothing newer in 12 spelled that way
         ("nightly", "nightly"),       # no number to compare
-        ("4.0.20.3014-ls326", "4.0.21.3020-ls327"),     # a later release's build
-        ("4.0.20.3014-ls400", "4.0.21.3020-ls327"),     # the version counts before the build
+        (SONARR_BUILD, SONARR_NEXT_BUILD),              # a later release's build
+        ("4.0.20.3014-ls400", SONARR_NEXT_BUILD),       # the version counts before the build
         ("5.2.4_v2.0.15-ls479", "5.2.5_v2.0.15-ls480"), # numbers in the suffix are not spelling
         ("v1.6.2-ls366", "v1.6.2-ls366"),               # nothing later spelled with a v
     ):
         if (got := newest_in_major(current, published)) != wanted:
             problems.append(f"from {current}: took {got}, wanted {wanted}")
-    if (got := newest_in_major("4.0.20.3014-ls300", ["4.0.20.3014-ls326", "4.0.20.3014"])) != "4.0.20.3014-ls326":
+    if (got := newest_in_major("4.0.20.3014-ls300", [SONARR_BUILD, "4.0.20.3014"])) != SONARR_BUILD:
         problems.append(f"from 4.0.20.3014-ls300: took {got}, wanted the later build 4.0.20.3014-ls326")
 
     for tag, wanted in (
