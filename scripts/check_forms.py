@@ -24,6 +24,10 @@ import stack_manifest
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 OVERLAYS = ("stacks/compose.storage.nas.yml",)
+# The overlay that moves the data root onto network storage, and the volume it
+# mounts at /data in place of the bind.
+STORAGE_OVERLAY = "stacks/compose.storage.nas.yml"
+STORAGE_VOLUME = "data"
 
 # Forms resolve with a data root and nothing else. This is the point of the
 # check, not an oversight: Compose interpolates the whole project before it
@@ -109,6 +113,21 @@ def judge(
     return None
 
 
+def unstored(model: dict, takes_data: set[str]) -> str | None:
+    """Every service that takes data mounts the storage overlay's volume at /data,
+    and nothing else does: a service the overlay misses keeps writing to the bind
+    while the rest of the library is on the network mount."""
+    stored = {
+        sid for sid, service in model.get("services", {}).items()
+        if any(volume.get("type") == "volume" and volume.get("source") == STORAGE_VOLUME
+               and volume.get("target") == "/data" for volume in service.get("volumes") or [])
+    }
+    if stored == takes_data:
+        return None
+    return (f"overlay {STORAGE_OVERLAY}: misses {sorted(takes_data - stored)} and mounts the volume on "
+            f"{sorted(stored - takes_data)}; it moves the data mount of exactly the services that take data")
+
+
 def self_test() -> int:
     """Each verdict `judge` gives, driven against a project it did not resolve.
 
@@ -142,6 +161,13 @@ def self_test() -> int:
     # nothing, and only this says which of the two this is.
     if judge("x", ["tv"], True, "", started, profile_of) is not None:
         problems.append("a form starting exactly its own profile was refused")
+
+    stored = {"type": "volume", "source": STORAGE_VOLUME, "target": "/data"}
+    model = {"services": {"sonarr": {"volumes": [stored]}, "navidrome": {"volumes": []}}}
+    if "misses ['navidrome']" not in (unstored(model, {"sonarr", "navidrome"}) or ""):
+        problems.append("a service that takes data and keeps its bind under the storage overlay was not named")
+    if unstored(model, {"sonarr"}) is not None:
+        problems.append("a storage overlay covering exactly the services that take data was refused")
 
     for problem in problems:
         print(f"::error::self-test: {problem}")
@@ -179,8 +205,12 @@ def main() -> int:
         ok, message, model = resolve(["*"], ["compose.yml", overlay], OVERLAY_ENV)
         if not ok:
             errors.append(f"overlay {overlay}: does not resolve:\n{message}")
-        else:
-            print(f"  ok   overlay {overlay}")
+            continue
+        takes_data = {s["id"] for s in manifest["service"] if s.get("takes_data")}
+        if overlay == STORAGE_OVERLAY and (wrong := unstored(model, takes_data)):
+            errors.append(wrong)
+            continue
+        print(f"  ok   overlay {overlay}")
 
     if errors:
         print()

@@ -21,6 +21,8 @@ provides = ["library.curate"]
 health = { kind = "http", path = "/ping", timeout_s = 90 }
 api = { kind = "servarr", key_source = "config-xml", path = "/config/config.xml", version = 3 }
 listens = 8989
+takes_data = true
+user_mode = "puid-env"
 
 [[service.claim]]
 capability = "library.curate"

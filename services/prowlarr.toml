@@ -20,6 +20,8 @@ provides = ["indexer.search"]
 health = { kind = "http", path = "/ping", timeout_s = 60 }
 api = { kind = "servarr", key_source = "config-xml", path = "/config/config.xml", version = 1 }
 listens = 9696
+takes_data = true
+user_mode = "puid-env"
 
 [[service.claim]]
 capability = "indexer.search"

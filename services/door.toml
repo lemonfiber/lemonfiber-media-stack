@@ -21,3 +21,10 @@ without_it = "Jellyfin answers on this machine only, and nothing else in the hou
 reaches = ""
 asks_for = "Nothing beyond this machine. It asks Jellyfin, beside it, whether the session a request presents may see the item it asks for, and fetches no certificate: it serves the one lemonfiber writes beside its configuration."
 health = { kind = "tcp", timeout_s = 30 }
+config_path = "/etc/caddy"
+config_ro = true
+tmpfs = ["/data", "/config"]
+user_mode = "uid"
+
+[[service.publish]]
+port = 8920

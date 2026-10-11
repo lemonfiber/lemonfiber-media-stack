@@ -9,7 +9,9 @@ whole of `F1-R1`: the stack is only operable without lemonfiber if it runs
 without lemonfiber, and resolving is not running.
 
 So this starts one. For each profile named it brings the services up with
-nothing but `docker compose`, then asks each of them the question the manifest
+nothing but `docker compose`, each held to the posture its service file declares
+by an overlay written from the manifest (REPO-R93), then asks each of them the
+question the manifest
 itself declares — the `health` table, on the port the manifest publishes it on,
 inside the timeout the manifest gives it — and tears the project down again.
 
@@ -53,6 +55,7 @@ import urllib.request
 
 import door_pair
 import stack_manifest
+from container_rules import written_posture
 from registry import pinned
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
@@ -91,18 +94,22 @@ UNRUNNABLE = {
     ),
 }
 
-# Services this check knows do not start, and does not fail for. Empty, and
-# deliberately kept: the first run of this check found three — Jellyfin, Seerr
-# and Bindery, none of which could write a `/config` Docker had created as root
-# — and the register is what proved the fix, by going red the moment all three
-# answered and asking to be emptied.
+# Services this check knows do not start under the posture their service files
+# declare, and does not fail for, each with the reason.
 #
 # The register is inverted. A service named here that starts and answers **fails**
 # this check, because the entry has outlived what it describes and the next
 # reader would take it for a standing defect. Nothing goes in here to make a run
-# pass: an entry is a reason `F1-R1` is not yet true, and belongs in a change
-# that says so.
-KNOWN_BROKEN: dict[str, str] = {}
+# pass: an entry is a reason `F1-R1` or `REPO-R93` is not yet true, and belongs
+# in a change that says so.
+CADDY_UNDER_STANDARD = (
+    "the Caddy binary carries NET_BIND_SERVICE as a file capability, and the kernel refuses to "
+    "execute it where the bounding set lacks that capability, which the standard posture drops"
+)
+KNOWN_BROKEN: dict[str, str] = {
+    "door": CADDY_UNDER_STANDARD,
+    "caddy": CADDY_UNDER_STANDARD,
+}
 
 # A service whose declared health is `container` publishes no port and answers
 # no request, so the only runtime evidence available is that it is still there a
@@ -128,6 +135,32 @@ ATTEMPT_TIMEOUT_S = 5
 # something or hang up. A server with nothing to say yet says nothing, and that
 # silence is the evidence; see `ask_tcp` for why a connection on its own is not.
 LISTEN_READ_S = 1.5
+
+
+# The run's empty environment file, and the overlay that holds every service to
+# the posture its service file declares, both in the run's own scratch directory.
+EMPTY_ENV = "empty.env"
+POSTURE_OVERLAY = "posture.yml"
+
+
+def posture_overlay(data: dict) -> dict:
+    """Each service held to the posture its service file declares, laid over
+    compose.yml so that every image this starts runs under it (REPO-R93)."""
+    return {"services": {service["id"]: written_posture(service) for service in data["service"]}}
+
+
+def overlay_text(overlay: dict) -> str:
+    """The overlay as Compose reads it, each list replacing the one compose.yml
+    gives rather than joining it: a list joined to one already holding an item is
+    a list holding it twice, which Compose refuses."""
+    lines = ["services:"]
+    for sid, keys in overlay["services"].items():
+        lines.append(f"  {json.dumps(sid)}:")
+        lines += [
+            f"    {key}: {'!override ' if isinstance(value, list) else ''}{json.dumps(value)}"
+            for key, value in keys.items()
+        ]
+    return "\n".join(lines) + "\n"
 
 
 def manifest() -> dict:
@@ -366,19 +399,22 @@ def bare_environment(data_root: str) -> dict[str, str]:
     }
 
 
-def compose(env: dict[str, str], empty_env_file: str, *args: str) -> subprocess.CompletedProcess:
-    command = ["docker", "compose", "--env-file", empty_env_file, "--project-name", PROJECT, *args]
+def compose(env: dict[str, str], scratch: pathlib.Path, *args: str) -> subprocess.CompletedProcess:
+    command = [
+        "docker", "compose", "--env-file", str(scratch / EMPTY_ENV), "--project-name", PROJECT,
+        "--file", "compose.yml", "--file", str(scratch / POSTURE_OVERLAY), *args,
+    ]
     return subprocess.run(command, cwd=ROOT, env=env, capture_output=True, text=True, check=False)
 
 
-def roster(env: dict[str, str], empty_env_file: str) -> list[dict]:
+def roster(env: dict[str, str], scratch: pathlib.Path) -> list[dict]:
     """Every container the project holds, with what the daemon says about it.
 
     `compose ps` names them; `docker inspect` is asked for the rest, because the
     image a container was created from and the number of times it has restarted
     are what separate a service that is up from one that is looping.
     """
-    listed = compose(env, empty_env_file, "ps", "--all", "--format", "json")
+    listed = compose(env, scratch, "ps", "--all", "--format", "json")
     rows = [json.loads(line) for line in listed.stdout.splitlines() if line.strip()]
 
     observed = []
@@ -402,10 +438,10 @@ def roster(env: dict[str, str], empty_env_file: str) -> list[dict]:
     return observed
 
 
-def report_failure(env: dict[str, str], empty_env_file: str, names: list[str]) -> None:
+def report_failure(env: dict[str, str], scratch: pathlib.Path, names: list[str]) -> None:
     """The logs of whatever did not come up, so the failure is readable from the run."""
     for name in names:
-        logs = compose(env, empty_env_file, "logs", "--tail", "40", name)
+        logs = compose(env, scratch, "logs", "--tail", "40", name)
         print(f"\n--- {name} ---")
         print(logs.stdout.strip() or logs.stderr.strip() or "(no output)")
 
@@ -500,37 +536,41 @@ def started_and_judged(profiles: list[str], chosen: list[dict]) -> int:
     errors: list[str] = []
 
     with tempfile.TemporaryDirectory() as tmp:
-        empty = str(pathlib.Path(tmp) / "empty.env")
-        pathlib.Path(empty).write_text("", encoding="utf-8")
-        data_root = pathlib.Path(tmp) / "data"
+        scratch = pathlib.Path(tmp)
+        (scratch / EMPTY_ENV).write_text("", encoding="utf-8")
+        (scratch / POSTURE_OVERLAY).write_text(overlay_text(posture_overlay(manifest())), encoding="utf-8")
+        data_root = scratch / "data"
         data_root.mkdir()
         env = bare_environment(str(data_root))
 
+        # Named on `down` as on `up`: a service the overlay names is out of reach of
+        # a `down` that activates none of its profiles.
         selected = [argument for profile in profiles for argument in ("--profile", profile)]
 
-        print(f"starting {len(chosen)} service(s) across {','.join(profiles)} with plain docker compose")
-        started = compose(env, empty, *selected, "up", "--detach", "--quiet-pull")
+        print(f"starting {len(chosen)} service(s) across {','.join(profiles)} with plain docker compose, "
+              "each under the posture its service file declares")
+        started = compose(env, scratch, *selected, "up", "--detach", "--quiet-pull")
 
         if started.returncode != 0:
             errors.append(f"the project did not start:\n{started.stderr.strip()}")
-            compose(env, empty, "down", "--volumes", "--remove-orphans")
+            compose(env, scratch, *selected, "down", "--volumes", "--remove-orphans")
             return report(errors)
 
         try:
             answers = wait_for_all(probes, attempt, time.monotonic, time.sleep)
             broken = {name for name in expected if name in KNOWN_BROKEN}
-            errors += judge_everything(expected, answers, roster(env, empty))
+            errors += judge_everything(expected, answers, roster(env, scratch))
             describe(answers, broken)
 
             if errors:
                 late = (answer["id"] for answer in answers if answer.get("late"))
-                report_failure(env, empty, sorted(name for name in late if name not in broken))
+                report_failure(env, scratch, sorted(name for name in late if name not in broken))
         finally:
-            removed = compose(env, empty, "down", "--volumes", "--remove-orphans")
+            removed = compose(env, scratch, *selected, "down", "--volumes", "--remove-orphans")
             if removed.returncode != 0:
                 errors.append(f"down failed:\n{removed.stderr.strip()}")
 
-        left = judge_teardown([row["service"] for row in roster(env, empty)])
+        left = judge_teardown([row["service"] for row in roster(env, scratch)])
         if left is not None:
             errors.append(left)
 
@@ -753,6 +793,23 @@ def plan_verdicts() -> list[str]:
     return problems
 
 
+def posture_verdicts() -> list[str]:
+    """The overlay holds each service to its own posture, its shape included."""
+    held = posture_overlay({"service": [
+        {"id": "guard", "shape": "egress-guard"},
+        {"id": "gate", "posture": "confined"},
+        {"id": "plain"},
+    ]})["services"]
+    problems = []
+    if "NET_ADMIN" not in held["guard"]["cap_add"] or held["guard"]["read_only"]:
+        problems.append(f"the egress guard is held as {held['guard']}, without its shape's capability")
+    if held["gate"]["cap_add"] or not held["gate"]["read_only"]:
+        problems.append(f"a confined service is held as {held['gate']}, keeping a capability or a writable root")
+    if held["plain"]["cap_drop"] != ["ALL"] or "NET_ADMIN" in held["plain"]["cap_add"]:
+        problems.append(f"a standard service is held as {held['plain']}")
+    return problems
+
+
 def self_test() -> int:
     """Each verdict, driven against a stack that was never started.
 
@@ -770,6 +827,7 @@ def self_test() -> int:
         *probe_discriminates(),
         *register_verdicts(),
         *plan_verdicts(),
+        *posture_verdicts(),
     ]
 
     for problem in problems:

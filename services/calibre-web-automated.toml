@@ -18,6 +18,8 @@ reaches = "book metadata providers"
 asks_for = "Reads covers and descriptions for the ebooks in your library when you ask it to."
 provides = ["media.serve"]
 health = { kind = "http", path = "/", timeout_s = 90 }
+takes_data = true
+user_mode = "puid-env"
 
 [[service.claim]]
 capability = "media.serve"

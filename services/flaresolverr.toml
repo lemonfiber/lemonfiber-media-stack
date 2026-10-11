@@ -19,6 +19,9 @@ asks_for = "Fetches a page through a headless browser when an indexer sits behin
 provides = ["indexer.proxy"]
 health = { kind = "tcp", timeout_s = 60 }
 
+[service.env]
+LOG_LEVEL = { setting = "flaresolverr:log-level", default = "info" }
+
 [[service.claim]]
 capability = "indexer.proxy"
 

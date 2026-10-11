@@ -14,9 +14,17 @@ describes = "Routes torrent traffic through your VPN and blocks it if the VPN dr
 without_it = "Your home IP is visible to every peer"
 reaches = "your VPN provider's servers"
 asks_for = "Dials the tunnel everything torrent-shaped is routed through, and asks the provider for a forwarded port where you asked for one."
-grants = ["NET_ADMIN"]
 provides = ["network.egress-guard"]
 health = { kind = "container" }
+shape = "egress-guard"
+
+[service.env]
+VPN_SERVICE_PROVIDER = { setting = "gluetun:provider", default = "" }
+VPN_TYPE = "wireguard"
+SERVER_COUNTRIES = { setting = "gluetun:countries", default = "Netherlands" }
+VPN_PORT_FORWARDING = { setting = "gluetun:port-forwarding", default = "off" }
+VPN_PORT_FORWARDING_PROVIDER = { setting = "gluetun:provider", default = "" }
+PORT_FORWARD_ONLY = { setting = "gluetun:port-forwarding", default = "off" }
 
 [[service.claim]]
 capability = "network.egress-guard"

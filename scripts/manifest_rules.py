@@ -10,6 +10,7 @@ import json
 import pathlib
 import re
 
+from container_rules import validate_service_container, validate_service_fields
 from pins import OWN_LICENCE, rides_the_train
 from registry import DIGEST, by_digest
 from report import UNNAMED, Report
@@ -56,8 +57,6 @@ MEDIA_TYPES = {"tv", "movies", "music", "books", "comics"}
 # vocabulary does not carry. What is checked here is the shape, because a name
 # of the wrong shape is not a name the other side could ever recognise.
 CORE_CAPABILITY = re.compile(r"^[a-z][a-z0-9]*(?:-[a-z0-9]+)*\.[a-z][a-z0-9]*(?:-[a-z0-9]+)*$")
-# Anything beyond this list is a privilege the stack has not justified (C6).
-ALLOWED_GRANTS = {"NET_ADMIN"}
 # Tags that move under you. A pin that means "whatever is newest" is not a pin.
 FLOATING_TAGS = {"latest", "stable", "edge", "nightly", "develop", "dev", "main", "master", "rolling"}
 
@@ -70,17 +69,6 @@ ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 STACK_TOML = "stack.toml"
 # Where the stack keeps each service's recordings, one directory per service id.
 RECORDINGS = "recordings"
-
-
-def grants_of(service: dict) -> list:
-    """The kernel capabilities a service is granted, under either spelling.
-
-    The field was `capabilities` until 0.16.0 and the contract still accepts that
-    spelling, because a rename is not a reason to refuse to read somebody's own
-    stack description. A fork that has not renamed its manifest is validated the
-    same way this one is.
-    """
-    return service.get("grants", service.get("capabilities", []))
 
 
 def validate_last_release(service: dict, where: str, report: Report) -> None:
@@ -199,14 +187,6 @@ def validate_service_runtime(service: dict, where: str, report: Report) -> None:
     if "bind" in service:
         report.check(
             service["bind"] in BINDS, where, f"bind must be one of {sorted(BINDS)}", "C6"
-        )
-    for granted in grants_of(service):
-        report.check(
-            granted in ALLOWED_GRANTS,
-            where,
-            f"kernel capability {granted!r} is outside the allow-list "
-            f"{sorted(ALLOWED_GRANTS)}",
-            "C6",
         )
     for media_type in service.get("media_types", []):
         report.check(
@@ -536,24 +516,8 @@ def validate_service(service: dict, profile_ids: set[str], licences: set[str],
     validate_service_runtime(service, where, report)
     validate_service_health(service, where, report)
     validate_service_api(service, where, report)
-
-
-def validate_dependencies(services: list, service_ids: set[str],
-                          profile_of: dict[str, str], report: Report) -> None:
-    # depends_on needs every id known, so it runs after the first pass.
-    for service in services:
-        sid = service.get("id", UNNAMED)
-        for dep in service.get("depends_on", []):
-            where = f"service {sid}"
-            if not report.check(dep in service_ids, where, f"depends_on unknown service {dep!r}"):
-                continue
-            report.check(
-                profile_of[dep] == service.get("profile"),
-                where,
-                f"depends_on {dep!r} crosses a profile boundary "
-                f"({service.get('profile')!r} -> {profile_of[dep]!r}); any subset must boot",
-                "B1-R14",
-            )
+    validate_service_fields(service, where, report)
+    validate_service_container(service, report)
 
 
 def validate_orphans(profile_ids: set[str], forms: list, services: list, report: Report) -> None:

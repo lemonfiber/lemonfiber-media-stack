@@ -25,6 +25,13 @@ health = { kind = "http", path = "/", timeout_s = 90 }
 # nothing outside the container can read.
 api = { kind = "bindery", key_source = "generated" }
 listens = 8787
+takes_data = true
+user_mode = "uid"
+
+[service.env]
+BINDERY_LIBRARY_DIR = "/data/media/books"
+BINDERY_AUDIOBOOK_DIR = "/data/media/audiobooks"
+BINDERY_DOWNLOAD_DIR = "/data/downloads"
 
 [[service.claim]]
 capability = "library.curate"

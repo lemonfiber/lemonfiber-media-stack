@@ -24,6 +24,11 @@ health = { kind = "http", path = "/api/v1/status", timeout_s = 90 }
 # its application directory rather than at /config like the rest.
 api = { kind = "seerr", key_source = "config-json", path = "/app/config/settings.json" }
 listens = 5055
+user_mode = "uid"
+config_path = "/app/config"
+
+[service.env]
+LOG_LEVEL = { setting = "seerr:log-level", default = "info" }
 
 [[service.claim]]
 capability = "request.intake"

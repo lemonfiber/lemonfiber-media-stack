@@ -153,7 +153,10 @@ CASES = [
     (
         "a service listening somewhere its published port does not reach",
         field("sabnzbd", "listens", "listens = 8085"),
-        "but the port it publishes, 8085, reaches 8080",
+        (
+            "service sabnzbd: ports: the entry publishes host:container [(8085, 8080)], and the declaration "
+            "says [(8085, 8085)]"
+        ),
     ),
     (
         "a memory estimate of nothing",
@@ -271,13 +274,21 @@ CASES = [
         "does not match the manifest",
     ),
     (
-        "B1-R14 cross-profile depends_on in the manifest",
+        "ARCH-R246 depends_on, refused naming network.via",
         patch(
             MANIFEST,
             'media_types = ["tv"]',
             'media_types = ["tv"]\ndepends_on = ["prowlarr"]',
         ),
-        "crosses a profile boundary",
+        (
+            "service sonarr: declares depends_on, which is not a field: the one start-order edge the model "
+            "writes is network.via's"
+        ),
+    ),
+    (
+        "B1-R14 cross-profile depends_on in compose",
+        patch("compose/torrent.yml", "      gluetun:\n", "      prowlarr:\n"),
+        "crosses a profile boundary in compose",
     ),
     (
         "C6-R1 admin service published beyond loopback",
@@ -320,21 +331,31 @@ CASES = [
         "does not match the manifest",
     ),
     (
-        "C6 kernel capability held by a service that never declared it",
+        "ARCH-R237 a kernel capability held by a service that takes no shape",
         patch(
             "compose/tv.yml",
             "    profiles: [tv]",
             "    profiles: [tv]\n    cap_add: [NET_ADMIN]",
         ),
-        "does not match the manifest's",
+        "service sonarr: shape: the entry adds (capabilities, devices, groups) (['NET_ADMIN'], [], False)",
     ),
     (
-        # The field was `capabilities` until 0.16.0 and the contract still accepts
-        # that spelling. A fork that has not renamed its manifest is validated the
-        # same way this one is, rather than told its stack is wrong.
-        "a stack written before the rename still validates",
-        patch(MANIFEST, 'grants = ["NET_ADMIN"]', 'capabilities = ["NET_ADMIN"]'),
-        None,
+        # Both spellings are still read, so that the refusal can say what to
+        # write instead.
+        "ARCH-R246 grants under the spelling it had until 0.16.0, refused naming the shape",
+        field("gluetun", "shape", 'shape = "egress-guard"\ncapabilities = ["NET_ADMIN"]'),
+        (
+            "service gluetun: declares capabilities, which is not a field: a kernel capability is a shape's "
+            "to give; NET_ADMIN is egress-guard's"
+        ),
+    ),
+    (
+        "ARCH-R246 grants, refused naming the shape",
+        field("gluetun", "shape", 'shape = "egress-guard"\ngrants = ["SYS_ADMIN"]'),
+        (
+            "declares grants, which is not a field: a kernel capability is a shape's to give; no shape gives "
+            "SYS_ADMIN"
+        ),
     ),
     (
         "C2-R12 torrent client escaping the tunnel",
@@ -522,12 +543,6 @@ CASES = [
             '[[profile]]\nid = "unclaimed"\nname = "Unclaimed"\ndescription = "Nothing declares this"\n\n[[profile]]\nid = "dash"',
         ),
         "no service declares this profile",
-    ),
-    (
-        "F9-R4 an ordering edge no wiring shows as by-name",
-        strip_lines(MANIFEST, ('by = "qbittorrent"', 'to = "gluetun"',
-                                   'why = "It has no network namespace')),
-        "and no [[wiring]] says so",
     ),
     (
         "F4-R12 a by-name wiring that does not say why",
@@ -826,18 +841,21 @@ def run_case(name, mutation, expected) -> bool:
 
 
 def main() -> int:
-    print(f"{len(CASES)} cases\n")
+    from test_service_model import CASES as MODEL_CASES
+
+    cases = [*CASES, *MODEL_CASES]
+    print(f"{len(cases)} cases\n")
     failures = 0
-    for name, mutation, expected in CASES:
+    for name, mutation, expected in cases:
         if run_case(name, mutation, expected):
             print(f"  ok   {name}")
         else:
             failures += 1
     print()
     if failures:
-        print(f"{failures} of {len(CASES)} cases failed.", file=sys.stderr)
+        print(f"{failures} of {len(cases)} cases failed.", file=sys.stderr)
         return 1
-    print(f"all {len(CASES)} cases passed.")
+    print(f"all {len(cases)} cases passed.")
     return 0
 
 

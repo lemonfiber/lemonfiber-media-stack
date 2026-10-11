@@ -145,8 +145,9 @@ lemonfiber minted for it alone; the door asks Jellyfin's own question about an
 item and guards Jellyfin's own routes, path by path. Writing the reason down is the point — an
 exception nobody explained reads as an oversight.
 
-**An ordering edge is a by-name wiring.** A `depends_on` names a service, so CI
-refuses one that no `[[wiring]]` shows as by name.
+**There is no ordering edge to wire.** A service file declares no `depends_on`:
+the one start-order edge is qBittorrent's `network = { via = "network.egress-guard" }`,
+an ask of a capability rather than a name.
 
 Homepage's panels and Caddy's routes are deliberately absent: lemonfiber writes
 both files from the tier and the description each service already declares,
@@ -271,15 +272,16 @@ proven to fail when broken by `scripts/test_validate_manifest.py`.
 | Check | Enforces |
 |-------|----------|
 | Manifest ↔ compose parity | Every service in one is in the other (`REPO-R18`) |
+| Each entry is its declared container | Ports, mounts, environment, user, posture, shape, memory limit and network as the service file's model fields say; a difference fails, except the ones `OPEN` in `scripts/model_parity.py` holds with their question (`ARCH-R225`, `ARCH-R246`) |
+| Container fields hold to the model | The rules lemonfiber's own reader holds them to, in `scripts/container_rules.py`; `grants`, `capabilities` and `depends_on` refused, naming what replaces them (`ARCH-R225`–`ARCH-R237`, `ARCH-R246`) |
 | One `${DATA_ROOT}:/data` mount per service | Hardlinks (`ADR-0006`, `C5-R5`) |
 | Bindings match the manifest tier | Admin on loopback, household on LAN (`C6-R1/R2`) |
 | No `depends_on` across a profile | Any subset boots (`B1-R14`) |
-| Every `depends_on` shown as a by-name `[[wiring]]` | An exception is visible as one (`F4-R12`, `F9-R4`) |
 | A wiring asks or names, never both | The far end is a capability or a service (`F9-R4`) |
 | A by-name wiring and a chosen filler say why | Neither reads as an oversight or a rule (`F4-R8`, `F4-R12`) |
 | Killswitch routing | Nothing shares Gluetun's profile without its namespace, so no client here is one lemonfiber must report as leaking (`C2-R12`) |
 | Pinned by index digest, tag beside it | Nothing changes because time passed, and nothing runs by tag (`E1-R1`) |
-| Kernel capabilities match the manifest | Only Gluetun is granted `NET_ADMIN` (`C6`) |
+| Kernel capabilities come from a shape | Only Gluetun takes `egress-guard`, and so `NET_ADMIN` (`ARCH-R237`, `C6`) |
 | OSI licence per service | Verified against a vendored SPDX list; lemonfiber's own images carry `Hippocratic-3.0` and nothing else (`F2-R5`) |
 | What each service reaches | `reaches` and `asks_for` together, for every service or for none (`F2-R10`, `F1-R5`) |
 | Capability names are core names | `area.verb`, never a plugin's namespace; which names exist is lemonfiber's to say (`F4-R4`, `ARCH-R110`) |
@@ -288,7 +290,7 @@ proven to fail when broken by `scripts/test_validate_manifest.py`.
 | A bumped pin carries a reviewed date | `last_release` moves with the tag, or the commit re-affirms it (`F2-R14`) |
 | A removal says why | `[[removed]]` names the reason and any replacement (`F2-R13`) |
 | Every form resolves | `docker compose config` per form (`REPO-R17`), dragging in nothing outside its profiles (`B1-R14`, `REPO-R19`) |
-| Every profile starts | Brought up with plain `docker compose`, every service answering its declared probe on its published port, then torn down. The torrent profile is excluded by name: it needs a VPN subscription (`F1-R1`) |
+| Every profile starts | Brought up with plain `docker compose`, each service under the posture its service file declares, every service answering its declared probe on its published port, then torn down. The torrent profile is excluded by name: it needs a VPN subscription (`F1-R1`, `REPO-R93`) |
 | Jellyfin is reached through its door alone | The door on `door` and `door-upstream` and no other network, beside the proxy and Jellyfin alone, at fixed addresses Docker never hands out, trusting the proxy's address and no other to name the client (`D11-R2`) |
 | The door refuses what it must | Started on both its networks in front of a stand-in for Jellyfin and asked every case on both ports: each item's bytes refused without a session that may see the item, everything else passed, the client Jellyfin is told the one the door may believe, the certificate on 8920 the one written beside it, and a refusal when Jellyfin does not answer; each case held to its recording of Jellyfin itself (`D11-R2`, `D11-R7`) |
 | Every claim holds against its recordings | Judged by lemonfiber's own judge, checked out at a pinned commit: a recording that refutes a probe fails, and one that cannot be judged is reported unproven (`ARCH-R137`, `F9-R2`) |

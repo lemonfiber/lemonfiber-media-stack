@@ -1,6 +1,7 @@
 """The resolved Compose model held in parity with stack.toml: services, images,
-profiles, mounts, bindings and the kernel capabilities a service is granted, and
-lemonfiber's own services held to the containment their ADRs state.
+profiles, mounts and bindings, every service's entry held to its declared
+container in model_parity.py, and lemonfiber's own services held to the
+containment their ADRs state.
 """
 
 from __future__ import annotations
@@ -11,17 +12,13 @@ import os
 import pathlib
 import subprocess
 
-from manifest_rules import grants_of
+from container_rules import EGRESS_GUARD
+from model_parity import DATA_ROOT_SENTINEL, filler, validate_model
 from pins import rides_the_train
 from registry import pinned
 from report import Report
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-
-# Interpolated into DATA_ROOT before resolving the model, so that "is this mount
-# beneath the data root?" is an unambiguous test on an absolute path rather than
-# a guess about how the source YAML spelled it.
-DATA_ROOT_SENTINEL = "/__lemonfiber_data_root__"
 
 # For each of lemonfiber's own services, the requirement that confines it, and
 # every network it is on with every other service on that network, as its ADR
@@ -67,18 +64,13 @@ DOOR_CADDYFILE = pathlib.PurePosixPath("config/door/Caddyfile")
 TRUSTED = ["trusted_proxies", "static"]
 
 
-def load_compose_model(report: Report) -> dict | None:
-    env = {
-        **os.environ,
-        "COMPOSE_PROFILES": "*",
-        "DATA_ROOT": DATA_ROOT_SENTINEL,
-        # Placeholders for the `:?` guards; the values are never used here.
-        "VPN_PROVIDER": os.environ.get("VPN_PROVIDER", "validation-placeholder"),
-        "WIREGUARD_PRIVATE_KEY": os.environ.get("WIREGUARD_PRIVATE_KEY", "validation-placeholder"),
-    }
+def load_compose_model(report: Report, *flags: str) -> dict | None:
+    """The resolved model. `--no-interpolate` leaves every `${…}` as written,
+    which is how a value read from the environment file is told from a constant."""
+    env = {**os.environ, "COMPOSE_PROFILES": "*", "DATA_ROOT": DATA_ROOT_SENTINEL}
     try:
         result = subprocess.run(
-            ["docker", "compose", "config", "--format", "json"],
+            ["docker", "compose", "config", "--format", "json", *flags],
             cwd=ROOT, env=env, capture_output=True, text=True, check=False,
         )
     except FileNotFoundError:
@@ -104,7 +96,7 @@ def published_ports(service: dict) -> list[tuple[str, str]]:
     return ports
 
 
-def validate_parity(manifest: dict, model: dict, report: Report) -> None:
+def validate_parity(manifest: dict, model: dict, raw_model: dict, report: Report) -> None:
     declared = {service["id"]: service for service in manifest.get("service", [])}
     compose = model.get("services", {})
 
@@ -151,10 +143,9 @@ def validate_parity(manifest: dict, model: dict, report: Report) -> None:
             )
 
         validate_mounts(sid, service, report)
-        validate_grants(sid, spec, service, report)
 
+    validate_model(declared, model, raw_model, report)
     validate_bindings(declared, compose, gateway_of, report)
-    validate_listening(declared, compose, gateway_of, report)
     validate_gateways(declared, compose, gateway_of, report)
     validate_confinement(declared, model, report)
     validate_door(model, report)
@@ -301,18 +292,6 @@ def validate_mounts(sid: str, service: dict, report: Report) -> None:
         )
 
 
-def validate_grants(sid: str, spec: dict, service: dict, report: Report) -> None:
-    declared_caps = set(grants_of(spec))
-    compose_caps = set(service.get("cap_add") or [])
-    report.check(
-        declared_caps == compose_caps,
-        f"service {sid}",
-        f"cap_add {sorted(compose_caps)} does not match the manifest's "
-        f"{sorted(declared_caps)}; only Gluetun may hold NET_ADMIN",
-        "C6",
-    )
-
-
 def resolve_port_owner(published: str, publisher: str, owners: dict,
                        clients: dict, declared: dict, report: Report) -> str | None:
     """The service whose bind tier governs this published port, or None when it
@@ -339,6 +318,13 @@ def resolve_port_owner(published: str, publisher: str, owners: dict,
     return None
 
 
+def declared_ports(spec: dict) -> list[int]:
+    """Every port a service declares it is published at: `port` and each `publish`."""
+    if "port" not in spec:
+        return []
+    return [spec["port"], *(entry["port"] for entry in spec.get("publish", []))]
+
+
 def check_bind_tier(owner: str, host_ip: str, declared: dict, report: Report) -> None:
     tier = declared[owner].get("bind")
     if tier == "loopback":
@@ -357,20 +343,6 @@ def check_bind_tier(owner: str, host_ip: str, declared: dict, report: Report) ->
         )
 
 
-def check_declared_published(declared: dict, compose: dict, gateway_of: dict, report: Report) -> None:
-    for sid, spec in sorted(declared.items()):
-        if "port" not in spec or sid not in compose:
-            continue
-        publisher = gateway_of.get(sid, sid)
-        if str(spec["port"]) not in {p for p, _ in published_ports(compose.get(publisher, {}))}:
-            report.fail(
-                f"service {sid}",
-                f"stack.toml declares port {spec['port']} but neither it nor its "
-                f"gateway {publisher!r} publishes it",
-                "REPO-R18",
-            )
-
-
 def validate_bindings(declared: dict, compose: dict, gateway_of: dict, report: Report) -> None:
     """Every published port must belong to a declared service and match its tier."""
     # Who each publisher is publishing for: itself, plus anyone in its namespace.
@@ -381,54 +353,34 @@ def validate_bindings(declared: dict, compose: dict, gateway_of: dict, report: R
 
     for publisher, service in sorted(compose.items()):
         owners = {
-            str(declared[c]["port"]): c
+            str(port): c
             for c in clients.get(publisher, [])
-            if c in declared and "port" in declared[c]
+            if c in declared
+            for port in declared_ports(declared[c])
         }
         for published, host_ip in published_ports(service):
             owner = resolve_port_owner(published, publisher, owners, clients, declared, report)
             if owner is not None:
                 check_bind_tier(owner, host_ip, declared, report)
 
-    check_declared_published(declared, compose, gateway_of, report)
-
-
-def validate_listening(declared: dict, compose: dict, gateway_of: dict, report: Report) -> None:
-    """A service's `listens` is the inside end of the port it publishes, where it publishes one."""
-    for sid, spec in sorted(declared.items()):
-        listens, port = spec.get("listens"), spec.get("port")
-        if listens is None or port is None:
-            continue
-        publisher = compose.get(gateway_of.get(sid, sid), {})
-        for mapping in publisher.get("ports") or []:
-            if str(mapping.get("published")) != str(port):
-                continue
-            report.check(
-                str(mapping.get("target")) == str(listens),
-                f"service {sid}",
-                f"listens on {listens}, but the port it publishes, {port}, reaches "
-                f"{mapping.get('target')} inside its container",
-                "ARCH-R144",
-            )
-
 
 def validate_gateways(declared: dict, compose: dict, gateway_of: dict, report: Report) -> None:
-    """A service granted NET_ADMIN is a tunnel; its profile-mates must route through it."""
-    for gateway, spec in sorted(declared.items()):
-        if "NET_ADMIN" not in grants_of(spec):
+    """The service filling the egress guard is a tunnel; every profile-mate runs inside it."""
+    gateway = filler(declared, EGRESS_GUARD)
+    if gateway is None:
+        return
+    profile = declared[gateway].get("profile")
+    for sid, other in sorted(declared.items()):
+        if sid == gateway or other.get("profile") != profile or sid not in compose:
             continue
-        profile = spec.get("profile")
-        for sid, other in sorted(declared.items()):
-            if sid == gateway or other.get("profile") != profile or sid not in compose:
-                continue
-            report.check(
-                gateway_of.get(sid) == gateway,
-                f"service {sid}",
-                f"shares the {profile!r} profile with the {gateway!r} tunnel but does "
-                f"not use `network_mode: service:{gateway}`; its traffic would bypass "
-                "the killswitch, and lemonfiber would report it as leaking",
-                "C2-R12",
-            )
+        report.check(
+            gateway_of.get(sid) == gateway,
+            f"service {sid}",
+            f"shares the {profile!r} profile with the {gateway!r} tunnel but does "
+            f"not use `network_mode: service:{gateway}`; its traffic would bypass "
+            "the killswitch, and lemonfiber would report it as leaking",
+            "C2-R12",
+        )
 
 
 def fixed_address(service: dict, network: str) -> str | None:

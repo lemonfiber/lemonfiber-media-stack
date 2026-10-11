@@ -19,3 +19,5 @@ without_it = "Seerr cannot reach Sonarr, Radarr or Jellyfin: requests are not se
 reaches = ""
 asks_for = "Nothing beyond this machine. It answers only Seerr, and makes the calls Seerr's requests, scans and sign-ins need of Sonarr, Radarr and Jellyfin, over networks it shares with them alone."
 health = { kind = "container" }
+posture = "confined"
+mem_limit_mib = 64

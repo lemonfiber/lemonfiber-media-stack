@@ -9,9 +9,10 @@ Two halves:
               manifest_rules.py, and the `[[wiring]]` table in wiring_rules.py.
 
   Parity      the *resolved* Compose model against the manifest — services,
-              images, profiles, mounts, bindings and the kernel capabilities a
-              service is granted — and lemonfiber's own services held to the
-              containment their ADRs state, in compose_parity.py.
+              images, profiles, mounts and bindings in compose_parity.py, every
+              entry against its declared container in model_parity.py — and
+              lemonfiber's own services held to the containment their ADRs
+              state.
 
 The parity half reads `docker compose config --format json` rather than parsing
 compose.yml. That is deliberate: the resolved model is what Docker will actually
@@ -33,7 +34,6 @@ import stack_manifest
 from compose_parity import load_compose_model, validate_parity
 from manifest_rules import (
     osi_licences,
-    validate_dependencies,
     validate_errands,
     validate_forms,
     validate_orphans,
@@ -60,7 +60,6 @@ def validate_manifest(manifest: dict, report: Report) -> None:
     profile_of: dict[str, str] = {}
     for service in services:
         validate_service(service, profile_ids, licences, service_ids, profile_of, report)
-    validate_dependencies(services, service_ids, profile_of, report)
     validate_errands(services, report)
     validate_orphans(profile_ids, forms, services, report)
     validate_removals(manifest.get("removed", []), service_ids, report)
@@ -87,9 +86,13 @@ def main() -> int:
     checked_parity = False
     if not args.manifest_only:
         model = load_compose_model(report)
-        if model is not None:
-            validate_parity(manifest, model, report)
+        raw_model = load_compose_model(report, "--no-interpolate")
+        if model is not None and raw_model is not None:
+            validate_parity(manifest, model, raw_model, report)
             checked_parity = True
+
+    for note in report.notes:
+        print(f"::notice::{note}")
 
     if report.errors:
         print("\n".join(f"::error::{error}" for error in report.errors))
