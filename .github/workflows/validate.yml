@@ -22,6 +22,7 @@ jobs:
   # The offline half: contract, parity, every form. No network, no registry.
   stack:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -136,6 +137,7 @@ jobs:
   # reported unproven and does not (ARCH-R122).
   claims:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -182,6 +184,7 @@ jobs:
   # outage rather than as a broken manifest (REPO-R20).
   images:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -267,6 +270,7 @@ jobs:
   # named in `check_runs.py` with the reason, and left out here by that name.
   runnable:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     outputs:
       groups: ${{ steps.plan.outputs.groups }}
     steps:
@@ -292,6 +296,7 @@ jobs:
     needs: runnable
     name: runs (${{ matrix.group.name }})
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     strategy:
       # A profile that will not start says nothing about the others, and
       # stopping at the first one would hide how much of the stack is affected.
@@ -333,6 +338,7 @@ jobs:
     if: ${{ !cancelled() }}
     name: the stack starts
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: Every profile the plan named started, answered and came down
         env:
