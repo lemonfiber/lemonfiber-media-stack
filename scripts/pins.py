@@ -8,7 +8,11 @@ for each service, the newest tag the registry publishes that
   - is spelled the way the current tag is spelled — the same prefix, the same
     number of dotted numbers and the same suffix, so `v3.41.3` follows `v3.40.0`
     and `4.5.5` follows `4.5.1`, while `12.0-rc7`, `4.0.16-develop` and
-    `4.5.5.1234-ls200` are other spellings and are never taken;
+    `4.5.5.1234-ls200` are other spellings and are never taken. A fixed build
+    tag, one ending in `-ls` and its build's number, follows only another: the
+    numbers in its suffix and its build number count after its version, so
+    `4.0.20.3014-ls327` follows `4.0.20.3014-ls326` and `5.2.5_v2.0.15-ls480`
+    follows `5.2.4_v2.0.15-ls479`;
   - has the same first number as the current tag, which is the major. A major
     carries breaking changes and is the operator's decision (`E1-R10`), so a pin
     never crosses one here;
@@ -42,6 +46,7 @@ import sys
 
 import registry
 import stack_manifest
+from check_manifest_change import BUILD
 from check_releases import github_latest
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
@@ -82,24 +87,35 @@ def version_of(tag: str) -> tuple[str, tuple[int, ...], str] | None:
     return tag[:start], tuple(numbers), tag[at:]
 
 
+def ordered(tag: str) -> tuple[str, int, str, tuple[int, ...]] | None:
+    """How a tag is spelled and where it sorts: its prefix, how many numbers its version has,
+    its suffix with every number in it written 0, and the numbers it sorts by.
+
+    A fixed build tag's suffix is read for its numbers too, its build's last, because each
+    build has a suffix of its own; any other tag's suffix is part of how it is spelled.
+    """
+    read = version_of(tag)
+    if read is None:
+        return None
+    prefix, numbers, suffix = read
+    if not BUILD.search(suffix):
+        return prefix, len(numbers), suffix, numbers
+    counted = tuple(int(number) for number in re.findall(r"\d+", suffix))
+    return prefix, len(numbers), re.sub(r"\d+", "0", suffix), numbers + counted
+
+
 def newest_in_major(current: str, tags: list[str]) -> str:
     """The newest tag spelled like `current` and in its major; `current` if none is newer."""
-    mine = version_of(current)
+    mine = ordered(current)
     if mine is None:
         return current
-    prefix, numbers, suffix = mine
-    best, best_numbers = current, numbers
+    spelling, best, best_key = mine[:3], current, mine[3]
     for tag in tags:
-        theirs = version_of(tag)
-        if theirs is None:
+        theirs = ordered(tag)
+        if theirs is None or theirs[:3] != spelling or theirs[3][0] != best_key[0]:
             continue
-        their_prefix, their_numbers, their_suffix = theirs
-        if (their_prefix, their_suffix, len(their_numbers)) != (prefix, suffix, len(numbers)):
-            continue
-        if their_numbers[0] != numbers[0]:
-            continue
-        if their_numbers > best_numbers:
-            best, best_numbers = tag, their_numbers
+        if theirs[3] > best_key:
+            best, best_key = tag, theirs[3]
     return best
 
 
@@ -204,7 +220,9 @@ def choice_problems() -> list[str]:
     published = [
         "latest", "4.0.15", "4.0.20", "4.0.21-develop", "4.0.20.3014-ls300", "5.0.0",
         "v3.41.3", "3.99.0", "10.11.11", "12.1", "12.0-rc7", UNPACKERR_NEXT, "release-1.0.0",
-        "V3.1.4", "V4.0.0", "0.64.2", "0.65.0",
+        "V3.1.4", "V4.0.0", "0.64.2", "0.65.0", "4.0.20.3014-ls326", "4.0.21.3020-ls327",
+        "5.0.0.4000-ls1", "4.0.21.3020", "5.2.4_v2.0.15-ls479", "5.2.5_v2.0.15-ls480", "5.2.5-libtorrentv1",
+        "1.6.3-ls370",
     ]
     for current, wanted in (
         ("4.0.15", "4.0.20"),         # a newer patch, not the next major nor another spelling
@@ -216,9 +234,15 @@ def choice_problems() -> list[str]:
         ("4.0.20", "4.0.20"),         # already newest
         ("12.1", "12.1"),             # two numbers, and nothing newer in 12 spelled that way
         ("nightly", "nightly"),       # no number to compare
+        ("4.0.20.3014-ls326", "4.0.21.3020-ls327"),     # a later release's build
+        ("4.0.20.3014-ls400", "4.0.21.3020-ls327"),     # the version counts before the build
+        ("5.2.4_v2.0.15-ls479", "5.2.5_v2.0.15-ls480"), # numbers in the suffix are not spelling
+        ("v1.6.2-ls366", "v1.6.2-ls366"),               # nothing later spelled with a v
     ):
         if (got := newest_in_major(current, published)) != wanted:
             problems.append(f"from {current}: took {got}, wanted {wanted}")
+    if (got := newest_in_major("4.0.20.3014-ls300", ["4.0.20.3014-ls326", "4.0.20.3014"])) != "4.0.20.3014-ls326":
+        problems.append(f"from 4.0.20.3014-ls300: took {got}, wanted the later build 4.0.20.3014-ls326")
 
     for tag, wanted in (
         ("v3.40.0", ("v", (3, 40, 0), "")),

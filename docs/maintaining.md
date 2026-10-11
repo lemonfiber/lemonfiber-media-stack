@@ -209,6 +209,13 @@ A pin is the digest of an image's multi-architecture index, with its tag beside
 it for reading: `tag` and `digest` in `services/<id>.toml`, `image:tag@digest` in the
 compose fragment. The digest is what runs; the tag is what a reader is shown.
 
+An image from linuxserver.io is pinned by its fixed build tag, such as
+`4.0.20.3014-ls326`: the release, then `-ls` and the build's number. The
+publisher rebuilds a release under its plain tag every week, so `4.0.20` stops
+naming the pinned digest within days, and a fixed build tag never does. Moving
+a plain tag to its fixed build tag at the same digest is a respelling, not a
+bump, and needs no new date.
+
 Each pin follows the newest release of its own major. The `pins` workflow runs
 weekly, and `scripts/pins.py` finds for each service the newest tag in the
 current tag's spelling and major, resolves the digest of the index it names, and
