@@ -11,9 +11,9 @@ without lemonfiber, and resolving is not running.
 So this starts one. For each profile named it brings the services up with
 nothing but `docker compose`, each held to the posture its service file declares
 by an overlay written from the manifest (REPO-R93), then asks each of them the
-question the manifest
-itself declares — the `health` table, on the port the manifest publishes it on,
-inside the timeout the manifest gives it — and tears the project down again.
+question the manifest itself declares — the `health` table, on the port the
+manifest publishes it on, inside the timeout the manifest gives it — and tears
+the project down again.
 
 Four things are asserted, and each fails for a different reason:
 

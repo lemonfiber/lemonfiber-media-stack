@@ -229,6 +229,31 @@ def mounted(service: dict, at, report: Report) -> None:
         landed(at(f"tmpfs {path}"), path)
 
 
+def has_control(value: object) -> bool:
+    return isinstance(value, str) and any(ord(letter) < 32 or 127 <= ord(letter) < 160 for letter in value)
+
+
+def valued(value: object, namespace: str) -> list[tuple[str, str]]:
+    """What is wrong with one environment value, each fault with its requirement."""
+    kind = kind_of(value)
+    if kind == "constant":
+        return [(f"{value!r} holds a control character", "ARCH-R230")] if has_control(value) else []
+    found = []
+    if kind == "setting":
+        if has_control(value["default"]):
+            found.append((f"{value['default']!r} holds a control character", "ARCH-R230"))
+        setting = value["setting"]
+        space, _, rest = setting.partition(":")
+        if setting not in PUBLISHED and not (space == namespace and rest):
+            refused = f"names setting {setting}, which is neither one the core publishes nor in the {namespace} namespace"
+            found.append((refused, "ARCH-R231"))
+    elif kind == "url_of" and not CORE_NAME.match(value["url_of"]):
+        found.append((f"asks for the address of {value['url_of']}, which is not a core capability", "ARCH-R232"))
+    elif kind == "secret":
+        found.append((f"names secret {value['secret']}, which the manifest does not declare", "ARCH-R247"))
+    return found
+
+
 def environed(service: dict, at, report: Report) -> None:
     namespace = service.get("id", UNNAMED)
     for name, value in service.get("env", {}).items():
@@ -238,22 +263,8 @@ def environed(service: dict, at, report: Report) -> None:
                         "ARCH-R229")
         if name in RESERVED:
             report.fail(where, f"{name} is lemonfiber's to write", "ARCH-R229")
-        kind = kind_of(value)
-        shown = value if kind == "constant" else value.get("default") if kind == "setting" else None
-        if isinstance(shown, str) and any(ord(letter) < 32 or 127 <= ord(letter) < 160 for letter in shown):
-            report.fail(where, f"{shown!r} holds a control character", "ARCH-R230")
-        if kind == "setting":
-            setting = value["setting"]
-            space, _, rest = setting.partition(":")
-            if setting not in PUBLISHED and not (space == namespace and rest):
-                report.fail(where, f"names setting {setting}, which is neither one the core publishes "
-                            f"nor in the {namespace} namespace", "ARCH-R231")
-        elif kind == "url_of" and not CORE_NAME.match(value["url_of"]):
-            report.fail(where, f"asks for the address of {value['url_of']}, which is not a core capability",
-                        "ARCH-R232")
-        elif kind == "secret":
-            report.fail(where, f"names secret {value['secret']}, which the manifest does not declare",
-                        "ARCH-R247")
+        for message, requirement in valued(value, namespace):
+            report.fail(where, message, requirement)
 
 
 def held(service: dict, at, report: Report) -> None:

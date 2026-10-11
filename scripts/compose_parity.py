@@ -299,9 +299,8 @@ def resolve_port_owner(published: str, publisher: str, owners: dict,
     owner = owners.get(published)
     if owner is not None:
         return owner
-    # Not a declared primary port — the manifest records one per service, and
-    # Caddy's 443 or a discovery port is legitimate. It still has to obey its
-    # owner's tier, so attribute it.
+    # Not a port the manifest declares, which model_parity.py names. It still
+    # has to obey its owner's tier, so attribute it.
     tiered = [c for c in clients.get(publisher, [])
               if c in declared and declared[c].get("bind")]
     if publisher in declared and declared[publisher].get("bind"):

@@ -33,7 +33,9 @@ OPERATOR = "${PUID:-1000}:${PGID:-1000}"
 OPERATOR_ENV = {"PUID": "${PUID:-1000}", "PGID": "${PGID:-1000}"}
 MIB = 1024 * 1024
 # A setting, as an entry reads it from the stack's environment file today.
-FROM_ENV_FILE = re.compile(r"^\$\{([A-Za-z_][A-Za-z0-9_]*):-(.*)\}$")
+FROM_ENV_FILE = re.compile(r"^\$\{([A-Za-z_]\w*):-(.*)\}$", re.ASCII)
+# How a service reaches another inside the stack's own networks.
+SCHEME = "http"
 # Where a service's further mounts come from: its own mount tree.
 MOUNTS = "mounts"
 CONFIG = "config"
@@ -69,6 +71,9 @@ PORT_PUSH = (
 )
 SECRET = "a credential read from the stack's environment file; a stack service declares no [[secret]]"
 
+# What differs where the configuration directory lands by default.
+CONFIGURATION_MOUNT = f"mount {CONFIGURATION}"
+
 # Each difference between an entry and its declaration that is not yet decided,
 # by service and what differs, with the question that decides it. `*` is every
 # service. An entry here that no longer differs fails, so none outlives its
@@ -76,10 +81,10 @@ SECRET = "a credential read from the stack's environment file; a stack service d
 OPEN: dict[tuple[str, str], str] = {
     ("*", "posture"): POSTURE,
     ("door", "posture"): DOOR_POSTURE,
-    ("caddy", "mount /config"): PROXY_STATE,
+    ("caddy", CONFIGURATION_MOUNT): PROXY_STATE,
     ("caddy", "mount /data"): PROXY_STATE,
-    ("flaresolverr", "mount /config"): NO_CONFIGURATION,
-    ("gluetun", "mount /config"): NO_CONFIGURATION,
+    ("flaresolverr", CONFIGURATION_MOUNT): NO_CONFIGURATION,
+    ("gluetun", CONFIGURATION_MOUNT): NO_CONFIGURATION,
     ("gluetun", "mount /gluetun/push-port.sh"): PORT_PUSH,
     ("gluetun", "env VPN_PORT_FORWARDING_UP_COMMAND"): PORT_PUSH,
     ("gluetun", "env VPN_PORT_FORWARDING_DOWN_COMMAND"): PORT_PUSH,
@@ -100,7 +105,7 @@ def environment(service: dict) -> dict[str, str]:
     raw = service.get("environment") or {}
     if isinstance(raw, dict):
         return {name: "" if value is None else str(value) for name, value in raw.items()}
-    return dict(item.split("=", 1) if "=" in item else (item, "") for item in raw)
+    return {name: value for name, _, value in (item.partition("=") for item in raw)}
 
 
 def constant(value: object) -> str:
@@ -176,6 +181,31 @@ def mounts(sid: str, spec: dict, entry: dict, found: Differences) -> None:
     found.same(sid, "tmpfs", tmpfs, sorted(spec.get("tmpfs", [])), "keeps scratch space at")
 
 
+def setting_read(sid: str, at: str, value: dict, have: str, settings: dict, found: Differences) -> None:
+    """A setting, read today from the environment file with the declared default,
+    and from the same variable wherever that setting is read."""
+    read = FROM_ENV_FILE.match(have)
+    if read is None:
+        found.add(sid, at, f"the entry sets {have!r}, which reads no variable, and the declaration "
+                  f"reads setting {value['setting']}")
+        return
+    found.same(sid, at, read.group(2), constant(value["default"]), "defaults it to")
+    variable = read.group(1)
+    if settings.setdefault(variable, value["setting"]) != value["setting"]:
+        found.add(sid, at, f"reads {variable}, which another declaration reads as setting "
+                  f"{settings[variable]}, and this one as {value['setting']}")
+
+
+def address(sid: str, at: str, value: dict, have: str, declared: dict, found: Differences) -> None:
+    """The address of the one filler the ask reaches, at the port it listens on."""
+    reached = filler(declared, value["url_of"], value.get("files"))
+    if reached is None:
+        found.add(sid, at, f"nothing declared fills {value['url_of']} for {value.get('files')}")
+        return
+    listens = declared[reached].get("listens", declared[reached].get("port"))
+    found.same(sid, at, have, f"{SCHEME}://{reached}:{listens}", "sets the address")
+
+
 def env(sid: str, spec: dict, raw: dict, declared: dict, settings: dict, found: Differences) -> None:
     written = environment(raw)
     found.same(sid, "defaults", (TIME_ZONE in written, raw.get("restart")), (True, RESTART),
@@ -184,33 +214,16 @@ def env(sid: str, spec: dict, raw: dict, declared: dict, settings: dict, found: 
     declaration = spec.get("env", {})
     for name in sorted(set(entry) | set(declaration)):
         at = f"env {name}"
-        if name not in declaration:
-            found.add(sid, at, f"the entry sets {name}, and the declaration does not")
-            continue
-        if name not in entry:
-            found.add(sid, at, f"the declaration sets {name}, and the entry does not")
-            continue
-        value, have = declaration[name], entry[name]
-        if not isinstance(value, dict):
+        value, have = declaration.get(name), entry.get(name)
+        if value is None or have is None:
+            setter, other = ("entry", "declaration") if value is None else ("declaration", "entry")
+            found.add(sid, at, f"the {setter} sets {name}, and the {other} does not")
+        elif not isinstance(value, dict):
             found.same(sid, at, have, constant(value), "sets it to the constant")
         elif "setting" in value:
-            read = FROM_ENV_FILE.match(have)
-            if read is None:
-                found.add(sid, at, f"the entry sets {have!r}, which reads no variable, and the declaration "
-                          f"reads setting {value['setting']}")
-                continue
-            found.same(sid, at, read.group(2), constant(value["default"]), "defaults it to")
-            variable = read.group(1)
-            if settings.setdefault(variable, value["setting"]) != value["setting"]:
-                found.add(sid, at, f"reads {variable}, which another declaration reads as setting "
-                          f"{settings[variable]}, and this one as {value['setting']}")
+            setting_read(sid, at, value, have, settings, found)
         elif "url_of" in value:
-            reached = filler(declared, value["url_of"], value.get("files"))
-            if reached is None:
-                found.add(sid, at, f"nothing declared fills {value['url_of']} for {value.get('files')}")
-                continue
-            listens = declared[reached].get("listens", declared[reached].get("port"))
-            found.same(sid, at, have, f"http://{reached}:{listens}", "sets the address")
+            address(sid, at, value, have, declared, found)
 
 
 def user(sid: str, spec: dict, raw: dict, found: Differences) -> None:

@@ -41,15 +41,11 @@ list, as three templates reached through `extends:`:
   fragment pulls `image:tag@digest`. A digest that is not an index publishing
   `linux/amd64` and `linux/arm64` fails CI (`F2-R6`).
 - **`bind` matches the manifest tier** — admin services `loopback`, household
-  services `lan` (`C6`). Only Gluetun takes the `egress-guard` shape, which is
-  what holds `NET_ADMIN`, and anything sharing its profile must use
-  `network_mode: service:gluetun` — a download client outside the tunnel's
-  namespace is one lemonfiber reports as leaking (`C2-R12`).
+  services `lan` (`C6`). Only Gluetun holds `NET_ADMIN`, by its `egress-guard`
+  shape, and anything sharing its profile must use `network_mode: service:gluetun`
+  — a download client outside the tunnel's namespace leaks (`C2-R12`).
 - The manifest and the Compose model must stay in parity — every service in one
-  is in the other, with the same image, tag, digest and profile, and each entry
-  says exactly what its service file's container fields declare.
-  `scripts/model_parity.py` names every difference; `OPEN` there holds the ones
-  the model has no field for yet, each with the question that decides it.
+  is in the other, with the same image, tag, digest, profile and container.
 - **lemonfiber's own images run confined** (`C6-R20`, `C6-R22`). Each extends
   `confined`, mounts `./config/<id>:/config` alone, and is on exactly the
   networks its ADR names, as `CONFINED` in `scripts/compose_parity.py` states.
@@ -67,16 +63,8 @@ its own file and `include:` entry, with `project_directory: .`), its `[[service]
 in `services/<id>.toml`, named in `stack.toml`'s `include`, and its profile in the
 relevant forms. No code (`REPO-R23`).
 
-The `[[service]]` declares its container in the one service model lemonfiber
-writes every Compose entry from (ADR-0043): `port`, `listens` and
-`[[service.publish]]`, `takes_data`, `config_path`, `config_ro`,
-`[[service.mount]]`, `tmpfs`, `[service.env]`, `user_mode` (`puid-env` for an
-entry extending `rootless`, `uid` for one with a `user:`), `posture`,
-`mem_limit_mib`, `network` and `shape`. `grants`, `capabilities` and
-`depends_on` are refused: a privilege comes from a shape, and the one start-order
-edge is `network.via`. The rules are `scripts/container_rules.py`.
-
-It also says what the service can do — `provides`, in lemonfiber's
+The `[[service]]` declares its container in the service model (ADR-0043), as
+its Compose entry says it. It also says what the service can do — `provides`, in lemonfiber's
 published capability vocabulary — so wiring can ask for a capability rather than
 name a service. A service nothing asks anything (Recyclarr, Unpackerr, Homepage,
 Caddy, the door, the request gate, the decline service) declares nothing.
@@ -120,9 +108,8 @@ just record <vocabulary> <services>   # re-record what services answer their cla
 ```
 
 `scripts/check_runs.py` brings each profile up with plain `docker compose`, each
-service under the posture its service file declares (`REPO-R93`), makes every
-service answer the probe its service file declares, and takes it down again;
-`torrent`, which needs a real VPN subscription, is left out of what CI fans over.
+service under its declared posture (`REPO-R93`), makes it answer its probe, and
+takes it down again; `torrent`, which needs a VPN subscription, is left out.
 Its `KNOWN_BROKEN` register reports an entry rather than failing, until it works.
 
 `scripts/validate_manifest.py` reads `docker compose config`'s **resolved**
