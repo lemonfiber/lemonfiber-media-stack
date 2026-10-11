@@ -38,6 +38,12 @@ What it fails, and what it only reports:
   passes as `unchanged`. Different, or not readable at either release, it
   fails as before: a file that changed is a licence somebody has to read.
 
+  A release upstream has withdrawn — no spelling of its tag is a ref the forge
+  knows any more — shipped nothing anybody can read, so the file it is compared
+  with is the one at the newest earlier pin, in the base's history, whose
+  release still exists. That is the file the stack last shipped. A forge that
+  did not answer is not a withdrawn release, and fails as before.
+
   A recorded identifier that differs from upstream's but is still OSI-approved
   is reported and never failed, gated or not. The forge answers with deprecated
   identifiers — `GPL-3.0` for what SPDX now spells `GPL-3.0-only` — and names
@@ -71,6 +77,7 @@ import re
 import sys
 import tomllib
 import urllib.parse
+from collections.abc import Callable, Iterable, Iterator
 
 import stack_manifest
 from check_manifest_change import bumped, pins, read_at
@@ -142,24 +149,59 @@ def release_refs(tag: str) -> list[str]:
     return [spelling.format(version=version) for spelling in REF_SPELLINGS]
 
 
-def licence_file_at(upstream: str, tag: str) -> tuple[str, str]:
-    """The blob of upstream's licence file at the release `tag` names, and that release's ref.
+def licence_file_at(upstream: str, tag: str) -> tuple[str, str, bool]:
+    """The blob of upstream's licence file at the release `tag` names, that release's
+    ref, and whether the release is withdrawn.
 
-    Empty where no spelling of the release is a ref the forge knows, or the
-    forge did not answer: either way there is nothing to compare.
+    The blob is empty where no spelling of the release is a ref the forge knows,
+    or the forge did not answer: either way there is nothing to compare. Only the
+    first is a withdrawn release.
     """
     repo = repo_of(upstream)
     if repo is None:
-        return "", ""
+        return "", "", False
     for ref in release_refs(tag):
         query = urllib.parse.urlencode({"ref": ref})
         document, problem = get_json(f"/repos/{repo[0]}/{repo[1]}/license?{query}")
         if problem == NOT_FOUND:
             continue
         if problem:
-            return "", ""
-        return str((document or {}).get("sha") or ""), ref
+            return "", "", False
+        return str((document or {}).get("sha") or ""), ref, False
+    return "", "", True
+
+
+def last_shipped(
+    withdrawn: str, earlier: Iterable[str], file_at: Callable[[str], tuple[str, str, bool]]
+) -> tuple[str, str]:
+    """The licence file at the newest pin in `earlier` whose release still exists.
+
+    `earlier` is the service's tags, newest first; `file_at` answers one the way
+    `licence_file_at` does, so the walk is driven without a forge. A forge that
+    did not answer ends it unread, because that is not a withdrawn release.
+    """
+    asked = {withdrawn}
+    for tag in earlier:
+        if tag in asked:
+            continue
+        asked.add(tag)
+        blob, ref, gone = file_at(tag)
+        if not gone:
+            return blob, ref
     return "", ""
+
+
+def earlier_tags(base: str, sid: str) -> Iterator[str]:
+    """The tags `sid` was pinned at in the commits up to `base` that changed the manifest,
+    newest first. Read one commit at a time, because the walk stops at the first it can use."""
+    found, revisions = read_at(base, "revisions")
+    if not found:
+        return
+    for revision in revisions.split():
+        found, manifest = read_at(revision, "manifest")
+        tag = pins(manifest).get(sid, {}).get("tag", "") if found else ""
+        if tag:
+            yield tag
 
 
 def compare_files(was: tuple[str, str], now: tuple[str, str]) -> tuple[str, str]:
@@ -227,6 +269,32 @@ def comparison_problems() -> list[str]:
         problems.append("an unchanged file would fail a bump, or a changed one would pass it")
     if release_refs("release-5.2.3") != ["5.2.3", "v5.2.3", "release-5.2.3"] or release_refs("V3.1.4")[0] != "3.1.4":
         problems.append(f"release refs read as {release_refs('release-5.2.3')}")
+    return problems + withdrawal_problems()
+
+
+def withdrawal_problems() -> list[str]:
+    """A withdrawn release, compared through the newest earlier pin whose release still exists."""
+    withdrawn, also_withdrawn, shipped, older, unanswered = (
+        "v0.18.0-pre.1", "v0.18.0-pre.2", "v0.17.0", "v0.16.0", "v0.17.1"
+    )
+    replies = {shipped: ("a1", shipped, False), older: ("c3", older, False), unanswered: ("", "", False)}
+
+    def file_at(tag: str) -> tuple[str, str, bool]:
+        return replies.get(tag, ("", "", True))
+
+    problems = []
+    for said, earlier, want in (
+        ("a pin back to the release before the withdrawn one", [withdrawn, withdrawn, shipped], ("a1", shipped)),
+        ("two withdrawn releases in a row", [also_withdrawn, withdrawn, older], ("c3", older)),
+        ("an earlier release the forge did not answer for", [unanswered, shipped], ("", "")),
+        ("no earlier release that still exists", [withdrawn], ("", "")),
+    ):
+        found = last_shipped(withdrawn, earlier, file_at)
+        if found != want:
+            problems.append(f"{said}: compared with {found!r}, wanted {want!r}")
+    verdict, _ = compare_files(last_shipped(withdrawn, [shipped], file_at), file_at(shipped)[:2])
+    if verdict != "unchanged":
+        problems.append(f"a pin back to the release it shipped before the withdrawn one: judged {verdict!r}")
     return problems
 
 
@@ -338,12 +406,13 @@ def gated_services(
     return bumped(before, pins(manifest_text)), f"pins moved since {base}", before
 
 
-def judged(service: dict, was: dict[str, str] | None, osi: set[str]) -> tuple[str, str]:
-    """One service's verdict. `was` is its pin at the base, given only where it is gated.
+def judged(service: dict, was: dict[str, str] | None, osi: set[str], base: str) -> tuple[str, str]:
+    """One service's verdict. `was` is its pin at `base`, given only where it is gated.
 
     An unidentified licence file on a gated service is compared with the file at
     the release pinned before, which is the one question the forge's classifier
-    cannot answer and a blob comparison can.
+    cannot answer and a blob comparison can. Where that release is withdrawn, the
+    file is the one at the newest earlier pin whose release still exists.
     """
     upstream = str(service.get("upstream", ""))
     stated, problem = stated_licence(upstream)
@@ -352,15 +421,20 @@ def judged(service: dict, was: dict[str, str] | None, osi: set[str]) -> tuple[st
     if own and verdict == "moved":
         return verdict, detail
     if was is not None and stated is not None and spdx_key(stated) in UNIDENTIFIED:
-        return compare_files(
-            licence_file_at(upstream, was["tag"]),
-            licence_file_at(upstream, str(service.get("tag", ""))),
-        )
+        def file_at(tag: str) -> tuple[str, str, bool]:
+            return licence_file_at(upstream, tag)
+
+        now = file_at(str(service.get("tag", "")))[:2]
+        blob, ref, gone = file_at(was["tag"])
+        if not gone:
+            return compare_files((blob, ref), now)
+        verdict, detail = compare_files(last_shipped(was["tag"], earlier_tags(base, service["id"]), file_at), now)
+        return verdict, f"{detail}; {safe(was['tag'])}, pinned before, is withdrawn"
     return verdict, detail
 
 
 def survey(
-    services: list, gated: set[str], osi: set[str], before: dict[str, dict[str, str]]
+    services: list, gated: set[str], osi: set[str], before: dict[str, dict[str, str]], base: str
 ) -> tuple[list[str], list[str], dict[str, int]]:
     """Ask about each service, say what came back, and separate the failures from the notes.
 
@@ -371,7 +445,7 @@ def survey(
     failures, noted, tally = [], [], {}
     for service in services:
         sid = service["id"]
-        verdict, detail = judged(service, before.get(sid) if sid in gated else None, osi)
+        verdict, detail = judged(service, before.get(sid) if sid in gated else None, osi, base)
         tally[verdict] = tally.get(verdict, 0) + 1
         gate = sid in gated
         failed = gate and verdict in FAILS_WHEN_GATED
@@ -446,7 +520,7 @@ def main() -> int:
         )
         return 2
 
-    failures, noted, tally = survey(manifest["service"], gated, osi_keys(), before)
+    failures, noted, tally = survey(manifest["service"], gated, osi_keys(), before, args.base)
     print(f"\ngated: {len(gated)} service(s) — {how}")
     if noted:
         print(f"reported, not failed: {', '.join(noted)}")
