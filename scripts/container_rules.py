@@ -235,20 +235,20 @@ def has_control(value: object) -> bool:
 
 def valued(value: object, namespace: str) -> list[tuple[str, str]]:
     """What is wrong with one environment value, each fault with its requirement."""
-    kind = kind_of(value)
-    if kind == "constant":
+    if not isinstance(value, dict):
         return [(f"{value!r} holds a control character", "ARCH-R230")] if has_control(value) else []
+    kind = kind_of(value)
     found = []
     if kind == "setting":
-        if has_control(value["default"]):
-            found.append((f"{value['default']!r} holds a control character", "ARCH-R230"))
-        setting = value["setting"]
+        setting, default = value["setting"], value["default"]
+        if has_control(default):
+            found.append((f"{default!r} holds a control character", "ARCH-R230"))
         space, _, rest = setting.partition(":")
         if setting not in PUBLISHED and not (space == namespace and rest):
             refused = f"names setting {setting}, which is neither one the core publishes nor in the {namespace} namespace"
             found.append((refused, "ARCH-R231"))
-    elif kind == "url_of" and not CORE_NAME.match(value["url_of"]):
-        found.append((f"asks for the address of {value['url_of']}, which is not a core capability", "ARCH-R232"))
+    elif kind == "url_of" and not CORE_NAME.match(capability := value["url_of"]):
+        found.append((f"asks for the address of {capability}, which is not a core capability", "ARCH-R232"))
     elif kind == "secret":
         found.append((f"names secret {value['secret']}, which the manifest does not declare", "ARCH-R247"))
     return found
