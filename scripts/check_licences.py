@@ -80,7 +80,7 @@ import urllib.parse
 from collections.abc import Callable, Iterable, Iterator
 
 import stack_manifest
-from check_manifest_change import bumped, pins, read_at
+from check_manifest_change import bumped, pins, read_at, release_of
 from forge import NOT_FOUND, get_json, repo_of, safe
 from pins import OWN_LICENCE, rides_the_train
 
@@ -144,8 +144,9 @@ def stated_licence(upstream: str) -> tuple[str | None, str]:
 
 
 def release_refs(tag: str) -> list[str]:
-    """The git refs an image tag's release may be tagged as upstream."""
-    version = re.sub(r"\A(?:release-|[vV])", "", tag)
+    """The git refs an image tag's release may be tagged as upstream, a fixed build tag's
+    build left off."""
+    version = re.sub(r"\A(?:release-|[vV])", "", release_of(tag))
     return [spelling.format(version=version) for spelling in REF_SPELLINGS]
 
 
@@ -267,6 +268,8 @@ def comparison_problems() -> list[str]:
             problems.append(f"{said}: judged {verdict!r}, wanted {want!r}")
     if "unchanged" in FAILS_WHEN_GATED or "unstated" not in FAILS_WHEN_GATED:
         problems.append("an unchanged file would fail a bump, or a changed one would pass it")
+    if release_refs("5.2.4_v2.0.15-ls479") != ["5.2.4", "v5.2.4", "release-5.2.4"] or release_refs("4.5.5-ls250")[0] != "4.5.5":
+        problems.append(f"a fixed build tag's release refs read as {release_refs('5.2.4_v2.0.15-ls479')}")
     if release_refs("release-5.2.3") != ["5.2.3", "v5.2.3", "release-5.2.3"] or release_refs("V3.1.4")[0] != "3.1.4":
         problems.append(f"release refs read as {release_refs('release-5.2.3')}")
     return problems + withdrawal_problems()

@@ -25,6 +25,11 @@ and did not:
       a patched base image and keep its tag, and that rebuild is taken with no
       new date, because upstream released nothing.
 
+      A tag moving to the fixed build tag of the release it already named, at
+      the same digest, is neither: `4.0.20` becoming `4.0.20.3014-ls326` names
+      the build that was running all along under a tag its publisher never
+      moves. It is a respelling, not a bump, and needs no date.
+
 A pin that genuinely needs no new date — a registry re-tagging the same build,
 a tag corrected to the one already recorded — is re-affirmed by a trailer on the
 commit that moves it, naming the service:
@@ -75,6 +80,10 @@ REAFFIRMED = re.compile(r"^[ \t]*Pin-reviewed:[ \t]*(\S.*)$", re.IGNORECASE | re
 # nothing outside the characters a ref is spelled with can reach it at all.
 BASE_REF = re.compile(r"\A[0-9A-Za-z][0-9A-Za-z._/-]{0,254}\Z")
 
+# A build tag a publisher never moves: the release, then `-ls` and the build's
+# number, as linuxserver.io tags every image it publishes.
+BUILD = re.compile(r"-ls\d+\Z")
+
 # Two digests no registry published, for the self-test.
 DIGEST_A, DIGEST_B = (f"sha256:{char * 64}" for char in "ab")
 
@@ -104,6 +113,31 @@ def recorded_removals(text: str) -> set[str]:
     return {str(entry.get("id")) for entry in manifest.get("removed", [])}
 
 
+def release_of(tag: str) -> str:
+    """The release a tag names, without a leading `v` and without the build a fixed build
+    tag adds after it: its `-ls` number, and the library version some images append."""
+    if not BUILD.search(tag):
+        return tag.removeprefix("v").removeprefix("V")
+    bare = BUILD.sub("", tag).removeprefix("v").removeprefix("V")
+    return re.sub(r"_v\d+(?:\.\d+)*\Z", "", bare)
+
+
+def respelling(was: dict[str, str], now: dict[str, str]) -> bool:
+    """Whether a pin moved only from a release's tag to the fixed build tag of that release,
+    with its image and digest where they were."""
+    old, new = was["tag"], now["tag"]
+    bare_old, bare_new = old.removeprefix("v").removeprefix("V"), new.removeprefix("v").removeprefix("V")
+    return (
+        (now["image"], now.get("digest", "")) == (was["image"], was.get("digest", ""))
+        and bool(was.get("digest"))
+        and old != new
+        and not BUILD.search(old)
+        and bool(BUILD.search(new))
+        and bare_new.startswith(bare_old)
+        and bare_new[len(bare_old):][:1] in {".", "_", "-"}
+    )
+
+
 def bumped(before: dict[str, dict[str, str]], after: dict[str, dict[str, str]]) -> set[str]:
     """Services whose pin this change moves.
 
@@ -116,6 +150,7 @@ def bumped(before: dict[str, dict[str, str]], after: dict[str, dict[str, str]]) 
         sid
         for sid, now in after.items()
         if sid in before and (now["image"], now["tag"]) != (before[sid]["image"], before[sid]["tag"])
+        and not respelling(before[sid], now)
     }
 
 
@@ -448,6 +483,22 @@ def self_test() -> int:
         problems.append("a digest moved under its tag was not read as a repin that needs no date")
     if repinned(was, was):
         problems.append("a change that moved nothing was read as a repin")
+
+    pinned = {**was, "sonarr": {**was["sonarr"], "digest": DIGEST_A}}
+    respelled = {**pinned, "sonarr": {**pinned["sonarr"], "tag": "4.0.15.2941-ls290"}}
+    if bumped(pinned, respelled) or judge(pinned, respelled, set(), set()) or repinned(pinned, respelled) != {"sonarr"}:
+        problems.append("a tag respelled as its release's fixed build, at the same digest, was read as a bump")
+    for tag in ("4.0.16.2941-ls290", "4.0.150-ls1", "4.0.15-develop"):
+        moved = {**pinned, "sonarr": {**pinned["sonarr"], "tag": tag}}
+        if not judge(pinned, moved, set(), set()):
+            problems.append(f"4.0.15 -> {tag} at the same digest was not refused")
+    other = {**pinned, "sonarr": {**pinned["sonarr"], "tag": "4.0.15.2941-ls290", "digest": DIGEST_B}}
+    if not bumped(pinned, other):
+        problems.append("a build tag at another digest was not read as a bump")
+    for tag, wanted in (("4.0.20.3014-ls326", "4.0.20.3014"), ("v1.6.2-ls366", "1.6.2"),
+                        ("5.2.4_v2.0.15-ls479", "5.2.4"), ("v3.41.3", "3.41.3"), ("release-0.15.2", "release-0.15.2")):
+        if release_of(tag) != wanted:
+            problems.append(f"{tag} names the release {release_of(tag)!r}, wanted {wanted!r}")
 
     for problem in problems:
         print(f"::error::self-test: {problem}")
