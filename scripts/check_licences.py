@@ -274,24 +274,25 @@ def comparison_problems() -> list[str]:
 
 def withdrawal_problems() -> list[str]:
     """A withdrawn release, compared through the newest earlier pin whose release still exists."""
-    replies = {"v0.17.0": ("a1", "v0.17.0", False), "v0.16.0": ("c3", "v0.16.0", False),
-               "v0.17.1": ("", "", False)}
+    withdrawn, also_withdrawn, shipped, older, unanswered = (
+        "v0.18.0-pre.1", "v0.18.0-pre.2", "v0.17.0", "v0.16.0", "v0.17.1"
+    )
+    replies = {shipped: ("a1", shipped, False), older: ("c3", older, False), unanswered: ("", "", False)}
 
     def file_at(tag: str) -> tuple[str, str, bool]:
         return replies.get(tag, ("", "", True))
 
     problems = []
     for said, earlier, want in (
-        ("a pin back to the release before the withdrawn one",
-         ["v0.18.0-pre.1", "v0.18.0-pre.1", "v0.17.0"], ("a1", "v0.17.0")),
-        ("two withdrawn releases in a row", ["v0.18.0-pre.2", "v0.18.0-pre.1", "v0.16.0"], ("c3", "v0.16.0")),
-        ("an earlier release the forge did not answer for", ["v0.17.1", "v0.17.0"], ("", "")),
-        ("no earlier release that still exists", ["v0.18.0-pre.1"], ("", "")),
+        ("a pin back to the release before the withdrawn one", [withdrawn, withdrawn, shipped], ("a1", shipped)),
+        ("two withdrawn releases in a row", [also_withdrawn, withdrawn, older], ("c3", older)),
+        ("an earlier release the forge did not answer for", [unanswered, shipped], ("", "")),
+        ("no earlier release that still exists", [withdrawn], ("", "")),
     ):
-        found = last_shipped("v0.18.0-pre.1", earlier, file_at)
+        found = last_shipped(withdrawn, earlier, file_at)
         if found != want:
             problems.append(f"{said}: compared with {found!r}, wanted {want!r}")
-    verdict, _ = compare_files(last_shipped("v0.18.0-pre.1", ["v0.17.0"], file_at), file_at("v0.17.0")[:2])
+    verdict, _ = compare_files(last_shipped(withdrawn, [shipped], file_at), file_at(shipped)[:2])
     if verdict != "unchanged":
         problems.append(f"a pin back to the release it shipped before the withdrawn one: judged {verdict!r}")
     return problems
