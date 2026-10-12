@@ -147,10 +147,10 @@ CASES = [
     ),
     (
         "ARCH-R226 a second port the declaration leaves out",
-        patch("services/caddy.toml", "\n[[service.publish]]\nport = 443\n", ""),
+        patch("services/caddy.toml", "\n[[service.publish]]\nport = 443\nlistens = 8443\n", ""),
         (
-            "service caddy: ports: the entry publishes host:container [(80, 80), (443, 443)], and the "
-            "declaration says [(80, 80)]"
+            "service caddy: ports: the entry publishes host:container [(80, 8080), (443, 8443)], and the "
+            "declaration says [(80, 8080)]"
         ),
     ),
     (

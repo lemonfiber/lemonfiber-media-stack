@@ -25,11 +25,15 @@
 # cannot be issued a public certificate, so Caddy serves plain HTTP until you
 # point a real domain here.
 #
-# To receive certificate-expiry notices from the CA, uncomment and set:
-#
-# {
-# 	email you@example.com
-# }
+# It listens on 8080 and 8443, which Compose publishes as 80 and 443: a port
+# below 1024 needs a kernel capability no service here holds. To receive
+# certificate-expiry notices from the CA, add `email you@example.com` to the
+# block below.
+
+{
+	http_port 8080
+	https_port 8443
+}
 
 # ── household ────────────────────────────────────────────────────────────────
 

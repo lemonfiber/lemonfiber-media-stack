@@ -18,8 +18,8 @@ services:
       # collapses to a bare suffix and Caddy refuses to start.
       DOMAIN: ${DOMAIN:-home.local}
     ports:
-      - "${LAN_BIND:-0.0.0.0}:80:80"
-      - "${LAN_BIND:-0.0.0.0}:443:443"
+      - "${LAN_BIND:-0.0.0.0}:80:8080"
+      - "${LAN_BIND:-0.0.0.0}:443:8443"
     # `requests` is how it reaches Seerr, which is on no other network it shares,
     # and `door` is how it reaches Jellyfin, from the one address the door trusts
     # to say which client a request came from.
