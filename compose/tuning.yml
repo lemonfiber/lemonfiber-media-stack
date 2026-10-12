@@ -33,6 +33,8 @@ services:
     profiles: [tuning]
     environment:
       UMASK: ${UMASK:-002}
+      UN_WEBSERVER_METRICS: "true"
+      UN_WEBSERVER_LISTEN_ADDR: 0.0.0.0:5656
       # Where each *arr is, which this file already knows, and the key seeding
       # published for it. The key names on the right are lemonfiber's own —
       # one per service, read from wherever that service keeps it — and the
