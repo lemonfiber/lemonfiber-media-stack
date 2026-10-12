@@ -64,21 +64,32 @@
 	# HLS playlists and segments, subtitles, attachments, trickplay, lyrics) and
 	# the two live-TV file routes.
 	# The guard decides on the path Caddy has cleaned and decoded, but reverse_proxy
-	# forwards the request's own bytes, so a path that cleans or decodes to one route
-	# and is forwarded as another would be asked about under the wrong name. Anything
-	# whose forwarded path is not already canonical is refused before any route reads
-	# it, so the decision and the forwarded request are the same bytes.
+	# forwards the request's own bytes, and Jellyfin decodes, folds case and collapses
+	# them again its own way. A path that normalises to one route here and another
+	# there would be asked about under the wrong name, so a request is refused before
+	# any route reads it unless its forwarded path is already in the one normal form
+	# every one of them agrees on. The route matchers below all carry `(?i)`, so case
+	# is that form's; these three refuse everything else that is not already it.
 	#
-	# Everywhere: a `.` or `..` segment, a doubled slash, or a backslash. Jellyfin's
-	# own routes never carry one, and Caddy would collapse the first two out of the
-	# path it matches on while forwarding them as they came.
-	@abnormal expression `{http.request.orig_uri}.matches("^[^?]*/[.][.]?(/|$|[?])") || {http.request.orig_uri}.matches("^[^?]*//") || {http.request.orig_uri}.contains("\\\\")`
+	# Everywhere: a `.` or `..` segment, a doubled slash, a backslash, or a `;`
+	# parameter. Jellyfin's own routes carry none, and Caddy would collapse the first
+	# two out of the path it matches on while forwarding them as they came.
+	@abnormal expression `{http.request.orig_uri}.matches("^[^?]*(/[.][.]?(/|$|[?])|//|;)") || {http.request.orig_uri}.contains("\\\\")`
 
-	# On the guarded byte routes only: a percent-encoded `/`, `\\`, `.` or `%`. These
-	# decode to a delimiter the matcher reads but the upstream receives encoded, so an
-	# encoded route reads as unguarded here and as a byte route to Jellyfin. A name
-	# lookup elsewhere (an artist whose name holds a `/`) may still carry one.
-	@encoded_on_bytes expression `{http.request.orig_uri}.matches("(?i)^[^?]*/(?:emby/|mediabrowser/)?(?:Videos|Audio|LiveTv/LiveStreamFiles|LiveTv/LiveRecordings|Items/[^/?]+/(?:Images|Download|File))(?:/|%|[?]|$)") && {http.request.orig_uri}.matches("(?i)^[^?]*%(?:2f|5c|2e|25)")`
+	# Everywhere: any percent-encoding of an unreserved character (a letter, a digit,
+	# `-`, `.`, `_` or `~`) or of `%` itself. None needs encoding, so an encoded one is
+	# there only to hide a route letter (`/%56ideos`), a dot segment (`%2e%2e`) or a
+	# second layer of encoding (`%252f`) that this guard would read as text and
+	# Jellyfin would decode. Reserved delimiters stay legal off the byte routes, so a
+	# name holding a `/` (an artist, `AC%2FDC`) still reaches Jellyfin.
+	@encoded_unreserved expression `{http.request.orig_uri}.matches("(?i)^[^?]*%(2[5de]|3[0-9]|4[1-9a-f]|5[0-9af]|6[1-9a-f]|7[0-9ae])")`
+
+	# On the guarded byte routes, any percent-encoding at all. A stream, segment,
+	# subtitle, attachment or image path is letters, a hexadecimal id and `/`, so a
+	# `%` on one is only ever a delimiter or a character dressed up to read as one
+	# route here and another at Jellyfin. The route is recognised on the raw path,
+	# tolerating an encoded first separator, so `/Videos%2F…` is still seen as one.
+	@encoded_on_bytes expression `{http.request.orig_uri}.matches("(?i)^[^?]*/(?:emby/|mediabrowser/)?(?:Videos|Audio|LiveTv/LiveStreamFiles|LiveTv/LiveRecordings|Items/[^/?]+/(?:Images|Download|File))(?:/|%|[?]|$)") && {http.request.orig_uri}.matches("^[^?]*%")`
 
 	@keyed path_regexp keyed (?i)^(?:/emby|/mediabrowser)?/(?:Videos|Audio|LiveTv/LiveStreamFiles|LiveTv/LiveRecordings)/([0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12})(?:/|$)
 
@@ -95,6 +106,10 @@
 	}
 
 	handle @abnormal {
+		respond 403
+	}
+
+	handle @encoded_unreserved {
 		respond 403
 	}
 

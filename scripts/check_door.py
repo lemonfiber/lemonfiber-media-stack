@@ -228,6 +228,21 @@ CASES = (
     Case("discovery-with-an-encoded-query", "/Items?Recursive=true&searchTerm=a%2Fb", PASS,
          "A percent-encoded slash in the query, not the path: discovery passes, because only the path is held to canonical form.",
          presents="authorization"),
+    # Jellyfin folds case, decodes percent-encoding and collapses dot segments its own
+    # way, so the guard is held to the one normal form every route agrees on: the route
+    # matchers carry `(?i)`, a percent-encoded unreserved character or `%` is refused
+    # everywhere, and any percent-encoding at all is refused on a byte route.
+    Case("stream-on-a-lowercased-route", "/videos/{open}/stream?static=true", PASS,
+         "The stream route in lower case. Jellyfin routes it the same, and so does the door: the matchers carry `(?i)`, so the member is served.",
+         presents="authorization"),
+    Case("item-with-a-path-parameter", "/Items/{closed};x/Download", REFUSE,
+         "A `;` path parameter, which Jellyfin's router strips and the door's matchers do not: it is refused before either reads the route."),
+    Case("stream-with-an-encoded-space", "/Videos/{closed}/stream%20?static=true", REFUSE,
+         "A percent-encoded space on a byte route, which decodes to whitespace the upstream may trim: any percent-encoding on a byte route is refused."),
+    Case("stream-double-encoded", "/Videos/{closed}/stream.mkv%252F..%252F..%252F..?static=true", REFUSE,
+         "Doubly percent-encoded slashes: `%25` is refused everywhere, so a second layer this guard would read as text and the upstream might decode cannot climb out."),
+    Case("stream-on-a-route-letter-encoded", "/Video%73/{closed}/stream.mkv%2F..%2F..%2F..?static=true", REFUSE,
+         "A route letter percent-encoded (`%73` for `s`) so the byte-route matcher does not read it as one, while the encoded slashes climb out: an encoded unreserved character is refused everywhere, which is the only guard that reads this as a byte route."),
     Case("catalogue-with-the-member-session", "/Items?Recursive=true", PASS,
          "Discovery passes through; Jellyfin answers it under the member's own policy.", presents="authorization"),
     Case("public-information", "/System/Info/Public", PASS,
@@ -661,6 +676,9 @@ BROKEN = (
     ("a door that reads an encoded delimiter as a different route from the upstream",
      "stream-with-an-encoded-slash",
      lambda text: text.replace("\thandle @encoded_on_bytes {\n\t\trespond 403\n\t}\n\n", "")),
+    ("a door that reads a route letter's own encoding as text where the upstream decodes it",
+     "stream-on-a-route-letter-encoded",
+     lambda text: text.replace("\thandle @encoded_unreserved {\n\t\trespond 403\n\t}\n\n", "")),
 )
 
 
