@@ -1,0 +1,20 @@
+{
+  "recorded_from": "caddy@sha256:3422ce6de165df66534f9b9ba50efaf457114ec961763cc52f5dbdaac2972d73",
+  "behind": "jellyfin/jellyfin@sha256:aefb67e6a7ff1debdd154a78a7bbb780fd0c873d8639210a7f6a2016ad2b35db",
+  "note": "The member's token under a name Jellyfin reads in any case and the question carries only as `ApiKey` or `api_key`: the question would ask about the header's session and the stream would be handed this one, so it is refused.",
+  "request": {
+    "method": "GET",
+    "path": "/Videos/{open}/stream?static=true&apikey={token}",
+    "presents": "the member's session, in the Authorization header",
+    "from": "household"
+  },
+  "door": {
+    "status": 403
+  },
+  "jellyfin_alone": {
+    "status": 200,
+    "headers": {
+      "content-type": "video/mp4"
+    }
+  }
+}

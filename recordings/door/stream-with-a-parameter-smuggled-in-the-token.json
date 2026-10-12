@@ -9,7 +9,7 @@
     "from": "household"
   },
   "door": {
-    "status": 401
+    "status": 403
   },
   "jellyfin_alone": {
     "status": 200,
