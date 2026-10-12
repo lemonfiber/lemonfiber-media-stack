@@ -241,6 +241,19 @@ CASES = (
          "A percent-encoded space on a byte route, which decodes to whitespace the upstream may trim: any percent-encoding on a byte route is refused."),
     Case("stream-double-encoded", "/Videos/{closed}/stream.mkv%252F..%252F..%252F..?static=true", REFUSE,
          "Doubly percent-encoded slashes: `%25` is refused everywhere, so a second layer this guard would read as text and the upstream might decode cannot climb out."),
+    Case("name-lookup-with-a-backslash", "/Artists/A\\B", REFUSE,
+         "A raw backslash in a path. Some servers read it as a separator and Jellyfin's routes carry none, so it is refused on every path."),
+    Case("name-lookup-with-an-encoded-backslash", "/Artists/A%5CB", REFUSE,
+         "A percent-encoded backslash in a path, refused on every path as the raw one is."),
+    Case("stream-with-a-token-named-in-another-case", "/Videos/{open}/stream?static=true&apikey={token}", REFUSE,
+         "The member's token under a name Jellyfin reads in any case and the question carries only as `ApiKey` or `api_key`: the question would ask about the header's session and the stream would be handed this one, so it is refused.",
+         presents="authorization"),
+    Case("stream-with-an-encoded-token-name", "/Videos/{open}/stream?static=true&Api%4Bey={token}", REFUSE,
+         "A query parameter whose name is percent-encoded, which Jellyfin decodes into a token name: refused, so a token is only ever read under a name both sides spell the same."),
+    Case("stream-with-the-token-twice", "/Videos/{open}/stream?static=true&ApiKey={token}&ApiKey={token}", REFUSE,
+         "The token given twice, which Jellyfin and the question would each read their own way: a token in the query is exactly one."),
+    Case("stream-with-a-token-in-capitals", "/Videos/{open}/stream?static=true&ApiKey={token_upper}", REFUSE,
+         "A token in capitals, not the 32 lower-case hexadecimal digits Jellyfin issues: refused, as a bearer grant of any other shape is."),
     Case("stream-on-a-route-letter-encoded", "/Video%73/{closed}/stream.mkv%2F..%2F..%2F..?static=true", REFUSE,
          "A route letter percent-encoded (`%73` for `s`) so the byte-route matcher does not read it as one, while the encoded slashes climb out: an encoded unreserved character is refused everywhere, which is the only guard that reads this as a byte route."),
     Case("catalogue-with-the-member-session", "/Items?Recursive=true", PASS,
@@ -274,7 +287,7 @@ def request_of(case: Case, open_item: str, closed_item: str, token: str) -> tupl
     """The path and headers a case sends, with the items and the token filled in."""
     path = case.path.format(
         open=open_item, closed=closed_item, token=token, open_dashed=dashed(open_item),
-        closed_dashed=dashed(closed_item), closed_upper=closed_item.upper(),
+        closed_dashed=dashed(closed_item), closed_upper=closed_item.upper(), token_upper=token.upper(),
     )
     headers = {
         "authorization": {"Authorization": f'MediaBrowser Client="door", Device="door", DeviceId="door", '
@@ -676,6 +689,12 @@ BROKEN = (
     ("a door that reads an encoded delimiter as a different route from the upstream",
      "stream-with-an-encoded-slash",
      lambda text: text.replace("\thandle @encoded_on_bytes {\n\t\trespond 403\n\t}\n\n", "")),
+    ("a door that lets a backslash through",
+     "name-lookup-with-a-backslash",
+     lambda text: text.replace('|;|%5c)") || {http.request.orig_uri}.contains("\\\\")`', '|;)")`')),
+    ("a door that reads a token under a name the question does not carry",
+     "stream-with-a-token-named-in-another-case",
+     lambda text: text.replace("\thandle @token_query {\n\t\trespond 403\n\t}\n\n", "")),
     ("a door that reads a route letter's own encoding as text where the upstream decodes it",
      "stream-on-a-route-letter-encoded",
      lambda text: text.replace("\thandle @encoded_unreserved {\n\t\trespond 403\n\t}\n\n", "")),

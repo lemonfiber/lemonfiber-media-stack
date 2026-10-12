@@ -69,12 +69,21 @@
 	# there would be asked about under the wrong name, so a request is refused before
 	# any route reads it unless its forwarded path is already in the one normal form
 	# every one of them agrees on. The route matchers below all carry `(?i)`, so case
-	# is that form's; these three refuse everything else that is not already it.
+	# is that form's; the refusals below take everything else that is not already it.
 	#
-	# Everywhere: a `.` or `..` segment, a doubled slash, a backslash, or a `;`
-	# parameter. Jellyfin's own routes carry none, and Caddy would collapse the first
-	# two out of the path it matches on while forwarding them as they came.
-	@abnormal expression `{http.request.orig_uri}.matches("^[^?]*(/[.][.]?(/|$|[?])|//|;)") || {http.request.orig_uri}.contains("\\\\")`
+	# Everywhere: a `.` or `..` segment, a doubled slash, a `;` parameter, or a
+	# backslash, raw or percent-encoded. Jellyfin's own routes carry none, Caddy would
+	# collapse the first two out of the path it matches on while forwarding them as
+	# they came, and some servers read a backslash as a separator.
+	@abnormal expression `{http.request.orig_uri}.matches("(?i)^[^?]*(/[.][.]?(/|$|[?])|//|;|%5c)") || {http.request.orig_uri}.contains("\\")`
+
+	# Everywhere: a token in the query that is not exactly one `ApiKey` or `api_key`
+	# of 32 lower-case hexadecimal digits, the shape Jellyfin issues, or a query
+	# parameter whose name holds a percent-encoding. Jellyfin reads the token's name in
+	# any case and from an encoded name, while the question below carries only those
+	# two names as written, so any other spelling would ask Jellyfin about one session
+	# and hand it another.
+	@token_query expression `{http.request.uri.query}.matches("(^|&)[^=&]*%") || ({http.request.uri.query}.matches("(?i)(^|&)api_?key(=|&|$)") && !({http.request.uri.query}.matches("^(.*&)?(ApiKey|api_key)=[0-9a-f]{32}(&.*)?$") && !{http.request.uri.query}.matches("(?i)(^|&)api_?key(=|&|$).*&api_?key(=|&|$)")))`
 
 	# Everywhere: any percent-encoding of an unreserved character (a letter, a digit,
 	# `-`, `.`, `_` or `~`) or of `%` itself. None needs encoding, so an encoded one is
@@ -110,6 +119,10 @@
 	}
 
 	handle @encoded_unreserved {
+		respond 403
+	}
+
+	handle @token_query {
 		respond 403
 	}
 
