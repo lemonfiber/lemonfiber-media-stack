@@ -17,9 +17,11 @@ without_it = "Use localhost:8989 and friends"
 reaches = ""
 asks_for = "Nothing. It answers names on this machine and forwards to the services beside it; no certificate is fetched, because nothing here is published to the internet."
 health = { kind = "tcp", timeout_s = 30 }
+listens = 8080
 
 [[service.publish]]
 port = 443
+listens = 8443
 
 [[service.mount]]
 from = "Caddyfile"
