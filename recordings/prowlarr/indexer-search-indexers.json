@@ -1,5 +1,5 @@
 {
-  "recorded_from": "lscr.io/linuxserver/prowlarr@sha256:f2b26429893d4c4cb71941b7ee50b1bdecd9d5f9f9e02d5410615e9f4f7c8d95",
+  "recorded_from": "lscr.io/linuxserver/prowlarr@sha256:f9151e5bc1025c6d0a630d503210cdcb6bb55a7cc098562609d96a408d838902",
   "note": "The same read with the API key this instance wrote on first start. Recorded from a fresh instance, so the list is empty; what it shows is that the indexers are a list the operator's credential can read.",
   "request": {
     "method": "GET",
