@@ -100,6 +100,20 @@
 	# tolerating an encoded first separator, so `/Videos%2F…` is still seen as one.
 	@encoded_on_bytes expression `{http.request.orig_uri}.matches("(?i)^[^?]*/(?:emby/|mediabrowser/)?(?:Videos|Audio|LiveTv/LiveStreamFiles|LiveTv/LiveRecordings|Items/[^/?]+/(?:Images|Download|File))(?:/|%|[?]|$)") && {http.request.orig_uri}.matches("^[^?]*%")`
 
+	# Everywhere: a path byte Caddy re-escapes before forwarding, so the bytes Jellyfin
+	# receives are the bytes these refusals read. A path carries only the characters a
+	# URL path is made of (RFC 3986 pchar, `/` and `%`); anything else above ASCII or a
+	# `` ` ``, `<`, `"` or `^` Go rewrites as it forwards (an `ö` becomes `%C3%B6`), so
+	# the request is refused rather than read one way and sent another. A raw control
+	# byte or space never reaches here: Caddy answers the request line itself.
+	@nonpchar_path expression `{http.request.orig_uri}.matches("^[A-Za-z0-9._~:@!$&'()*+,;=%/-]*[^A-Za-z0-9._~:@!$&'()*+,;=%/?-]")`
+
+	# On the guarded byte routes, a `LiveStreamId`. Jellyfin serves the bytes of the
+	# live stream that id names, not of the item in the path the question asks about,
+	# so an id for a stream opened on another item would hand its bytes out under this
+	# one. Live TV through the door is a feature of its own, not these file routes.
+	@live_stream_on_bytes expression `{http.request.orig_uri}.matches("(?i)^[^?]*/(?:emby/|mediabrowser/)?(?:Videos|Audio|LiveTv/LiveStreamFiles|LiveTv/LiveRecordings|Items/[^/?]+/(?:Images|Download|File))(?:/|%|[?]|$)") && {http.request.uri.query}.matches("(?i)(^|&)livestreamid=")`
+
 	@keyed path_regexp keyed (?i)^(?:/emby|/mediabrowser)?/(?:Videos|Audio|LiveTv/LiveStreamFiles|LiveTv/LiveRecordings)/([0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12})(?:/|$)
 
 	# An item's images, and the item's file itself.
@@ -127,6 +141,14 @@
 	}
 
 	handle @encoded_on_bytes {
+		respond 403
+	}
+
+	handle @nonpchar_path {
+		respond 403
+	}
+
+	handle @live_stream_on_bytes {
 		respond 403
 	}
 
