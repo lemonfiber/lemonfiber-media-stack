@@ -72,10 +72,11 @@
 	# is that form's; the refusals below take everything else that is not already it.
 	#
 	# Everywhere: a `.` or `..` segment, a doubled slash, a `;` parameter, or a
-	# backslash, raw or percent-encoded. Jellyfin's own routes carry none, Caddy would
-	# collapse the first two out of the path it matches on while forwarding them as
-	# they came, and some servers read a backslash as a separator.
-	@abnormal expression `{http.request.orig_uri}.matches("(?i)^[^?]*(/[.][.]?(/|$|[?])|//|;|%5c)") || {http.request.orig_uri}.contains("\\")`
+	# percent-encoded backslash. Jellyfin's own routes carry none, Caddy would collapse
+	# the first two out of the path it matches on while forwarding them as they came,
+	# and some servers read a backslash as a separator; a raw one is not a path
+	# character, and the rule below refuses it.
+	@abnormal expression `{http.request.orig_uri}.matches("(?i)^[^?]*(/[.][.]?(/|$|[?])|//|;|%5c)")`
 
 	# Everywhere: a token in the query that is not exactly one `ApiKey` or `api_key`
 	# of 32 lower-case hexadecimal digits, the shape Jellyfin issues, or a query

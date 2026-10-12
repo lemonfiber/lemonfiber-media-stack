@@ -701,7 +701,7 @@ BROKEN = (
      lambda text: text.replace("\thandle @encoded_on_bytes {\n\t\trespond 403\n\t}\n\n", "")),
     ("a door that lets a backslash through",
      "name-lookup-with-an-encoded-backslash",
-     lambda text: text.replace('|;|%5c)") || {http.request.orig_uri}.contains("\\\\")`', '|;)")`')),
+     lambda text: text.replace('|;|%5c)")`', '|;)")`')),
     ("a door that forwards a path byte re-escaped, read one way and sent another",
      "name-lookup-with-a-pipe",
      lambda text: text.replace("\thandle @nonpchar_path {\n\t\trespond 403\n\t}\n\n", "")),
