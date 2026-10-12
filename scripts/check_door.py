@@ -205,7 +205,28 @@ CASES = (
     Case("id-in-capitals-presenting-nothing", "/VIDEOS/{closed_upper}/STREAM?static=true", REFUSE,
          "The route and the id in capitals; Jellyfin's routes ignore case, and so does the door."),
     Case("traversal-to-another-item", "/Videos/{open}/../{closed}/stream?static=true", REFUSE,
-         "A path that names one item and climbs to another. The door asks about the one the path resolves to.",
+         "A path that names one item and climbs to another. A `..` segment is refused as non-canonical before any item is named, because Caddy would collapse it out of the path the guard reads and forward it as it came.",
+         presents="authorization"),
+    # The guard decides on the path Caddy cleaned and decoded; reverse_proxy forwards
+    # the request's own bytes. A path that cleans or decodes to one route and is
+    # forwarded as another is refused before any route reads it, so the two are the
+    # same bytes. Each of these climbs past its item to a byte Jellyfin would serve
+    # without asking; the item is one the member may not see, so a door that passed it
+    # would serve bytes it must refuse.
+    Case("stream-climbing-out-with-dot-segments", "/Videos/{closed}/stream.mkv/../../..?static=true", REFUSE,
+         "A stream path with `..` segments, which Caddy collapses out of the path it matches on and forwards as it came."),
+    Case("stream-with-a-doubled-slash", "//Videos/{closed}/stream?static=true", REFUSE,
+         "A doubled leading slash, which the matcher reads as one segment and the upstream as another."),
+    Case("stream-with-an-encoded-slash", "/Videos/{closed}/stream.mkv%2F..%2F..%2F..?static=true", REFUSE,
+         "Percent-encoded slashes climbing out of a byte route: the matcher reads the decoded path, which cleans away to the root and is unguarded, while the upstream receives the encoded bytes and serves from them."),
+    Case("stream-with-an-encoded-dot-segment", "/Videos/{closed}/stream.mkv%2E%2E?static=true", REFUSE,
+         "A percent-encoded `.` on a byte route, which decodes to a dot segment the upstream climbs."),
+    Case("download-with-an-encoded-slash", "/Items/{closed}/Download%2F..", REFUSE,
+         "A percent-encoded slash on an Items byte route."),
+    Case("stream-with-an-encoded-item-separator", "/Videos%2F{closed}%2Fstream?static=true", REFUSE,
+         "The route's own separators percent-encoded, so the guard does not read it as a byte route and the upstream does."),
+    Case("discovery-with-an-encoded-query", "/Items?Recursive=true&searchTerm=a%2Fb", PASS,
+         "A percent-encoded slash in the query, not the path: discovery passes, because only the path is held to canonical form.",
          presents="authorization"),
     Case("catalogue-with-the-member-session", "/Items?Recursive=true", PASS,
          "Discovery passes through; Jellyfin answers it under the member's own policy.", presents="authorization"),
@@ -634,6 +655,12 @@ BROKEN = (
      lambda text: text.replace("\trequest_header Authorization ", "\t# request_header Authorization ")),
     ("a door that carries over anything written after Bearer", "stream-with-a-field-smuggled-after-the-bearer-grant",
      lambda text: text.replace("([0-9a-f]{32})", "(.+)")),
+    ("a door that forwards a path it cleaned to one route and sends as another",
+     "stream-climbing-out-with-dot-segments",
+     lambda text: text.replace("\thandle @abnormal {\n\t\trespond 403\n\t}\n\n", "")),
+    ("a door that reads an encoded delimiter as a different route from the upstream",
+     "stream-with-an-encoded-slash",
+     lambda text: text.replace("\thandle @encoded_on_bytes {\n\t\trespond 403\n\t}\n\n", "")),
 )
 
 

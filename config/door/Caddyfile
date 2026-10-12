@@ -63,6 +63,23 @@
 	# Everything Jellyfin serves under /Videos/{id}/ and /Audio/{id}/ (streams,
 	# HLS playlists and segments, subtitles, attachments, trickplay, lyrics) and
 	# the two live-TV file routes.
+	# The guard decides on the path Caddy has cleaned and decoded, but reverse_proxy
+	# forwards the request's own bytes, so a path that cleans or decodes to one route
+	# and is forwarded as another would be asked about under the wrong name. Anything
+	# whose forwarded path is not already canonical is refused before any route reads
+	# it, so the decision and the forwarded request are the same bytes.
+	#
+	# Everywhere: a `.` or `..` segment, a doubled slash, or a backslash. Jellyfin's
+	# own routes never carry one, and Caddy would collapse the first two out of the
+	# path it matches on while forwarding them as they came.
+	@abnormal expression `{http.request.orig_uri}.matches("^[^?]*/[.][.]?(/|$|[?])") || {http.request.orig_uri}.matches("^[^?]*//") || {http.request.orig_uri}.contains("\\\\")`
+
+	# On the guarded byte routes only: a percent-encoded `/`, `\\`, `.` or `%`. These
+	# decode to a delimiter the matcher reads but the upstream receives encoded, so an
+	# encoded route reads as unguarded here and as a byte route to Jellyfin. A name
+	# lookup elsewhere (an artist whose name holds a `/`) may still carry one.
+	@encoded_on_bytes expression `{http.request.orig_uri}.matches("(?i)^[^?]*/(?:emby/|mediabrowser/)?(?:Videos|Audio|LiveTv/LiveStreamFiles|LiveTv/LiveRecordings|Items/[^/?]+/(?:Images|Download|File))(?:/|%|[?]|$)") && {http.request.orig_uri}.matches("(?i)^[^?]*%(?:2f|5c|2e|25)")`
+
 	@keyed path_regexp keyed (?i)^(?:/emby|/mediabrowser)?/(?:Videos|Audio|LiveTv/LiveStreamFiles|LiveTv/LiveRecordings)/([0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12})(?:/|$)
 
 	# An item's images, and the item's file itself.
@@ -75,6 +92,14 @@
 	@unkeyed {
 		path_regexp (?i)^(?:/emby|/mediabrowser)?/(?:(?:Videos|Audio|LiveTv/LiveStreamFiles|LiveTv/LiveRecordings)/[^/]|Items/[^/]+/(?:Images|Download|File)(?:/|$))
 		not path_regexp (?i)^(?:/emby|/mediabrowser)?/Videos/(?:ActiveEncodings|MergeVersions)$
+	}
+
+	handle @abnormal {
+		respond 403
+	}
+
+	handle @encoded_on_bytes {
+		respond 403
 	}
 
 	handle @keyed {
