@@ -15,8 +15,10 @@
 # Anything else is handed back as the refusal: 404 for an item the session may
 # not see, 401 for a token that is absent, ended or wrong, 403 for a member
 # Jellyfin will not serve from where the request came from, and 502 or 504
-# where Jellyfin does not answer. Every other path goes to Jellyfin unchanged,
-# and Jellyfin holds the member to their policy there itself.
+# where Jellyfin does not answer. A picture Jellyfin finds by a name rather than
+# an id, and its splash screen, are refused, since no question about an item
+# covers them. Every other path goes to Jellyfin unchanged, and Jellyfin holds
+# the member to their policy there itself.
 #
 # The paths below are Jellyfin's routes at its root, and under /emby and
 # /mediabrowser, which Jellyfin strips and serves the same. Jellyfin here carries
@@ -115,6 +117,46 @@
 	# one. Live TV through the door is a feature of its own, not these file routes.
 	@live_stream_on_bytes expression `{http.request.orig_uri}.matches("(?i)^[^?]*/(?:emby/|mediabrowser/)?(?:Videos|Audio|LiveTv/LiveStreamFiles|LiveTv/LiveRecordings|Items/[^/?]+/(?:Images|Download|File))(?:/|%|[?]|$)") && {http.request.uri.query}.matches("(?i)(^|&)livestreamid=")`
 
+	# On the guarded byte routes, an `itemId` in the query, in any case. Jellyfin's
+	# subtitle routes take the item from it in place of the one in the path, and serve
+	# that item without asking who is there, so a subtitle of an item the session may
+	# not see would be handed out under the name of one it may. A parameter name
+	# holding anything but ASCII letters, digits, `_`, `-` and `.` is refused here too,
+	# so no encoding, `+` or bracket spells `itemId` past this match on its own.
+	@item_in_query expression `{http.request.orig_uri}.matches("(?i)^[^?]*/(?:emby/|mediabrowser/)?(?:Videos|Audio|LiveTv/LiveStreamFiles|LiveTv/LiveRecordings|Items/[^/?]+/(?:Images|Download|File))(?:/|%|[?]|$)") && ({http.request.uri.query}.matches("(?i)(^|&)itemid(=|&|$)") || {http.request.uri.query}.matches("(^|&)[A-Za-z0-9_.-]*[^A-Za-z0-9_.=&-]"))`
+
+	# Everywhere: a picture Jellyfin finds by a name rather than an id, an artist's, a
+	# genre's, a music genre's, a person's or a studio's. The door cannot ask Jellyfin
+	# about a name, and Jellyfin answers these without asking who is there: an artist's
+	# from the artist's own folder in a library, whatever the session may see, and a
+	# name it does not hold it first writes into its library. The same pictures are
+	# served by the item's id under /Items/{id}/Images, which the door asks about. The
+	# route is read on the raw path, so a name holding an encoded `/` is still seen,
+	# and wherever it ends the path, so a request naming its host first is too.
+	@by_name_image expression `{http.request.orig_uri}.matches("(?i)^[^?]*/(?:emby/|mediabrowser/)?(?:Artists|Genres|MusicGenres|Persons|Studios)/[^/?]+/Images(?:/|[?]|$)")`
+
+	# Everywhere: Jellyfin's splash screen, which it composes from the posters of films
+	# and series in every library, unrated ones among them, and serves without asking
+	# who is there once its own setting turns it on.
+	@splashscreen expression `{http.request.orig_uri}.matches("(?i)^[^?]*/(?:emby/|mediabrowser/)?Branding/Splashscreen/?(?:[?]|$)")`
+
+	# On a video's trickplay playlist, a `MediaSourceId`, which Jellyfin writes into the
+	# playlists it hands out itself. Jellyfin answers the playlist of whichever item that
+	# names without asking who is there, so the door asks about it as well as about the
+	# item in the path, below. One it cannot ask about, under another spelling, in
+	# another shape than the 32 lower-case hexadecimal digits Jellyfin writes, or given
+	# twice, is refused, as is any parameter name holding anything but ASCII letters,
+	# digits, `_`, `-` and `.`, which could spell it past these matches.
+	@trickplay_source_unaskable {
+		path_regexp (?i)^(?:/emby|/mediabrowser)?/Videos/[^/]+/Trickplay/[^/]+/tiles\.m3u8/?$
+		expression `{http.request.uri.query}.matches("(^|&)[A-Za-z0-9_.-]*[^A-Za-z0-9_.=&-]") || {http.request.uri.query}.matches("(?i)(^|&)mediasourceid(=|&|$)") && !({http.request.uri.query}.matches("^(.*&)?MediaSourceId=[0-9a-f]{32}(&.*)?$") && !{http.request.uri.query}.matches("(?i)(^|&)mediasourceid(=|&|$).*&mediasourceid(=|&|$)"))`
+	}
+
+	@trickplay_source {
+		path_regexp trickplay (?i)^(?:/emby|/mediabrowser)?/Videos/([0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12})/Trickplay/[^/]+/tiles\.m3u8/?$
+		expression `{http.request.uri.query}.matches("(?i)(^|&)mediasourceid(=|&|$)")`
+	}
+
 	@keyed path_regexp keyed (?i)^(?:/emby|/mediabrowser)?/(?:Videos|Audio|LiveTv/LiveStreamFiles|LiveTv/LiveRecordings)/([0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12})(?:/|$)
 
 	# An item's images, and the item's file itself.
@@ -151,6 +193,36 @@
 
 	handle @live_stream_on_bytes {
 		respond 403
+	}
+
+	handle @item_in_query {
+		respond 403
+	}
+
+	handle @by_name_image {
+		respond 403
+	}
+
+	handle @splashscreen {
+		respond 403
+	}
+
+	handle @trickplay_source_unaskable {
+		respond 403
+	}
+
+	handle @trickplay_source {
+		forward_auth jellyfin:8096 {
+			uri /Items/{re.trickplay.1}?ApiKey={query.ApiKey}&api_key={query.api_key}
+			import question
+		}
+		forward_auth jellyfin:8096 {
+			uri /Items/{query.MediaSourceId}?ApiKey={query.ApiKey}&api_key={query.api_key}
+			import question
+		}
+		reverse_proxy jellyfin:8096 {
+			import client
+		}
 	}
 
 	handle @keyed {
