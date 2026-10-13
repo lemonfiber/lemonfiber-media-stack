@@ -53,7 +53,8 @@ Calibre-Web-Automated. `.env.example` documents every variable.
 
 Jellyfin is reached through its door, which publishes 8096 and 8920 and asks
 Jellyfin, before any item's stream or picture goes on, whether the session
-presented may see that item. Its TLS port reads a certificate and key from
+presented may see that item. A picture Jellyfin finds by a name rather than an
+id, and its splash screen, it refuses. Its TLS port reads a certificate and key from
 `config/door/`, which lemonfiber writes. Without lemonfiber, make your own pair
 before `up`:
 

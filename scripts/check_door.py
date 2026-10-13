@@ -28,7 +28,7 @@ each recording is held to its case's verdict here.
 Then the stand-in is stopped, and a request it would have passed is refused.
 
     python3 scripts/check_door.py              # needs Docker
-    python3 scripts/check_door.py --self-test  # six broken doors and three bad recordings, each caught
+    python3 scripts/check_door.py --self-test  # seventeen broken doors and three bad recordings, each caught
 
 The two door networks are made with the subnets compose.yml states, so this
 cannot run beside a stack that already holds them. Exit 0 = the door holds,
@@ -132,6 +132,13 @@ class Case:
 
 
 STREAM = "/Videos/{open}/stream?static=true"
+# The index Jellyfin gives the subtitle file `record_door.py` lays beside each film,
+# after the film's own video and audio streams.
+SUBTITLE = 2
+# The artist whose folder, picture and all, is in a music library the member was not given.
+KEPT_ARTIST = "KeptArtist"
+# The trickplay playlist at the width Jellyfin extracts by default.
+TRICKPLAY = "/Videos/{open}/Trickplay/320/tiles.m3u8"
 
 CASES = (
     Case("stream-presenting-nothing", STREAM, REFUSE,
@@ -263,6 +270,74 @@ CASES = (
          presents="authorization"),
     Case("audio-with-a-live-stream-id-in-capitals", "/Audio/{open}/universal?LiveStreamID=planted", REFUSE,
          "A `LiveStreamId` under another case, which Jellyfin reads and the door's parameter match would miss: the match is case-insensitive.",
+         presents="authorization"),
+    # Jellyfin's subtitle routes read the item from an `itemId` in the query ahead of
+    # the one in the path, and its trickplay playlist from a `MediaSourceId`, each
+    # without asking who is there; and it serves pictures it finds by name, and its
+    # splash screen, to anybody.
+    Case("subtitle-with-the-member-session", f"/Videos/{{open}}/{{open}}/Subtitles/{SUBTITLE}/Stream.srt", PASS,
+         "The subtitle of a film the member may see.", presents="authorization"),
+    Case("subtitle-of-another-item-named-in-the-query",
+         f"/Videos/{{open}}/{{closed}}/Subtitles/{SUBTITLE}/Stream.srt?itemId={{closed}}", REFUSE,
+         "A subtitle on a film the member may see, naming in the query a film they may not. Jellyfin serves the subtitle of the item the query names, so an `itemId` is refused on every byte route.",
+         presents="authorization"),
+    Case("subtitle-with-an-encoded-query",
+         f"/Videos/{{open}}/{{closed}}/Subtitles/{SUBTITLE}/Stream.srt?itemId%3D{{closed}}", REFUSE,
+         "The same `itemId` with the whole query percent-encoded, which Jellyfin decodes and reads again as parameters: a query parameter whose name holds a percent-encoding is refused everywhere.",
+         presents="authorization"),
+    Case("subtitle-with-the-item-named-in-mixed-case",
+         f"/Videos/{{open}}/{{closed}}/Subtitles/{SUBTITLE}/Stream.srt?ItemId={{closed}}", REFUSE,
+         "The same `itemId` spelled `ItemId`. Jellyfin reads a parameter's name in any case, and so does the match.",
+         presents="authorization"),
+    Case("subtitle-with-the-item-named-twice",
+         f"/Videos/{{open}}/{{closed}}/Subtitles/{SUBTITLE}/Stream.srt?itemid={{closed}}&itemid={{open}}", REFUSE,
+         "The same `itemId` given twice, the film they may not see first, which is the one Jellyfin reads.",
+         presents="authorization"),
+    Case("subtitle-with-a-letter-of-the-name-encoded",
+         f"/Videos/{{open}}/{{closed}}/Subtitles/{SUBTITLE}/Stream.srt?%69temId={{closed}}", REFUSE,
+         "The same `itemId` with a letter of its name percent-encoded, which Jellyfin decodes: a name holding anything but ASCII letters, digits, `_`, `-` and `.` is refused on a byte route.",
+         presents="authorization"),
+    Case("subtitle-with-a-plus-after-the-name",
+         f"/Videos/{{open}}/{{closed}}/Subtitles/{SUBTITLE}/Stream.srt?itemId+={{closed}}", REFUSE,
+         "The same `itemId` with a `+` after its name, which Jellyfin decodes to a space.",
+         presents="authorization"),
+    Case("subtitle-with-an-encoded-space-after-the-name",
+         f"/Videos/{{open}}/{{closed}}/Subtitles/{SUBTITLE}/Stream.srt?itemId%20={{closed}}", REFUSE,
+         "The same `itemId` with an encoded space after its name.",
+         presents="authorization"),
+    Case("subtitle-with-the-name-as-an-array",
+         f"/Videos/{{open}}/{{closed}}/Subtitles/{SUBTITLE}/Stream.srt?itemId[0]={{closed}}", REFUSE,
+         "The same `itemId` written as an array element.",
+         presents="authorization"),
+    Case("artist-image-by-name-presenting-nothing", f"/Artists/{KEPT_ARTIST}/Images/Primary/0", REFUSE,
+         "An artist's picture asked for by name, presenting nothing. Jellyfin serves it from the artist's folder in a library the member was not given; the door cannot ask about a name, so it is refused."),
+    Case("person-image-by-name-presenting-nothing", "/Persons/KeptPerson/Images/Primary", REFUSE,
+         "A person's picture asked for by name. Jellyfin answers whether it holds anybody of that name to anybody, so it is refused."),
+    Case("genre-image-by-name-under-the-emby-prefix", "/emby/Genres/KeptGenre/Images/Primary", REFUSE,
+         "A genre's picture by name under /emby, which Jellyfin strips. Jellyfin writes a genre it does not hold into its library before answering."),
+    Case("music-genre-image-by-name-under-the-mediabrowser-prefix",
+         "/mediabrowser/MusicGenres/KeptGenre/Images/Primary/0", REFUSE,
+         "A music genre's picture by name under /mediabrowser, which Jellyfin strips."),
+    Case("studio-image-by-name-with-an-encoded-slash", "/Studios/Kept%2FStudio/Images/Primary", REFUSE,
+         "A studio's picture whose name holds an encoded `/`: the route is read on the raw path, so it is still seen as a picture by name."),
+    Case("artist-image-by-name-naming-the-host", f"http://door/Artists/{KEPT_ARTIST}/Images/Primary/0", REFUSE,
+         "The same picture asked for in absolute form, the host before the path, which Caddy keeps in the URI it matches and Jellyfin routes by its path."),
+    Case("splashscreen-presenting-nothing", "/Branding/Splashscreen", REFUSE,
+         "Jellyfin's splash screen, which it composes from posters in every library once its own setting turns it on."),
+    Case("trickplay-playlist-of-its-own-source", TRICKPLAY + "?MediaSourceId={open}", PASS,
+         "A film's trickplay playlist naming the film itself as its source, as the playlists Jellyfin hands out do. The door asks about both, and both may be seen.",
+         presents="authorization"),
+    Case("trickplay-playlist-naming-another-item-as-its-source", TRICKPLAY + "?MediaSourceId={closed}", REFUSE,
+         "The trickplay playlist of a film the member may see, naming a film they may not as its source. The door asks about both and is told 404 for the second.",
+         presents="authorization"),
+    Case("trickplay-playlist-with-a-letter-of-the-source-encoded", TRICKPLAY + "?MediaSource%49d={closed}", REFUSE,
+         "A source whose name has a letter percent-encoded, which Jellyfin decodes and the question would not carry.",
+         presents="authorization"),
+    Case("trickplay-playlist-with-its-source-given-twice", TRICKPLAY + "?MediaSourceId={open}&MediaSourceId={closed}", REFUSE,
+         "A source given twice, which the question and Jellyfin could each read their own way.",
+         presents="authorization"),
+    Case("trickplay-playlist-with-its-source-in-another-case", TRICKPLAY + "?mediasourceid={open}", REFUSE,
+         "A source under a spelling the question would not carry. Jellyfin reads the name in any case, so it is refused.",
          presents="authorization"),
         Case("stream-on-a-route-letter-encoded", "/Video%73/{closed}/stream.mkv%2F..%2F..%2F..?static=true", REFUSE,
          "A route letter percent-encoded (`%73` for `s`) so the byte-route matcher does not read it as one, while the encoded slashes climb out: an encoded unreserved character is refused everywhere, which is the only guard that reads this as a byte route."),
@@ -714,6 +789,18 @@ BROKEN = (
     ("a door that reads a route letter's own encoding as text where the upstream decodes it",
      "stream-on-a-route-letter-encoded",
      lambda text: text.replace("\thandle @encoded_unreserved {\n\t\trespond 403\n\t}\n\n", "")),
+    ("a door that asks only about the path's item on a trickplay playlist",
+     "trickplay-playlist-naming-another-item-as-its-source",
+     lambda text: text.replace("uri /Items/{query.MediaSourceId}", "uri /Items/{re.trickplay.1}")),
+    ("a door that hands a subtitle on for the item its query names",
+     "subtitle-of-another-item-named-in-the-query",
+     lambda text: text.replace("\thandle @item_in_query {\n\t\trespond 403\n\t}\n\n", "")),
+    ("a door that lets a parameter name be spelled past its match on a byte route",
+     "subtitle-with-the-name-as-an-array",
+     lambda text: text.replace(' || {http.request.uri.query}.matches("(^|&)[A-Za-z0-9_.-]*[^A-Za-z0-9_.=&-]"))`', ')`')),
+    ("a door that passes a picture Jellyfin finds by name",
+     "artist-image-by-name-presenting-nothing",
+     lambda text: text.replace("\thandle @by_name_image {\n\t\trespond 403\n\t}\n\n", "")),
 )
 
 

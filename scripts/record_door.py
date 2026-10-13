@@ -4,8 +4,10 @@
 `check_door.py` asks the door every case in its CASES with a stand-in for
 Jellyfin behind it. This asks the same cases with Jellyfin behind it: the image
 the manifest pins, run fresh, holding two one-film libraries made here with
-Jellyfin's own ffmpeg, and a member given one of them who may not play from
-outside the house. Jellyfin trusts the door's fixed address, and nothing else,
+Jellyfin's own ffmpeg, each film with a subtitle file and trickplay pictures
+beside it, a music library holding one artist's folder with its picture, and a
+member given only the first film's library, who may not play from outside the
+house. Jellyfin trusts the door's fixed address, and nothing else,
 to name the client, as lemonfiber sets it. Each case is asked through the door
 and, where it comes from the household, of Jellyfin alone beside it, and
 recordings/door/<case>.json keeps the request as the case writes it and the
@@ -40,8 +42,10 @@ from check_door import (
     CASES,
     DOOR,
     FROM_HOUSEHOLD,
+    KEPT_ARTIST,
     PLAIN,
     RECORDINGS,
+    SUBTITLE,
     TLS,
     Rig,
     docker,
@@ -60,6 +64,10 @@ READY_S = 240
 POLL_S = 2.0
 CLIENT = 'MediaBrowser Client="lemonfiber-record", Device="record", DeviceId="record-{who}", Version="1"'
 FILMS = (("Films", "films", "Open Film (2001)"), ("Kept", "kept", "Closed Film (2002)"))
+MUSIC = ("Kept music", "keptmusic")
+# Trickplay pictures every second, so a three-second film has some to list.
+TRICKPLAY_INTERVAL_MS = 1000
+TRICKPLAY_WIDTH = 320
 FFMPEG = "/usr/lib/jellyfin-ffmpeg/ffmpeg"
 
 
@@ -130,10 +138,17 @@ def first_run(jellyfin: Jellyfin, made: set[str]) -> tuple[str, str, str]:
         raise RuntimeError(f"Jellyfin refused the administrator it made: {status}")
     jellyfin.token = json.loads(body)["AccessToken"]
     made.add(jellyfin.token)
-    for name, folder, _ in FILMS:
-        query = urllib.parse.urlencode({"name": name, "collectionType": "movies", "paths": f"/media/{folder}",
+    _, body = jellyfin.ask("GET", "/System/Configuration")
+    configuration = json.loads(body)
+    configuration["TrickplayOptions"]["Interval"] = TRICKPLAY_INTERVAL_MS
+    if jellyfin.ask("POST", "/System/Configuration", configuration)[0] >= 300:
+        raise RuntimeError("Jellyfin refused its trickplay interval")
+    trickplay = {"EnableTrickplayImageExtraction": True, "ExtractTrickplayImagesDuringLibraryScan": True}
+    for name, collection, folder, options in (*((name, "movies", folder, trickplay) for name, folder, _ in FILMS),
+                                              (MUSIC[0], "music", MUSIC[1], {})):
+        query = urllib.parse.urlencode({"name": name, "collectionType": collection, "paths": f"/media/{folder}",
                                         "refreshLibrary": "true"})
-        jellyfin.ask("POST", f"/Library/VirtualFolders?{query}", {"LibraryOptions": {}})
+        jellyfin.ask("POST", f"/Library/VirtualFolders?{query}", {"LibraryOptions": options})
     _, body = jellyfin.ask("POST", "/Users/New", {"Name": "member", "Password": kept})
     member = json.loads(body)["Id"]
     folders = {f["Name"]: f["Id"] for f in json.loads(jellyfin.ask("GET", "/Library/MediaFolders")[1])["Items"]}
@@ -151,6 +166,19 @@ def first_run(jellyfin: Jellyfin, made: set[str]) -> tuple[str, str, str]:
     open_item, closed_item = (films[title.split(" (")[0]] for _, _, title in FILMS)
     jellyfin.until("extracted the open film's picture",
                    lambda: jellyfin.ask("GET", f"/Items/{open_item}/Images/Primary")[0] == 200)
+    for item in (open_item, closed_item):
+        jellyfin.until("extracted a film's trickplay pictures",
+                       lambda item=item: jellyfin.ask("GET", f"/Videos/{item}/Trickplay/{TRICKPLAY_WIDTH}/tiles.m3u8")[0] == 200)
+        streams = json.loads(jellyfin.ask("GET", f"/Items/{item}/PlaybackInfo")[1])["MediaSources"][0]["MediaStreams"]
+        subtitles = [stream["Index"] for stream in streams if stream["Type"] == "Subtitle"]
+        if subtitles != [SUBTITLE]:
+            raise RuntimeError(f"Jellyfin indexed the film's subtitles as {subtitles}, and the cases ask for {SUBTITLE}")
+
+    def kept_artist_pictured() -> bool:
+        listed = json.loads(jellyfin.ask("GET", "/Items?Recursive=true&IncludeItemTypes=MusicArtist")[1])["Items"]
+        return any(item["Name"] == KEPT_ARTIST and "Primary" in item.get("ImageTags", {}) for item in listed)
+
+    jellyfin.until("pictured the kept artist", kept_artist_pictured)
     status, body = jellyfin.ask("POST", "/Users/AuthenticateByName", {"Username": "member", "Pw": kept},
                                 token="", who="member")
     if status != 200:
@@ -189,8 +217,14 @@ def record() -> int:
             must(docker("volume", "create", media), "a volume for the films")
             films = " && ".join(
                 f'mkdir -p /media/{folder} && {FFMPEG} -loglevel error -f lavfi -i testsrc=duration=3:size=320x240:rate=10 '
-                f'-f lavfi -i sine=duration=3 -c:v libx264 -c:a aac -shortest "/media/{folder}/{title}.mp4"'
+                f'-f lavfi -i sine=duration=3 -c:v libx264 -c:a aac -shortest "/media/{folder}/{title}.mp4" && '
+                f'printf "1\\n00:00:00,000 --> 00:00:02,000\\n{title}\\n" > "/media/{folder}/{title}.srt"'
                 for _, folder, title in FILMS)
+            artist = f"/media/{MUSIC[1]}/{KEPT_ARTIST}"
+            films += (f' && mkdir -p "{artist}/Kept Album" && '
+                      f'printf "<artist><name>{KEPT_ARTIST}</name></artist>" > "{artist}/artist.nfo" && '
+                      f'{FFMPEG} -loglevel error -f lavfi -i color=c=orange:s=64x64 -frames:v 1 "{artist}/folder.jpg" && '
+                      f'{FFMPEG} -loglevel error -f lavfi -i sine=duration=3 -c:a aac "{artist}/Kept Album/01 Kept.m4a"')
             must(docker("run", "--rm", "-v", f"{media}:/media", "--entrypoint", "sh", pinned(jellyfin_service),
                         "-c", films), "the films could not be made")
             port = check_door.free_port()
