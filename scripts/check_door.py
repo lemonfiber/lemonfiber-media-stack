@@ -133,8 +133,8 @@ class Case:
 
 STREAM = "/Videos/{open}/stream?static=true"
 # The index Jellyfin gives the subtitle file `record_door.py` lays beside each film,
-# after the film's own video and audio streams.
-SUBTITLE = 2
+# which it lists ahead of the film's own streams; `record_door.py` checks it.
+SUBTITLE = 0
 # The artist whose folder, picture and all, is in a music library the member was not given.
 KEPT_ARTIST = "KeptArtist"
 # The trickplay playlist at the width Jellyfin extracts by default.

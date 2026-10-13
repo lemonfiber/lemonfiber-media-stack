@@ -12,9 +12,9 @@
     "status": 401
   },
   "jellyfin_alone": {
-    "status": 500,
+    "status": 200,
     "headers": {
-      "content-type": "text/plain"
+      "content-type": "text/vtt"
     }
   }
 }
