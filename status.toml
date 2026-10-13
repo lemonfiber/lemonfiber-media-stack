@@ -19,7 +19,6 @@ requirement = [
   { id = "B1-R14", state = "done", evidence = ["scripts/compose_parity.py", "scripts/test_validate_manifest.py::crosses a profile boundary in compose"] },
   { id = "B1-R15", state = "partial", evidence = ["stack.toml"] },
   { id = "B1-R18", state = "partial", evidence = ["scripts/manifest_rules.py", "scripts/test_validate_manifest.py::memory_mib must be a whole number"] },
-  { id = "C5-R4", state = "partial", evidence = ["stacks/compose.storage.nas.yml"] },
   { id = "C6-R1", state = "done", evidence = ["scripts/compose_parity.py", "scripts/test_validate_manifest.py::must be 127.0.0.1"] },
   { id = "C6-R2", state = "done", evidence = ["scripts/compose_parity.py", "scripts/test_validate_manifest.py::unreachable from a TV"] },
   { id = "C6-R17", state = "done", evidence = [".env.example::LAN_BIND", "scripts/compose_parity.py"] },

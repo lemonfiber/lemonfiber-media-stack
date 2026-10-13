@@ -27,7 +27,7 @@ fi
 ran=""
 
 case "$staged" in
-*stack.toml* | *compose* | *stacks/*)
+*stack.toml* | *compose*)
 	python3 scripts/validate_manifest.py && python3 scripts/check_forms.py || exit 1
 	ran="${ran}manifest and forms; "
 	;;

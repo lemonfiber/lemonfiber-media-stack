@@ -21,7 +21,7 @@ validate:
     python3 scripts/stack_manifest.py
     python3 scripts/validate_manifest.py
 
-# Every form and overlay resolves to a valid project.
+# Every form resolves to a valid project.
 forms:
     python3 scripts/check_forms.py --self-test
     python3 scripts/check_forms.py

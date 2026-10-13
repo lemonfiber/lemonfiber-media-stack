@@ -104,7 +104,7 @@ jobs:
 
       # Every form is a valid project on its own and drags in nothing outside
       # its own profiles (REPO-R17, B1-R14).
-      - name: Every form and overlay resolves
+      - name: Every form resolves
         run: |
           python3 scripts/check_forms.py --self-test
           python3 scripts/check_forms.py
