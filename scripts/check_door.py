@@ -139,6 +139,8 @@ SUBTITLE = 0
 KEPT_ARTIST = "KeptArtist"
 # The trickplay playlist at the width Jellyfin extracts by default.
 TRICKPLAY = "/Videos/{open}/Trickplay/320/tiles.m3u8"
+# The door named ahead of a path, as an absolute-form request target names it.
+ABSOLUTE = f"{SCHEME}://{DOOR}"
 
 CASES = (
     Case("stream-presenting-nothing", STREAM, REFUSE,
@@ -320,8 +322,24 @@ CASES = (
          "A music genre's picture by name under /mediabrowser, which Jellyfin strips."),
     Case("studio-image-by-name-with-an-encoded-slash", "/Studios/Kept%2FStudio/Images/Primary", REFUSE,
          "A studio's picture whose name holds an encoded `/`: the route is read on the raw path, so it is still seen as a picture by name."),
-    Case("artist-image-by-name-naming-the-host", f"http://door/Artists/{KEPT_ARTIST}/Images/Primary/0", REFUSE,
+    Case("artist-image-by-name-naming-the-host", f"{ABSOLUTE}/Artists/{KEPT_ARTIST}/Images/Primary/0", REFUSE,
          "The same picture asked for in absolute form, the host before the path, which Caddy keeps in the URI it matches and Jellyfin routes by its path."),
+    # The same refusals and questions on the sibling spellings Jellyfin routes the
+    # same: under /emby and /mediabrowser, in absolute form, with a trailing slash,
+    # and asked with HEAD.
+    Case("subtitle-of-another-item-named-in-the-query-under-the-emby-prefix",
+         f"/emby/Videos/{{open}}/{{closed}}/Subtitles/{SUBTITLE}/Stream.srt?itemId={{closed}}", REFUSE,
+         "The subtitle of a film the member may not see, named in the query, under /emby.",
+         presents="authorization"),
+    Case("subtitle-of-another-item-named-in-the-query-naming-the-host",
+         f"{ABSOLUTE}/Videos/{{open}}/{{closed}}/Subtitles/{SUBTITLE}/Stream.srt?itemId={{closed}}", REFUSE,
+         "The same, in absolute form.", presents="authorization"),
+    Case("artist-image-by-name-asked-with-head", f"/Artists/{KEPT_ARTIST}/Images/Primary/0", REFUSE,
+         "The artist's picture by name asked with HEAD, which Jellyfin answers as it answers GET.", method="HEAD"),
+    Case("person-image-by-name-with-a-trailing-slash", "/Persons/KeptPerson/Images/Primary/", REFUSE,
+         "A person's picture by name with a trailing slash, which Jellyfin routes the same."),
+    Case("splashscreen-naming-the-host", ABSOLUTE + "/Branding/Splashscreen", REFUSE,
+         "The splash screen asked for in absolute form."),
     Case("splashscreen-presenting-nothing", "/Branding/Splashscreen", REFUSE,
          "Jellyfin's splash screen, which it composes from posters in every library once its own setting turns it on."),
     Case("trickplay-playlist-of-its-own-source", TRICKPLAY + "?MediaSourceId={open}", PASS,
@@ -330,6 +348,16 @@ CASES = (
     Case("trickplay-playlist-naming-another-item-as-its-source", TRICKPLAY + "?MediaSourceId={closed}", REFUSE,
          "The trickplay playlist of a film the member may see, naming a film they may not as its source. The door asks about both and is told 404 for the second.",
          presents="authorization"),
+    Case("trickplay-playlist-naming-another-item-as-its-source-under-the-mediabrowser-prefix",
+         "/mediabrowser" + TRICKPLAY + "?MediaSourceId={closed}", REFUSE,
+         "A withheld source under /mediabrowser: the door asks about both there too.", presents="authorization"),
+    Case("trickplay-playlist-naming-another-item-as-its-source-with-a-trailing-slash",
+         TRICKPLAY + "/?MediaSourceId={closed}", REFUSE,
+         "A withheld source on the playlist with a trailing slash, which Jellyfin routes the same.",
+         presents="authorization"),
+    Case("trickplay-playlist-naming-another-item-as-its-source-naming-the-host",
+         ABSOLUTE + TRICKPLAY + "?MediaSourceId={closed}", REFUSE,
+         "A withheld source, in absolute form.", presents="authorization"),
     Case("trickplay-playlist-with-a-letter-of-the-source-encoded", TRICKPLAY + "?MediaSource%49d={closed}", REFUSE,
          "A source whose name has a letter percent-encoded, which Jellyfin decodes and the question would not carry.",
          presents="authorization"),
