@@ -5,9 +5,6 @@ A form is a named set of profiles, and the promise the stack makes is that any
 of them starts on its own — `docker compose --profile search up` must not need
 `tv` to be running. This asserts each one is a structurally valid project, and
 that it actually contains services.
-
-The overlays are checked too: an overlay naming a service the base project does
-not define is valid YAML and a broken stack.
 """
 
 from __future__ import annotations
@@ -23,11 +20,6 @@ import tempfile
 import stack_manifest
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-OVERLAYS = ("stacks/compose.storage.nas.yml",)
-# The overlay that moves the data root onto network storage, and the volume it
-# mounts at /data in place of the bind.
-STORAGE_OVERLAY = "stacks/compose.storage.nas.yml"
-STORAGE_VOLUME = "data"
 
 # Forms resolve with a data root and nothing else. This is the point of the
 # check, not an oversight: Compose interpolates the whole project before it
@@ -36,13 +28,6 @@ STORAGE_VOLUME = "data"
 # coupling this is meant to catch — someone running `library` being asked for VPN
 # credentials.
 FORM_ENV = {"DATA_ROOT": "/__lemonfiber_data_root__"}
-
-# An overlay is applied deliberately, by name, so it may demand its own settings.
-OVERLAY_ENV = {
-    **FORM_ENV,
-    "NAS_HOST": "validation-placeholder",
-    "NAS_EXPORT": "/validation-placeholder",
-}
 
 
 def resolve(profiles: list[str], files: list[str], settings: dict) -> tuple[bool, str, dict]:
@@ -113,21 +98,6 @@ def judge(
     return None
 
 
-def unstored(model: dict, takes_data: set[str]) -> str | None:
-    """Every service that takes data mounts the storage overlay's volume at /data,
-    and nothing else does: a service the overlay misses keeps writing to the bind
-    while the rest of the library is on the network mount."""
-    stored = {
-        sid for sid, service in model.get("services", {}).items()
-        if any(volume.get("type") == "volume" and volume.get("source") == STORAGE_VOLUME
-               and volume.get("target") == "/data" for volume in service.get("volumes") or [])
-    }
-    if stored == takes_data:
-        return None
-    return (f"overlay {STORAGE_OVERLAY}: misses {sorted(takes_data - stored)} and mounts the volume on "
-            f"{sorted(stored - takes_data)}; it moves the data mount of exactly the services that take data")
-
-
 def self_test() -> int:
     """Each verdict `judge` gives, driven against a project it did not resolve.
 
@@ -162,13 +132,6 @@ def self_test() -> int:
     if judge("x", ["tv"], True, "", started, profile_of) is not None:
         problems.append("a form starting exactly its own profile was refused")
 
-    stored = {"type": "volume", "source": STORAGE_VOLUME, "target": "/data"}
-    model = {"services": {"sonarr": {"volumes": [stored]}, "navidrome": {"volumes": []}}}
-    if "misses ['navidrome']" not in (unstored(model, {"sonarr", "navidrome"}) or ""):
-        problems.append("a service that takes data and keeps its bind under the storage overlay was not named")
-    if unstored(model, {"sonarr"}) is not None:
-        problems.append("a storage overlay covering exactly the services that take data was refused")
-
     for problem in problems:
         print(f"::error::self-test: {problem}")
     if problems:
@@ -201,22 +164,11 @@ def main() -> int:
         started = set(model.get("services", {}))
         print(f"  ok   form {form['id']:<8} {len(started):>2} services  {','.join(profiles)}")
 
-    for overlay in OVERLAYS:
-        ok, message, model = resolve(["*"], ["compose.yml", overlay], OVERLAY_ENV)
-        if not ok:
-            errors.append(f"overlay {overlay}: does not resolve:\n{message}")
-            continue
-        takes_data = {s["id"] for s in manifest["service"] if s.get("takes_data")}
-        if overlay == STORAGE_OVERLAY and (wrong := unstored(model, takes_data)):
-            errors.append(wrong)
-            continue
-        print(f"  ok   overlay {overlay}")
-
     if errors:
         print()
         print("\n".join(f"::error::{error}" for error in errors))
         return 1
-    print(f"\nall {len(manifest['form'])} forms and {len(OVERLAYS)} overlay(s) resolve.")
+    print(f"\nall {len(manifest['form'])} forms resolve.")
     return 0
 
 

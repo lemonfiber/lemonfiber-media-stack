@@ -116,7 +116,6 @@ import silently becomes a copy. CI rejects a change that does this.
 | `compose/` | One fragment per profile: `tv.yml`, `media.yml`, `torrent.yml`, and the rest |
 | `compose/_common.yml` | Shared service defaults, reached through `extends:` |
 | `.env.example` | Every variable, documented |
-| `stacks/` | An overlay for NAS and copy mode |
 | `config/` | Starting configuration for Recyclarr, Homepage, Caddy, the door and SABnzbd |
 | `recordings/` | Recorded answers from each service, which prove what it can do |
 | `scripts/` | The checks CI runs, each runnable locally through `just` |
