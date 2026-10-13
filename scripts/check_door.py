@@ -139,6 +139,8 @@ SUBTITLE = 0
 KEPT_ARTIST = "KeptArtist"
 # The trickplay playlist at the width Jellyfin extracts by default.
 TRICKPLAY = "/Videos/{open}/Trickplay/320/tiles.m3u8"
+# The query naming as the playlist's source the film the member may not see.
+WITHHELD_SOURCE = "?MediaSourceId={closed}"
 # The door named ahead of a path, as an absolute-form request target names it.
 ABSOLUTE = f"{SCHEME}://{DOOR}"
 
@@ -345,18 +347,18 @@ CASES = (
     Case("trickplay-playlist-of-its-own-source", TRICKPLAY + "?MediaSourceId={open}", PASS,
          "A film's trickplay playlist naming the film itself as its source, as the playlists Jellyfin hands out do. The door asks about both, and both may be seen.",
          presents="authorization"),
-    Case("trickplay-playlist-naming-another-item-as-its-source", TRICKPLAY + "?MediaSourceId={closed}", REFUSE,
+    Case("trickplay-playlist-naming-another-item-as-its-source", TRICKPLAY + WITHHELD_SOURCE, REFUSE,
          "The trickplay playlist of a film the member may see, naming a film they may not as its source. The door asks about both and is told 404 for the second.",
          presents="authorization"),
     Case("trickplay-playlist-naming-another-item-as-its-source-under-the-mediabrowser-prefix",
-         "/mediabrowser" + TRICKPLAY + "?MediaSourceId={closed}", REFUSE,
+         "/mediabrowser" + TRICKPLAY + WITHHELD_SOURCE, REFUSE,
          "A withheld source under /mediabrowser: the door asks about both there too.", presents="authorization"),
     Case("trickplay-playlist-naming-another-item-as-its-source-with-a-trailing-slash",
          TRICKPLAY + "/?MediaSourceId={closed}", REFUSE,
          "A withheld source on the playlist with a trailing slash, which Jellyfin routes the same.",
          presents="authorization"),
     Case("trickplay-playlist-naming-another-item-as-its-source-naming-the-host",
-         ABSOLUTE + TRICKPLAY + "?MediaSourceId={closed}", REFUSE,
+         ABSOLUTE + TRICKPLAY + WITHHELD_SOURCE, REFUSE,
          "A withheld source, in absolute form.", presents="authorization"),
     Case("trickplay-playlist-with-a-letter-of-the-source-encoded", TRICKPLAY + "?MediaSource%49d={closed}", REFUSE,
          "A source whose name has a letter percent-encoded, which Jellyfin decodes and the question would not carry.",
