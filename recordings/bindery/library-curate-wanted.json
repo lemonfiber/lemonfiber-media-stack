@@ -1,5 +1,5 @@
 {
-  "recorded_from": "ghcr.io/vavallee/bindery@sha256:28871d79c624f92acae9dac91b1a20da2d9031cf7faa1967d88cee378f360c08",
+  "recorded_from": "ghcr.io/vavallee/bindery@sha256:27109c963f91a27f08d8825b406b2b5a5c59aed080bd9f3a7e585e235673d489",
   "note": "The same read with the API key this instance was given before its first start, as the stack gives it one. Recorded empty, because a fresh instance wants nothing yet; what it shows is that the list is there and answers as a list.",
   "request": {
     "method": "GET",
