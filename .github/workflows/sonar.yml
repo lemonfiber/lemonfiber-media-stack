@@ -23,7 +23,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   gate:
-    uses: lemonfiber/spec/.github/workflows/sonar-gate.yml@579dd00118f557a9ff703c988a0648012b828bed # v1.0.98
+    uses: lemonfiber/spec/.github/workflows/sonar-gate.yml@ca770979e940f48a57d25cbc2d687b0d1cb58049 # v1.0.102
     with:
       # Named, because the default is <owner>_<repo> and this project is not called
       # that. `lemonfiber_lemonfiber-media-stack` resolves to nothing, and a key that
