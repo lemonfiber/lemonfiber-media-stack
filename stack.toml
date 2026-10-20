@@ -251,6 +251,10 @@ by = "bazarr"
 asks = "library.curate"
 each = true
 
+[[wiring]]
+by = "jellyfin"
+asks = "dashboard.show"
+
 # ── By name ──────────────────────────────────────────────────────────────────
 # Seven links that are genuinely about one service each, and say so.
 
