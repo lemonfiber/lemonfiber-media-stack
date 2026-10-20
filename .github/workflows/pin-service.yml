@@ -246,7 +246,7 @@ jobs:
     if: needs.bump.outputs.head != ''
     permissions:
       contents: read
-    uses: lemonfiber/spec/.github/workflows/rolling-pull-request.yml@ca770979e940f48a57d25cbc2d687b0d1cb58049 # v1.0.102
+    uses: lemonfiber/spec/.github/workflows/rolling-pull-request.yml@e745e0f7f79f5f2e76b68e560b1c28e1df956493 # v1.0.103
     with:
       branch: ${{ needs.bump.outputs.branch }}
       head: ${{ needs.bump.outputs.head }}
