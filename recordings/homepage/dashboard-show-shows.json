@@ -1,0 +1,172 @@
+{
+  "recorded_from": "ghcr.io/gethomepage/homepage@sha256:a0b71c8e757298d02560186bab9fbe3fc2d375c523a62cc1019177b37e48aa28",
+  "note": "The panel list the dashboard shows, asked for presenting nothing, holding the stack's starting configuration. An answer that reads as a list of groups is the pass: it is the list lemonfiber applies, shown to anybody on the household network, and a fresh dashboard showing no entry yet answers an empty one.",
+  "request": {"method": "GET", "path": "/api/services"},
+  "response": {
+    "status": 200,
+    "headers": {"content-type": "application/json; charset=utf-8"},
+    "json": [
+      {
+        "groups": [],
+        "name": "Watch",
+        "services": [
+          {
+            "description": "Films and television",
+            "href": "http://{{HOMEPAGE_VAR_LAN_HOST}}:8096",
+            "icon": "jellyfin.png",
+            "name": "Jellyfin",
+            "siteMonitor": "http://jellyfin:8096/health",
+            "type": "service",
+            "weight": 100,
+            "widgets": []
+          },
+          {
+            "description": "Ask for something",
+            "href": "http://{{HOMEPAGE_VAR_LAN_HOST}}:5055",
+            "icon": "overseerr.png",
+            "name": "Seerr",
+            "siteMonitor": "http://seerr:5055/api/v1/status",
+            "type": "service",
+            "weight": 200,
+            "widgets": []
+          }
+        ]
+      },
+      {
+        "groups": [],
+        "name": "Library",
+        "services": [
+          {
+            "description": "Ebooks",
+            "href": "http://{{HOMEPAGE_VAR_LAN_HOST}}:8083",
+            "icon": "calibre-web.png",
+            "name": "Calibre-Web",
+            "type": "service",
+            "weight": 100,
+            "widgets": []
+          },
+          {
+            "description": "Audiobooks",
+            "href": "http://{{HOMEPAGE_VAR_LAN_HOST}}:13378",
+            "icon": "audiobookshelf.png",
+            "name": "Audiobookshelf",
+            "siteMonitor": "http://audiobookshelf:80/healthcheck",
+            "type": "service",
+            "weight": 200,
+            "widgets": []
+          },
+          {
+            "description": "Music",
+            "href": "http://{{HOMEPAGE_VAR_LAN_HOST}}:4533",
+            "icon": "navidrome.png",
+            "name": "Navidrome",
+            "siteMonitor": "http://navidrome:4533/ping",
+            "type": "service",
+            "weight": 300,
+            "widgets": []
+          }
+        ]
+      },
+      {
+        "groups": [],
+        "name": "Automation",
+        "services": [
+          {
+            "description": "Television",
+            "href": "http://localhost:8989",
+            "icon": "sonarr.png",
+            "name": "Sonarr",
+            "siteMonitor": "http://sonarr:8989/ping",
+            "type": "service",
+            "weight": 100,
+            "widgets": []
+          },
+          {
+            "description": "Film",
+            "href": "http://localhost:7878",
+            "icon": "radarr.png",
+            "name": "Radarr",
+            "siteMonitor": "http://radarr:7878/ping",
+            "type": "service",
+            "weight": 200,
+            "widgets": []
+          },
+          {
+            "description": "Music",
+            "href": "http://localhost:8686",
+            "icon": "lidarr.png",
+            "name": "Lidarr",
+            "siteMonitor": "http://lidarr:8686/ping",
+            "type": "service",
+            "weight": 300,
+            "widgets": []
+          },
+          {
+            "description": "Subtitles",
+            "href": "http://localhost:6767",
+            "icon": "bazarr.png",
+            "name": "Bazarr",
+            "siteMonitor": "http://bazarr:6767/api/system/ping",
+            "type": "service",
+            "weight": 400,
+            "widgets": []
+          },
+          {
+            "description": "Books and audiobooks",
+            "href": "http://localhost:8787",
+            "icon": "mdi-book-open-variant",
+            "name": "Bindery",
+            "type": "service",
+            "weight": 500,
+            "widgets": []
+          }
+        ]
+      },
+      {
+        "groups": [],
+        "name": "Acquisition",
+        "services": [
+          {
+            "description": "Indexers",
+            "href": "http://localhost:9696",
+            "icon": "prowlarr.png",
+            "name": "Prowlarr",
+            "siteMonitor": "http://prowlarr:9696/ping",
+            "type": "service",
+            "weight": 100,
+            "widgets": []
+          },
+          {
+            "description": "Usenet search",
+            "href": "http://localhost:5076",
+            "icon": "nzbhydra2.png",
+            "name": "NZBHydra2",
+            "type": "service",
+            "weight": 200,
+            "widgets": []
+          },
+          {
+            "description": "Usenet downloads",
+            "href": "http://localhost:8085",
+            "icon": "sabnzbd.png",
+            "name": "SABnzbd",
+            "siteMonitor": "http://sabnzbd:8080/api?mode=version",
+            "type": "service",
+            "weight": 300,
+            "widgets": []
+          },
+          {
+            "description": "Torrents, via the VPN",
+            "href": "http://localhost:8081",
+            "icon": "qbittorrent.png",
+            "name": "qBittorrent",
+            "siteMonitor": "http://gluetun:8081/",
+            "type": "service",
+            "weight": 400,
+            "widgets": []
+          }
+        ]
+      }
+    ]
+  }
+}
