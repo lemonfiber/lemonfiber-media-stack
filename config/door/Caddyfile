@@ -140,20 +140,20 @@
 	# who is there once its own setting turns it on.
 	@splashscreen expression `{http.request.orig_uri}.matches("(?i)^[^?]*/(?:emby/|mediabrowser/)?Branding/Splashscreen/?(?:[?]|$)")`
 
-	# On a video's trickplay playlist, a `MediaSourceId`, which Jellyfin writes into the
-	# playlists it hands out itself. Jellyfin answers the playlist of whichever item that
-	# names without asking who is there, so the door asks about it as well as about the
-	# item in the path, below. One it cannot ask about, under another spelling, in
-	# another shape than the 32 lower-case hexadecimal digits Jellyfin writes, or given
-	# twice, is refused, as is any parameter name holding anything but ASCII letters,
-	# digits, `_`, `-` and `.`, which could spell it past these matches.
+	# On a video's trickplay playlist and its tiles, a `MediaSourceId`, which Jellyfin
+	# writes into the playlists and tile addresses it hands out itself. Jellyfin serves
+	# the playlist or tile of whichever item that names, so the door asks about it as
+	# well as about the item in the path, below. One it cannot ask about, under another
+	# spelling, in another shape than the 32 lower-case hexadecimal digits Jellyfin
+	# writes, or given twice, is refused, as is any parameter name holding anything but
+	# ASCII letters, digits, `_`, `-` and `.`, which could spell it past these matches.
 	@trickplay_source_unaskable {
-		path_regexp (?i)^(?:/emby|/mediabrowser)?/Videos/[^/]+/Trickplay/[^/]+/tiles\.m3u8/?$
+		path_regexp (?i)^(?:/emby|/mediabrowser)?/Videos/[^/]+/Trickplay(?:/|$)
 		expression `{http.request.uri.query}.matches("(^|&)[A-Za-z0-9_.-]*[^A-Za-z0-9_.=&-]") || {http.request.uri.query}.matches("(?i)(^|&)mediasourceid(=|&|$)") && !({http.request.uri.query}.matches("^(.*&)?MediaSourceId=[0-9a-f]{32}(&.*)?$") && !{http.request.uri.query}.matches("(?i)(^|&)mediasourceid(=|&|$).*&mediasourceid(=|&|$)"))`
 	}
 
 	@trickplay_source {
-		path_regexp trickplay (?i)^(?:/emby|/mediabrowser)?/Videos/([0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12})/Trickplay/[^/]+/tiles\.m3u8/?$
+		path_regexp trickplay (?i)^(?:/emby|/mediabrowser)?/Videos/([0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12})/Trickplay(?:/|$)
 		expression `{http.request.uri.query}.matches("(?i)(^|&)mediasourceid(=|&|$)")`
 	}
 
