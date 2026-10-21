@@ -497,15 +497,17 @@ def run(profiles: list[str]) -> int:
         print(f"::error::profiles {profiles} hold no services")
         return 1
 
-    # What the services wrote while they ran is theirs, and some of it is not this
-    # run's to remove; the scratch directory is left to the machine's own clean-up.
-    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
-        scratch = pathlib.Path(tmp)
+    scratch = pathlib.Path(tempfile.mkdtemp())
+    try:
         data_root = scratch / "data"
         data_root.mkdir()
         project = generated.written(scratch, generated.operator(data_root, PROJECT))
         stand_in(project, chosen)
         return started_and_judged(project, profiles, chosen)
+    finally:
+        # What the services wrote while they ran is theirs, and what a service running
+        # as root wrote is not this run's to remove: it is left to the machine.
+        shutil.rmtree(scratch, ignore_errors=True)
 
 
 def started_and_judged(project: pathlib.Path, profiles: list[str], chosen: list[dict]) -> int:
