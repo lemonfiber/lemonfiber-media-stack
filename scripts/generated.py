@@ -31,6 +31,8 @@ CONFIGURATION = "lemonfiber"
 OPERATOR_FILE = ".env"
 # The setting lemonfiber names the project by.
 PROJECT_KEY = "LEMONFIBER_PROJECT"
+# The key a service's secrets files are named under in the project.
+ENV_FILE = "env_file:"
 # What separates the parts of a network's name in the project.
 SEPARATOR = "__"
 # The network a service's ask of a capability is joined on, by its parts.
@@ -72,7 +74,24 @@ def written(scratch: pathlib.Path, values: dict[str, str], *, carried: bool = Tr
     found = sorted(path.parent for path in (scratch / "stack" if carried else data).rglob(FILE))
     if done.returncode != 0 or len(found) != 1:
         raise RuntimeError(f"lemonfiber wrote {len(found)} projects: {(done.stderr or done.stdout).strip()[-400:]}")
+    filed(found[0] / FILE, config)
     return found[0]
+
+
+def filed(project: pathlib.Path, config: pathlib.Path) -> None:
+    """Each secrets file the project names beneath `config` that a start, not `reset`,
+    writes: made empty and private where it is not there, holding no secret."""
+    named, listing = [], False
+    for line in project.read_text(encoding="utf-8").splitlines():
+        entry = line.strip()
+        if listing and entry.startswith("- "):
+            named.append(pathlib.Path(entry.removeprefix("- ")))
+        else:
+            listing = entry == ENV_FILE
+    for path in named:
+        if path.is_relative_to(config) and not path.exists():
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.touch(mode=0o600)
 
 
 def tracked() -> list[str]:

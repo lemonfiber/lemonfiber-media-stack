@@ -497,7 +497,9 @@ def run(profiles: list[str]) -> int:
         print(f"::error::profiles {profiles} hold no services")
         return 1
 
-    with tempfile.TemporaryDirectory() as tmp:
+    # What the services wrote while they ran is theirs, and some of it is not this
+    # run's to remove; the scratch directory is left to the machine's own clean-up.
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
         scratch = pathlib.Path(tmp)
         data_root = scratch / "data"
         data_root.mkdir()
