@@ -3,6 +3,6 @@
 # claims with the capability vocabulary it publishes, so both read the same
 # vocabulary. Moved by hand, in a change somebody reviews.
 #
-# lemonfiber/lemonfiber `main`, 2026-10-11: lemonfiber#1002, which reads every
-# service's container in the one typed service model.
-256bcc7bd5475c433542b8f6c63de66b43decdf0
+# lemonfiber/lemonfiber `main`, 2026-10-20: lemonfiber#1057, whose vocabulary
+# carries dashboard.show and the other capabilities the bundled parts fill.
+7343ad109f993c0459be32d5876bed1aa7f6b42e
