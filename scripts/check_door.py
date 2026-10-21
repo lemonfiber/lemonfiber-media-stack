@@ -139,6 +139,9 @@ SUBTITLE = 0
 KEPT_ARTIST = "KeptArtist"
 # The trickplay playlist at the width Jellyfin extracts by default.
 TRICKPLAY = "/Videos/{open}/Trickplay/320/tiles.m3u8"
+
+# The first trickplay tile at that width, which the playlist names with its source.
+TRICKPLAY_TILE = "/Videos/{open}/Trickplay/320/0.jpg"
 # The query naming as the playlist's source the film the member may not see.
 WITHHELD_SOURCE = "?MediaSourceId={closed}"
 # The door named ahead of a path, as an absolute-form request target names it.
@@ -368,6 +371,18 @@ CASES = (
          presents="authorization"),
     Case("trickplay-playlist-with-its-source-in-another-case", TRICKPLAY + "?mediasourceid={open}", REFUSE,
          "A source under a spelling the question would not carry. Jellyfin reads the name in any case, so it is refused.",
+         presents="authorization"),
+    Case("trickplay-tile-of-its-own-source", TRICKPLAY_TILE + "?MediaSourceId={open}", PASS,
+         "A film's first trickplay tile naming the film itself as its source, as the playlist's tile addresses do. The door asks about both, and both may be seen.",
+         presents="authorization"),
+    Case("trickplay-tile-naming-another-item-as-its-source", TRICKPLAY_TILE + WITHHELD_SOURCE, REFUSE,
+         "A tile of a film the member may see, naming a film they may not as its source, whose tile Jellyfin would serve instead. The door asks about both and is told 404 for the second.",
+         presents="authorization"),
+    Case("trickplay-tile-with-its-source-given-twice", TRICKPLAY_TILE + "?MediaSourceId={open}&MediaSourceId={closed}", REFUSE,
+         "A tile's source given twice, which the question and Jellyfin could each read their own way.",
+         presents="authorization"),
+    Case("trickplay-tile-with-its-source-in-another-case", TRICKPLAY_TILE + "?mediasourceid={closed}", REFUSE,
+         "A tile's source under a spelling the question would not carry. Jellyfin reads the name in any case, so it is refused.",
          presents="authorization"),
         Case("stream-on-a-route-letter-encoded", "/Video%73/{closed}/stream.mkv%2F..%2F..%2F..?static=true", REFUSE,
          "A route letter percent-encoded (`%73` for `s`) so the byte-route matcher does not read it as one, while the encoded slashes climb out: an encoded unreserved character is refused everywhere, which is the only guard that reads this as a byte route."),
