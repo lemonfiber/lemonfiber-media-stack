@@ -26,9 +26,9 @@ request that proposes the service: `watch` is admissible with that judgement
 recorded against it, `reject` belongs in the spec's notable exclusions rather
 than in `stack.toml`.
 
-Then three data edits, no code: a service block in the right
-`compose/<profile>.yml`, its `[[service]]` in `services/<id>.toml` with that file
-added to `stack.toml`'s `include`, and its profile added to the relevant forms. Then `just ci`. See the specification's
+Then two data edits, no code: its `[[service]]` in `services/<id>.toml` with that
+file added to `stack.toml`'s `include`, and its profile added to the relevant
+forms. lemonfiber writes its Compose entry from the service file. Then `just ci`. See the specification's
 [`30-repos/lemonfiber-media-stack.md`](https://github.com/lemonfiber/spec/blob/main/30-repos/lemonfiber-media-stack.md).
 
 Among the `[[service]]` fields are the two that say what the service does on the
@@ -157,57 +157,49 @@ capability of its own.
 
 ## Networks
 
-Every service is on the project's default network, except where its entry names
-others. Five of the named networks declared in `compose.yml` confine the request gate
-and the decline service, the images lemonfiber builds, each of which holds a
-credential that administers another service:
+lemonfiber writes the networks with the project, from the asks and wirings above.
+A service that publishes a port is on a network of its own, `own__<id>`, which
+carries the port and its egress. Each ask is a network of its own,
+`ask__<asker>__<capability>__<filler>`, and each by-name wiring one too,
+`link__<by>__<to>`: both internal, and holding the two ends and nothing else.
+Each network gets a subnet of its own beneath 10.80.0.0/16, so the project fits
+beside the engine's own address pools.
 
-- **The request gate** publishes no port and is on two internal networks only:
-  `requests-gate`, shared with Seerr alone, and `gate-upstream`, shared with
-  Sonarr, Radarr and Jellyfin. Seerr is not on the default network: it is on
-  `requests-gate` and on `requests`, the bridge that carries its published port,
-  its egress, and Homepage and Caddy, which reach it. The gate is Seerr's only
-  path to Sonarr, Radarr and Jellyfin
-  ([ADR-0032](https://github.com/lemonfiber/spec/blob/main/00-overview/decisions/0032-the-request-service-reaches-the-arrs-through-a-gate.md)).
-- **The decline service** is on `decline-upstream`, an internal network shared
-  with Jellyfin alone, and on `decline`, which carries its published port and
-  nothing else, and translates no address off the host: the port answers, and
-  the service reaches nothing beyond it
-  ([ADR-0029](https://github.com/lemonfiber/spec/blob/main/00-overview/decisions/0029-a-household-service-declines-an-invitation-with-one-key.md)).
+The request gate and the decline service, the images lemonfiber builds, each hold
+a credential that administers another service, and each declares
+`posture = "confined"`: lemonfiber writes them a read-only root, the operator's
+uid, every kernel capability dropped and `no-new-privileges`, and each mounts its
+own configuration directory and nothing else. The request gate publishes no port
+and is on the networks of its own asks and of Seerr's ask of it alone, so it is
+Seerr's only path to Sonarr, Radarr and Jellyfin
+([ADR-0032](https://github.com/lemonfiber/spec/blob/main/00-overview/decisions/0032-the-request-service-reaches-the-arrs-through-a-gate.md),
+[ADR-0029](https://github.com/lemonfiber/spec/blob/main/00-overview/decisions/0029-a-household-service-declines-an-invitation-with-one-key.md),
+ADR-0033 §4).
 
-Both run with a read-only root, as the operator rather than root, with every
-kernel capability dropped, `no-new-privileges` and a memory limit, and mount
-their own configuration directory and nothing else. `scripts/validate_manifest.py`
-holds each to that, and to exactly the networks and neighbours its ADR names
-(ADR-0033 §4).
+The door's two asks are the networks whose addresses are fixed, where the door
+fills `stream.guard`
+([ADR-0027](https://github.com/lemonfiber/spec/blob/main/00-overview/decisions/0027-a-member-plays-what-the-core-authorised.md)):
 
-Two more networks put Jellyfin behind its door
-([ADR-0027](https://github.com/lemonfiber/spec/blob/main/00-overview/decisions/0027-a-member-plays-what-the-core-authorised.md)).
-Jellyfin publishes on loopback alone, and the door, which is not on the default
-network, publishes its household ports:
+- On its ask of `proxy.front` the door holds 10.80.96.2 and the proxy 10.80.96.3,
+  and the door trusts the client the proxy names from that address and from no
+  other.
+- On its ask of `media.serve` the door holds 10.80.96.18, the one proxy Jellyfin
+  trusts to say which client a request came from, so Jellyfin's local-network
+  rules, a member's remote access among them, judge the household device rather
+  than the door. lemonfiber sets it as Jellyfin's known proxy.
 
-- **`door-upstream`** is internal and shared by the door and Jellyfin alone. The
-  door is fixed at 10.80.96.18 on it, and that is the one proxy Jellyfin trusts
-  to say which client a request came from, so Jellyfin's local-network rules,
-  a member's remote access among them, judge the household device rather than
-  the door. lemonfiber sets it as Jellyfin's known proxy.
-- **`door`** carries the door's published ports, and the proxy's way to it. The
-  door is fixed at 10.80.96.2 and the proxy at 10.80.96.3, and the door trusts
-  the client the proxy names from that address and from no other.
-
-Both have a fixed subnet, because a fixed address needs one, and Docker hands
-out only the upper half of each. `scripts/validate_manifest.py` holds the door
-to those two networks and those neighbours, every fixed address outside what
-Docker hands out, and the address the door trusts to the proxy's.
-`scripts/check_door.py` starts the door on both networks and asks it every case
-it must refuse or pass; `scripts/record_door.py` asks the same of Jellyfin itself
-and keeps the answers in `recordings/door/`.
+Docker hands out only the upper half of each of those subnets.
+`scripts/check_door.py` reads both from the project the lemonfiber binary
+carries, starts the door on both networks and asks it every case it must refuse
+or pass; `scripts/record_door.py` asks the same of Jellyfin itself and keeps the
+answers in `recordings/door/`.
 
 ## Bumping a pin
 
 A pin is the digest of an image's multi-architecture index, with its tag beside
-it for reading: `tag` and `digest` in `services/<id>.toml`, `image:tag@digest` in the
-compose fragment. The digest is what runs; the tag is what a reader is shown.
+it for reading: `tag` and `digest` in `services/<id>.toml`, from which lemonfiber
+writes `image:tag@digest` into the project. The digest is what runs; the tag is
+what a reader is shown.
 
 An image from linuxserver.io is pinned by its fixed build tag, such as
 `4.0.20.3014-ls326`: the release, then `-ls` and the build's number. The
@@ -219,7 +211,7 @@ bump, and needs no new date.
 Each pin follows the newest release of its own major. The `pins` workflow runs
 weekly, and `scripts/pins.py` finds for each service the newest tag in the
 current tag's spelling and major, resolves the digest of the index it names, and
-writes both files. A service whose claims bind recordings is re-recorded from
+writes both into the service's file. A service whose claims bind recordings is re-recorded from
 the new image in the same change. It opens one pull request per service and arms
 it to merge once every required check is green. A major is never crossed: that is the
 operator's decision. `just pins` shows what it would move, and `just pins-apply
@@ -255,8 +247,7 @@ says anything about a service the change did not touch.
 
 ## Removing a service
 
-Delete its block from `compose/<profile>.yml`, its file in `services/` and its
-`include` entry; if it was the only service in its profile, remove the profile and
+Delete its file in `services/` and its `include` entry; if it was the only service in its profile, remove the profile and
 every form reference to it too. Then record why it went:
 
 ```toml
@@ -273,20 +264,17 @@ refuses a service that disappears without one of these entries.
 
 ## What CI enforces
 
-Not style preferences — each has a spec requirement behind it, and each is
-proven to fail when broken by `scripts/test_validate_manifest.py`.
+Not style preferences — each has a spec requirement behind it, and each manifest
+rule is proven to fail when broken by `scripts/test_validate_manifest.py`. What
+the project lemonfiber writes holds — one data mount per service, bindings by
+tier, the networks, each entry as its service file declares it — is lemonfiber's
+to prove, where the project is written.
 
 | Check | Enforces |
 |-------|----------|
-| Manifest ↔ compose parity | Every service in one is in the other (`REPO-R18`) |
-| Each entry is its declared container | Ports, mounts, environment, user, posture, shape, memory limit and network as the service file's model fields say; a difference fails, except the ones `OPEN` in `scripts/model_parity.py` holds with their question (`ARCH-R225`, `ARCH-R246`) |
 | Container fields hold to the model | The rules lemonfiber's own reader holds them to, in `scripts/container_rules.py`; `grants`, `capabilities` and `depends_on` refused, naming what replaces them (`ARCH-R225`–`ARCH-R237`, `ARCH-R246`) |
-| One `${DATA_ROOT}:/data` mount per service | Hardlinks (`ADR-0006`, `C5-R5`) |
-| Bindings match the manifest tier | Admin on loopback, household on LAN (`C6-R1/R2`) |
-| No `depends_on` across a profile | Any subset boots (`B1-R14`) |
 | A wiring asks or names, never both | The far end is a capability or a service (`F9-R4`) |
 | A by-name wiring and a chosen filler say why | Neither reads as an oversight or a rule (`F4-R8`, `F4-R12`) |
-| Killswitch routing | Nothing shares Gluetun's profile without its namespace, so no client here is one lemonfiber must report as leaking (`C2-R12`) |
 | Pinned by index digest, tag beside it | Nothing changes because time passed, and nothing runs by tag (`E1-R1`) |
 | Kernel capabilities come from a shape | Only Gluetun takes `egress-guard`, and so `NET_ADMIN` (`ARCH-R237`, `C6`) |
 | OSI licence per service | Verified against a vendored SPDX list; lemonfiber's own images carry `Hippocratic-3.0` and nothing else (`F2-R5`) |
@@ -296,13 +284,8 @@ proven to fail when broken by `scripts/test_validate_manifest.py`.
 | Upstream licence, where a pin moves | Read from the forge; still OSI-approved, or `Hippocratic-3.0` for lemonfiber's own (`F2-R12`, `F2-R5`) |
 | A bumped pin carries a reviewed date | `last_release` moves with the tag, or the commit re-affirms it (`F2-R14`) |
 | A removal says why | `[[removed]]` names the reason and any replacement (`F2-R13`) |
-| Every form resolves | `docker compose config` per form (`REPO-R17`), dragging in nothing outside its profiles (`B1-R14`, `REPO-R19`) |
-| Every profile starts | Brought up with plain `docker compose`, each service under the posture its service file declares, every service answering its declared probe on its published port, then torn down. The torrent profile is excluded by name: it needs a VPN subscription (`F1-R1`, `REPO-R93`) |
-| Jellyfin is reached through its door alone | The door on `door` and `door-upstream` and no other network, beside the proxy and Jellyfin alone, at fixed addresses Docker never hands out, trusting the proxy's address and no other to name the client (`D11-R2`) |
-| The door refuses what it must | Started on both its networks in front of a stand-in for Jellyfin and asked every case on both ports: each item's bytes refused without a session that may see the item, a picture Jellyfin finds by name and its splash screen refused, everything else passed, the client Jellyfin is told the one the door may believe, the certificate on 8920 the one written beside it, and a refusal when Jellyfin does not answer; each case held to its recording of Jellyfin itself (`D11-R2`, `D11-R7`) |
+| Every profile starts | The project the lemonfiber binary writes for a scratch copy of the stack, brought up with plain `docker compose` in its directory, each service under the posture its service file declares, every service answering its declared probe on its published port, then torn down. The torrent profile is excluded by name: it needs a VPN subscription (`F1-R1`, `REPO-R93`) |
+| The door refuses what it must | Started on both its networks, at the addresses the project the lemonfiber binary carries fixes, in front of a stand-in for Jellyfin and asked every case on both ports: each item's bytes refused without a session that may see the item, a picture Jellyfin finds by name and its splash screen refused, everything else passed, the client Jellyfin is told the one the door may believe, the certificate on 8920 the one written beside it, and a refusal when Jellyfin does not answer; each case held to its recording of Jellyfin itself (`D11-R2`, `D11-R7`) |
 | Every claim holds against its recordings | Judged by lemonfiber's own judge, checked out at a pinned commit: a recording that refutes a probe fails, and one that cannot be judged is reported unproven (`ARCH-R137`, `F9-R2`) |
 | arm64 + amd64 per pin | Read from the pinned index, which must be one (`F2-R6`, `E1-R1`) |
 | A moved pin is its tag's index | The registry resolves the tag to the pinned digest (`E1-R1`) |
-
-The parity checks read `docker compose config`'s resolved model rather than the
-YAML, so they check what Docker will run, not what the file appears to say.

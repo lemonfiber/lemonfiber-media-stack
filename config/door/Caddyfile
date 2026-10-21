@@ -31,9 +31,10 @@
 	servers {
 		# Only TCP is published, so there is no HTTP/3 listener to offer.
 		protocols h1 h2
-		# The proxy's fixed address on the `door` network, and no other, may
-		# say which client a request came from (compose/proxy.yml). Anybody
-		# else's X-Forwarded-For is ignored, and the client is who connected.
+		# The proxy's fixed address on the network of the door's ask of the
+		# proxy, and no other, may say which client a request came from.
+		# Anybody else's X-Forwarded-For is ignored, and the client is who
+		# connected.
 		trusted_proxies static 10.80.96.3
 		trusted_proxies_strict
 		client_ip_headers X-Forwarded-For

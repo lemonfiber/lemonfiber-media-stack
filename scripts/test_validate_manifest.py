@@ -22,7 +22,7 @@ import tempfile
 import stack_manifest
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-COPIED = ("compose.yml", "stack.toml", "services", "compose", "scripts", "recordings", "config/door/Caddyfile")
+COPIED = ("stack.toml", "services", "scripts", "recordings", "config/door/Caddyfile")
 
 # What a mutation names to be made in whichever of the manifest's files holds the text:
 # the root or a service's file (ARCH-R171).
@@ -76,23 +76,6 @@ def field(service: str, name: str, line: str):
     return apply
 
 
-def reference(path: str, image: str, new: str):
-    """A mutation that replaces the reference `image` is pulled by in a compose fragment."""
-
-    def apply(root: pathlib.Path) -> None:
-        target = root / path
-        replaced, count = re.subn(
-            rf"(?m)^(\s*image:\s*){re.escape(image)}[:@]\S*$",
-            lambda match: f"{match.group(1)}{new}",
-            target.read_text(encoding="utf-8"),
-        )
-        if count != 1:
-            raise AssertionError(f"test fixture is stale: {image} is pulled {count}x in {path}, expected 1")
-        target.write_text(replaced, encoding="utf-8")
-
-    return apply
-
-
 def strip_lines(path: str, prefixes: tuple[str, ...]):
     """A mutation that removes every line in `path`'s files starting with one of `prefixes`."""
 
@@ -108,20 +91,8 @@ def strip_lines(path: str, prefixes: tuple[str, ...]):
     return apply
 
 
-def append(path: str, text: str):
-    def apply(root: pathlib.Path) -> None:
-        with (root / path).open("a", encoding="utf-8") as handle:
-            handle.write(text)
-
-    return apply
-
-
 # The last line of FlareSolverr's one claim, after which a case writes a second.
 FLARESOLVERR_FIXTURE = 'fixture = "recordings/flaresolverr/indexer-proxy-identifies.json"\n'
-
-# The request gate's networks line in compose/media.yml, beside which a case
-# overrides one of what the `confined` template in compose/_common.yml gives it.
-GATE_NETWORKS = "    networks: [requests-gate, gate-upstream]\n"
 
 # (name, mutation or None, expected substring of the report)
 CASES = [
@@ -149,14 +120,6 @@ CASES = [
         "a service with an api that says nowhere it listens",
         field("sabnzbd", "listens", ""),
         "declares an api but no listens",
-    ),
-    (
-        "a service listening somewhere its published port does not reach",
-        field("sabnzbd", "listens", "listens = 8085"),
-        (
-            "service sabnzbd: ports: the entry publishes host:container [(8085, 8080)], and the declaration "
-            "says [(8085, 8085)]"
-        ),
     ),
     (
         "a memory estimate of nothing",
@@ -224,26 +187,6 @@ CASES = [
         "already claimed",
     ),
     (
-        "ADR-0006 two mounts beneath the data root",
-        patch(
-            "compose/media.yml",
-            "      - ${DATA_ROOT:-./data}:/data\n      - ./config/jellyfin:/config",
-            "      - ${DATA_ROOT:-./data}/media:/media\n"
-            "      - ${DATA_ROOT:-./data}/downloads:/downloads\n"
-            "      - ./config/jellyfin:/config",
-        ),
-        "mounts beneath the data root",
-    ),
-    (
-        "ADR-0006 data mounted somewhere other than /data",
-        patch(
-            "compose/tv.yml",
-            "      - ${DATA_ROOT:-./data}:/data",
-            "      - ${DATA_ROOT:-./data}/tv:/data",
-        ),
-        "must be exactly ${DATA_ROOT}:/data",
-    ),
-    (
         "a media type outside the published vocabulary",
         patch(MANIFEST, 'media_types = ["tv"]', 'media_types = ["telly"]'),
         "unknown media type",
@@ -269,11 +212,6 @@ CASES = [
         "must not carry a tag or a digest",
     ),
     (
-        "E1-R1 compose resolving the image by its tag alone",
-        reference("compose/tv.yml", "lscr.io/linuxserver/sonarr", "lscr.io/linuxserver/sonarr:4.0.20"),
-        "does not match the manifest",
-    ),
-    (
         "ARCH-R246 depends_on, refused naming network.via",
         patch(
             MANIFEST,
@@ -284,60 +222,6 @@ CASES = [
             "service sonarr: declares depends_on, which is not a field: the one start-order edge the model "
             "writes is network.via's"
         ),
-    ),
-    (
-        "B1-R14 cross-profile depends_on in compose",
-        patch("compose/torrent.yml", "      gluetun:\n", "      prowlarr:\n"),
-        "crosses a profile boundary in compose",
-    ),
-    (
-        "C6-R1 admin service published beyond loopback",
-        patch("compose/tv.yml", '"127.0.0.1:8989:8989"', '"0.0.0.0:8989:8989"'),
-        "must be 127.0.0.1",
-    ),
-    (
-        "C6-R2 household service trapped on loopback",
-        patch(
-            "compose/media.yml",
-            '"${LAN_BIND:-0.0.0.0}:8096:8096"',
-            '"127.0.0.1:8096:8096"',
-        ),
-        "unreachable from a TV",
-    ),
-    (
-        "REPO-R18 service in compose but not in the manifest",
-        append(
-            "compose/tv.yml",
-            "\n  ghost:\n    image: alpine:3\n    profiles: [tv]\n",
-        ),
-        "not in stack.toml",
-    ),
-    (
-        "REPO-R18 service in the manifest but not in compose",
-        patch(
-            "compose.yml",
-            "  - path: compose/movies.yml\n    project_directory: .\n",
-            "",
-        ),
-        "not in the Compose model",
-    ),
-    (
-        "REPO-R18 pinned tag drifts from the manifest",
-        reference(
-            "compose/tv.yml",
-            "lscr.io/linuxserver/sonarr",
-            "lscr.io/linuxserver/sonarr:4.0.0@sha256:0000000000000000000000000000000000000000000000000000000000000000",
-        ),
-        "does not match the manifest",
-    ),
-    (
-        "ARCH-R237 a kernel capability held by a service that takes no shape",
-        patch(
-            "compose/tv.yml",
-            "    profiles: [tv]",
-            "    profiles: [tv]\n    cap_add: [NET_ADMIN]",
-        ),
-        "service sonarr: shape: the entry adds (capabilities, devices, groups) (['NET_ADMIN'], [], False)",
     ),
     (
         # Both spellings are still read, so that the refusal can say what to
@@ -356,15 +240,6 @@ CASES = [
             "declares grants, which is not a field: a kernel capability is a shape's to give; no shape gives "
             "SYS_ADMIN"
         ),
-    ),
-    (
-        "C2-R12 torrent client escaping the tunnel",
-        patch(
-            "compose/torrent.yml",
-            '    network_mode: "service:gluetun" # all traffic through the tunnel\n',
-            "",
-        ),
-        "killswitch",
     ),
     (
         "F2-R14 missing last_release",
@@ -394,25 +269,6 @@ CASES = [
             'license = "Proprietary"\nupstream = "https://github.com/FlareSolverr/FlareSolverr"',
         ),
         "not a recognised OSI identifier",
-    ),
-    (
-        # Compose itself rejects this before the lint runs: the fragment's paths
-        # rebase onto compose/, so `extends: file: compose/_common.yml` becomes
-        # compose/compose/_common.yml and no model is produced. The mount-source
-        # check in compose_parity.py is the backstop for a fragment that has no
-        # extends to break first.
-        "include missing project_directory is rejected",
-        patch(
-            "compose.yml",
-            "  - path: compose/tv.yml\n    project_directory: .\n",
-            "  - path: compose/tv.yml\n",
-        ),
-        "compose/compose/",
-    ),
-    (
-        "B1-R1 a service carrying two profiles",
-        patch("compose/tv.yml", "    profiles: [tv]", "    profiles: [tv, movies]"),
-        "must be exactly",
     ),
     (
         "manifest references a profile that was never declared",
@@ -629,111 +485,6 @@ CASES = [
         "asks for 'download.usenet' twice",
     ),
     (
-        "C6-R22 the request gate on a writable root",
-        patch("compose/media.yml", GATE_NETWORKS, "    read_only: false\n" + GATE_NETWORKS),
-        "service request-gate: runs with a writable root",
-    ),
-    (
-        "C6-R22 lemonfiber's own services keeping their kernel capabilities",
-        patch("compose/_common.yml", "    cap_drop: [ALL]\n", ""),
-        "service decline: keeps kernel capabilities",
-    ),
-    (
-        "C6-R22 lemonfiber's own services able to gain privileges",
-        patch("compose/_common.yml", '    security_opt: ["no-new-privileges:true"]\n', ""),
-        "service request-gate: can gain privileges",
-    ),
-    (
-        "C6-R22 lemonfiber's own services with no memory limit",
-        patch("compose/_common.yml", "    mem_limit: 64m\n", ""),
-        "service decline: runs with no memory limit",
-    ),
-    (
-        "C6-R22 the request gate running as root",
-        patch("compose/media.yml", GATE_NETWORKS, '    user: "0:0"\n' + GATE_NETWORKS),
-        "service request-gate: runs as '0:0'",
-    ),
-    (
-        "C6-R22 the decline service mounting the data root",
-        patch("compose/media.yml", "      - ./config/decline:/config\n",
-              "      - ./config/decline:/config\n      - ${DATA_ROOT:-./data}:/data\n"),
-        "service decline: mounts ['/config', '/data']",
-    ),
-    (
-        "C6-R22 the request gate on the default network",
-        patch("compose/media.yml", GATE_NETWORKS, "    networks: [default, requests-gate, gate-upstream]\n"),
-        "its ADR puts it on ['gate-upstream', 'requests-gate']",
-    ),
-    (
-        "C6-R22 another service on the network only Seerr shares with the request gate",
-        patch("compose/dash.yml", "networks: [default, requests]", "networks: [default, requests, requests-gate]"),
-        "shares 'requests-gate' with ['homepage', 'seerr']",
-    ),
-    (
-        "C6-R22 Seerr back on the default network, beside what it reaches through the gate",
-        patch("compose/media.yml", "networks: [requests, requests-gate]",
-              "networks: [default, requests, requests-gate]"),
-        "service seerr: shares a network with ['jellyfin', 'radarr', 'sonarr']",
-    ),
-    (
-        "C6-R22 the request gate's upstream network routed off the host",
-        patch("compose.yml", "  gate-upstream:\n    internal: true\n", "  gate-upstream: {}\n"),
-        "service request-gate: is on 1 network(s) that are not internal",
-    ),
-    (
-        "ADR-0029 another service on the decline service's published network",
-        patch("compose/proxy.yml", "      requests: {}\n", "      requests: {}\n      decline: {}\n"),
-        "shares 'decline' with ['caddy']",
-    ),
-    (
-        "ADR-0029 the decline service's published network reaching off the host",
-        patch("compose.yml", '  decline:\n    driver_opts:\n      com.docker.network.bridge.enable_ip_masquerade: "false"\n',
-              "  decline: {}\n"),
-        "service decline: publishes on 'decline', which reaches off the host",
-    ),
-    (
-        "D11-R2 the door on the default network, beside Jellyfin at an address Jellyfin does not trust",
-        patch("compose/media.yml", "    networks:\n      door:\n        ipv4_address: 10.80.96.2\n",
-              "    networks:\n      default: {}\n      door:\n        ipv4_address: 10.80.96.2\n"),
-        "service door: is on ['default', 'door', 'door-upstream']",
-    ),
-    (
-        "D11-R2 another service beside the door and Jellyfin on the network between them",
-        patch("compose/dash.yml", "networks: [default, requests]", "networks: [default, requests, door-upstream]"),
-        "shares 'door-upstream' with ['homepage', 'jellyfin']",
-    ),
-    (
-        "D11-R2 the network between the door and Jellyfin routed off the host",
-        patch("compose.yml", "  door-upstream:\n    internal: true\n", "  door-upstream:\n"),
-        "'door-upstream' is not internal",
-    ),
-    (
-        "D11-R2 the door at an address Docker hands out",
-        patch("compose/media.yml", "ipv4_address: 10.80.96.18", "ipv4_address: 10.80.96.25"),
-        "is fixed at 10.80.96.25 on 'door-upstream'",
-    ),
-    (
-        "D11-R2 the door's address left to Docker",
-        patch("compose/media.yml", "      door-upstream:\n        ipv4_address: 10.80.96.18\n",
-              "      door-upstream: {}\n"),
-        "service door: holds no fixed address on 'door-upstream'",
-    ),
-    (
-        "D11-R2 the door trusting an address the proxy does not hold",
-        patch("config/door/Caddyfile", "trusted_proxies static 10.80.96.3", "trusted_proxies static 10.80.96.4"),
-        "trusts ['10.80.96.4'] to name the client, and the proxy is fixed at 10.80.96.3",
-    ),
-    (
-        "D11-R2 the door trusting a whole range to name the client",
-        patch("config/door/Caddyfile", "trusted_proxies static 10.80.96.3", "trusted_proxies static 10.80.96.3 private_ranges"),
-        "trusts ['10.80.96.3', 'private_ranges']",
-    ),
-    (
-        "D11-R2 the proxy reaching the door from an address Docker hands out",
-        patch("compose/proxy.yml", "ipv4_address: 10.80.96.3", "ipv4_address: 10.80.96.9"),
-        "service caddy: is fixed at 10.80.96.9 on 'door'",
-    ),
-    (
         "F2-R5 an OSI licence on lemonfiber's own image",
         field("decline", "license", 'license = "MIT"'),
         "licence 'MIT' on lemonfiber's own image",
@@ -742,11 +493,6 @@ CASES = [
         "F2-R5 lemonfiber's own licence on an image lemonfiber does not build",
         field("caddy", "license", 'license = "Hippocratic-3.0"'),
         "licence 'Hippocratic-3.0' is not a recognised OSI identifier",
-    ),
-    (
-        "ADR-0033 one of lemonfiber's own images with no containment stated",
-        patch("scripts/compose_parity.py", '    "decline": ("C6-R20", {\n', '    "declined": ("C6-R20", {\n'),
-        "service decline: is lemonfiber's own image and its containment is not stated",
     ),
     (
         "ARCH-R136 a claim for a capability the service does not provide",

@@ -4,9 +4,8 @@
 `ghcr.io/lemonfiber/<service>` is built by `lemonfiber-<service>` and published
 only from a tag the train cuts, `vX.Y.Z` or `vX.Y.Z-<identifier>` (ADR-0033 §3).
 Each publish dispatches `image-bump` with the service, the tag and the index
-digest it recorded, and this writes that pin: `tag` and `digest` in `services/<id>.toml`,
-`image:tag@digest` in the service's compose fragment, and `last_release` as the
-day it was published (`F2-R14`). `pins.py` leaves these images alone; their pin
+digest it recorded, and this writes that pin: `tag`, `digest` and `last_release`,
+as the day it was published, in `services/<id>.toml` (`F2-R14`). `pins.py` leaves these images alone; their pin
 moves with the train, not with a registry's newest tag.
 
 The pin is checked before it is written. The service has to be in the manifest
@@ -31,7 +30,7 @@ from collections.abc import Callable
 
 import registry
 import stack_manifest
-from pins import COMPOSE_DIR, OWN_IMAGES, REQUIRED, ROOT, rewrite_compose, rewrite_manifest
+from pins import OWN_IMAGES, REQUIRED, ROOT, rewrite_manifest
 
 SERVICE_ID = re.compile(r"\A[a-z0-9]+(?:-[a-z0-9]+)*\Z")
 # A tag the train cuts, and the identifier it refuses: ARCH-R43 gives a release
@@ -57,7 +56,7 @@ def refusal(manifest: dict, service: str, tag: str, digest: str) -> str:
         return f"{digest!r} is not a sha256 digest"
     entries = [entry for entry in manifest.get("service", []) if entry.get("id") == service]
     if not entries:
-        return (f"the manifest has no service {service!r}. Its [[service]] and compose entry are "
+        return (f"the manifest has no service {service!r}. Its [[service]] is "
                 "added in a change of their own; this only moves the pin of a service already there.")
     image = f"{OWN_IMAGES}/{service}"
     if entries[0].get("image") != image:
@@ -67,13 +66,12 @@ def refusal(manifest: dict, service: str, tag: str, digest: str) -> str:
 
 
 def bump(service: str, tag: str, digest: str, today: str, manifest_text: str,
-         fragments: dict[str, str], resolve: Resolve = registry.resolve) -> tuple[dict, str, dict[str, str]]:
-    """The pin written into the service's file and compose fragments given.
+         resolve: Resolve = registry.resolve) -> tuple[dict, str]:
+    """The pin written into the service's file.
 
     `manifest_text` is the service's own file, `services/<id>.toml`. What moved, in
-    the shape `pins.py --apply` reports it, that file's new text, and the new text
-    of each fragment that changed, by name. Nothing is read from or written to disk
-    here; `main` does both.
+    the shape `pins.py --apply` reports it, and that file's new text. Nothing is read
+    from or written to disk here; `main` does both.
     """
     manifest = tomllib.loads(manifest_text)
     if why := refusal(manifest, service, tag, digest):
@@ -92,24 +90,16 @@ def bump(service: str, tag: str, digest: str, today: str, manifest_text: str,
 
     was = {"tag": entry.get("tag", ""), "digest": entry.get("digest", "")}
     if (was["tag"], was["digest"]) == (tag, digest):
-        return {"moves": [], "reviewed": []}, manifest_text, {}
+        return {"moves": [], "reviewed": []}, manifest_text
 
-    rewritten, changed = {}, 0
-    for name, body in sorted(fragments.items()):
-        after, count = rewrite_compose(body, image, f"{image}:{tag}@{digest}")
-        if count:
-            rewritten[name] = after
-            changed += count
-    if changed != 1:
-        raise Refused(f"{service}: {changed} compose lines name {image}, not one")
     reviewed = [service] if was["tag"] != tag and entry.get("last_release") == today else []
     moved = {"moves": [{"id": service, "image": image, "from": was, "to": {"tag": tag, "digest": digest}}],
              "reviewed": reviewed}
-    return moved, rewrite_manifest(manifest_text, service, tag, digest, today), rewritten
+    return moved, rewrite_manifest(manifest_text, service, tag, digest, today)
 
 
 #: What the self-tests pin, and where.
-SERVICE, TAG, EARLIER, FRAGMENT = "decline", "v0.24.0", "v0.23.0", "dash.yml"
+SERVICE, TAG, EARLIER = "decline", "v0.24.0", "v0.23.0"
 TODAY, RECORDED = "2026-10-03", "2026-10-01"
 
 
@@ -139,40 +129,36 @@ def refusal_problems(digest: str) -> list[str]:
 
 
 def bump_problems(digest: str, other: str) -> list[str]:
-    """How a pin is checked against the registry and written into both files."""
+    """How a pin is checked against the registry and written into the service's file."""
     manifest = (f'[[service]]\nid = "{SERVICE}"\nimage = "{OWN_IMAGES}/{SERVICE}"\ntag = "{EARLIER}"\n'
                 f'digest = "{other}"\nlast_release = "{RECORDED}"\n')
-    fragments = {FRAGMENT: f"services:\n  {SERVICE}:\n    image: {OWN_IMAGES}/{SERVICE}:{EARLIER}@{other}\n"}
 
     def answers(served: str, platforms: set, problem: str = "") -> Resolve:
         return lambda image, tag: (served, platforms, problem)
 
     problems = []
-    for resolve, given, wanted in (
-        (answers("", set(), "not found"), fragments, "could not be resolved: not found"),
-        (answers(other, REQUIRED), fragments, f"is {other} in the registry"),
-        (answers(digest, {("linux", "amd64")}), fragments, "does not publish linux/arm64"),
-        (answers(digest, REQUIRED), {FRAGMENT: "services:\n  other:\n    image: caddy:2.8.4\n"},
-         "0 compose lines"),
+    for resolve, wanted in (
+        (answers("", set(), "not found"), "could not be resolved: not found"),
+        (answers(other, REQUIRED), f"is {other} in the registry"),
+        (answers(digest, {("linux", "amd64")}), "does not publish linux/arm64"),
     ):
         try:
-            bump(SERVICE, TAG, digest, TODAY, manifest, given, resolve)
+            bump(SERVICE, TAG, digest, TODAY, manifest, resolve)
             problems.append(f"a pin was written where the answer was {wanted!r}")
         except Refused as refused:
             if wanted not in str(refused):
                 problems.append(f"refused with {refused}, wanted {wanted!r}")
 
     published = answers(digest, REQUIRED)
-    moved, text, rewritten = bump(SERVICE, TAG, digest, TODAY, manifest, fragments, published)
-    if (f'tag = "{TAG}"\ndigest = "{digest}"' not in text or f'"{TODAY}"' not in text
-            or f"{SERVICE}:{TAG}@{digest}" not in rewritten.get(FRAGMENT, "")):
-        problems.append("the pin was not written in both places, with the day it was published")
+    moved, text = bump(SERVICE, TAG, digest, TODAY, manifest, published)
+    if f'tag = "{TAG}"\ndigest = "{digest}"' not in text or f'"{TODAY}"' not in text:
+        problems.append("the pin was not written, with the day it was published")
     if moved["moves"][0]["from"]["tag"] != EARLIER or moved["reviewed"]:
         problems.append(f"what moved was reported as {moved}")
-    again, _, untouched = bump(SERVICE, TAG, digest, TODAY, text, rewritten, published)
-    if again["moves"] or untouched:
+    again, untouched = bump(SERVICE, TAG, digest, TODAY, text, published)
+    if again["moves"] or untouched != text:
         problems.append("a pin already written was reported as moving")
-    same_day, _, _ = bump(SERVICE, TAG, digest, RECORDED, manifest, fragments, published)
+    same_day, _ = bump(SERVICE, TAG, digest, RECORDED, manifest, published)
     if same_day["reviewed"] != [SERVICE]:
         problems.append("a tag moved on the day already recorded was not named for Pin-reviewed")
     return problems
@@ -184,7 +170,7 @@ def self_test() -> int:
         print(f"::error::self-test: {problem}")
     if problems:
         return 1
-    print("self-test: a pin the train did not publish is refused, and one it did is written in both places")
+    print("self-test: a pin the train did not publish is refused, and one it did is written")
     return 0
 
 
@@ -201,7 +187,6 @@ def main() -> int:
         return 2
     service, tag, digest = args.apply
     today = datetime.datetime.now(datetime.UTC).date().isoformat()
-    fragments = {path.name: path.read_text(encoding="utf-8") for path in sorted(COMPOSE_DIR.glob("*.yml"))}
     # Refused against the whole manifest first, so the service's file is only ever
     # named from an id that has been held to the shape of one and found in it.
     if why := refusal(stack_manifest.load(ROOT), service, tag, digest):
@@ -209,13 +194,10 @@ def main() -> int:
         return 1
     described = ROOT / stack_manifest.service_file(service)
     try:
-        moved, text, rewritten = bump(service, tag, digest, today,
-                                      described.read_text(encoding="utf-8"), fragments)
+        moved, text = bump(service, tag, digest, today, described.read_text(encoding="utf-8"))
     except Refused as refused:
         print(f"::error::{refused}", file=sys.stderr)
         return 1
-    for name, body in rewritten.items():
-        (COMPOSE_DIR / name).write_text(body, encoding="utf-8")
     described.write_text(text, encoding="utf-8")
     print(json.dumps(moved, indent=2))
     return 0

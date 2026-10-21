@@ -8,13 +8,14 @@ and anything but a 2xx is the refusal. It also tells Jellyfin which client a
 request came from, and Jellyfin trusts that from the door's fixed address alone.
 
 This starts the door as the manifest pins it, with the Caddyfile this
-repository ships and a throwaway certificate pair, on the two networks
-compose.yml declares for it at the addresses the Compose model fixes, in front
-of a stand-in for Jellyfin, and asks it every case in CASES:
+repository ships and a throwaway certificate pair, on the networks of its asks
+of the proxy and of the media server at the subnets and addresses the project
+lemonfiber writes fixes for them, in front of a stand-in for Jellyfin, and asks
+it every case in CASES:
 
   * from the household, on both of its ports;
-  * from inside the `door` network, at the proxy's fixed address and at another
-    one, each naming a client in X-Forwarded-For.
+  * from inside the network of its ask of the proxy, at the proxy's fixed
+    address and at another one, each naming a client in X-Forwarded-For.
 
 The stand-in is the same pinned Caddy, answering the door's question the way
 Jellyfin does: 200 for the item the member may see, 404 for one they may not,
@@ -30,9 +31,10 @@ Then the stand-in is stopped, and a request it would have passed is refused.
     python3 scripts/check_door.py              # needs Docker
     python3 scripts/check_door.py --self-test  # seventeen broken doors and three bad recordings, each caught
 
-The two door networks are made with the subnets compose.yml states, so this
-cannot run beside a stack that already holds them. Exit 0 = the door holds,
-1 = it does not.
+The project is the one the lemonfiber binary carries writes, `LEMONFIBER`
+naming the binary where it is not on the path. The two networks are made with
+the subnets it fixes, so this cannot run beside a stack that already holds them.
+Exit 0 = the door holds, 1 = it does not.
 """
 
 from __future__ import annotations
@@ -57,10 +59,9 @@ import time
 from collections.abc import Iterator
 
 import door_pair
+import generated
 import stack_manifest
-from compose_parity import DOOR, DOOR_UPSTREAM, fixed_address, load_compose_model
 from registry import pinned
-from report import Report
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 CADDYFILE = ROOT / "config" / "door" / "Caddyfile"
@@ -74,9 +75,16 @@ HOST = "127.0.0.1"
 SCHEME = "http"
 # Where the door listens, plain and TLS, inside its container.
 PLAIN, TLS = 8096, 8920
-# The network the door publishes on and the proxy reaches it on.
-DOOR_NETWORK = "door"
+# The door, the proxy it trusts to name a client, and what the door asks of each.
+DOOR = "door"
 PROXY = "caddy"
+FRONT = "proxy.front"
+SERVE = "media.serve"
+# The door's networks, by what each is for: the one the proxy reaches it on, the one it
+# reaches Jellyfin on, and the one it publishes the household's ports from.
+DOOR_NETWORK = "front"
+DOOR_UPSTREAM = "upstream"
+PUBLISHED = "published"
 
 # A client outside the house, from the documentation range, and one inside it,
 # 192.168.1.20, on the kind of private network a household's router hands out.
@@ -94,7 +102,7 @@ POLL_S = 0.5
 SERVED = "served "
 
 # Who sends a request: a household device through a published port, the proxy
-# from its fixed address, or another container on the `door` network.
+# from its fixed address, or another container on the network the proxy reaches the door on.
 FROM_HOUSEHOLD, FROM_PROXY, FROM_NEIGHBOUR = "household", "proxy", "neighbour"
 PASS, REFUSE = "pass", "refuse"
 
@@ -454,7 +462,7 @@ def must(done: subprocess.CompletedProcess, what: str) -> str:
 
 @dataclasses.dataclass
 class Layout:
-    """The door's networks and addresses, as the resolved Compose model states them."""
+    """The door's networks and addresses, as the project lemonfiber writes states them."""
 
     pools: dict[str, tuple[str, str, bool]]
     door: dict[str, str]
@@ -462,21 +470,29 @@ class Layout:
     neighbour: str
 
 
-def layout() -> Layout:
-    report = Report()
-    model = load_compose_model(report)
-    if model is None:
-        raise RuntimeError("; ".join(report.errors))
+def written_model() -> dict:
+    """The project the lemonfiber binary carries, as Compose resolves it."""
+    with tempfile.TemporaryDirectory(prefix=PREFIX) as directory:
+        scratch = pathlib.Path(directory)
+        (scratch / "data").mkdir()
+        values = generated.operator(scratch / "data", PREFIX + "layout")
+        return generated.model(generated.written(scratch, values, carried=False))
+
+
+def layout(model: dict | None = None) -> Layout:
+    model = model if model is not None else written_model()
     networks, services = model.get("networks") or {}, model.get("services") or {}
+    named = {DOOR_NETWORK: generated.asked(networks, DOOR, FRONT),
+             DOOR_UPSTREAM: generated.asked(networks, DOOR, SERVE)}
     pools = {}
-    for name in (DOOR_NETWORK, DOOR_UPSTREAM):
+    for role, name in named.items():
         config = (((networks.get(name) or {}).get("ipam") or {}).get("config") or [{}])[0]
-        pools[name] = (config.get("subnet", ""), config.get("ip_range", ""), bool((networks.get(name) or {}).get("internal")))
-    door = {name: fixed_address(services.get(DOOR, {}), name) or "" for name in pools}
-    proxy = fixed_address(services.get(PROXY, {}), DOOR_NETWORK) or ""
+        pools[role] = (config.get("subnet", ""), config.get("ip_range", ""), bool((networks.get(name) or {}).get("internal")))
+    door = {role: generated.fixed_address(services.get(DOOR, {}), name) or "" for role, name in named.items()}
+    proxy = generated.fixed_address(services.get(PROXY, {}), named[DOOR_NETWORK]) or ""
     if not all([*door.values(), proxy, *(pool[0] and pool[1] for pool in pools.values())]):
-        raise RuntimeError("the Compose model fixes no subnet or no address for the door or the proxy; "
-                           "validate_manifest.py says which")
+        raise RuntimeError("the project lemonfiber writes fixes no subnet or no address for the door or the "
+                           "proxy on the networks of the door's asks")
     subnet, handed_out = (ipaddress.ip_network(part) for part in pools[DOOR_NETWORK][:2])
     # Another address on the door's network: one nobody holds, Docker does not
     # hand out, and is not the gateway Docker keeps, the subnet's first host.
@@ -499,7 +515,7 @@ class Rig:
     def __init__(self, place: Layout) -> None:
         self.place = place
         self.run = PREFIX + secrets.token_hex(3)
-        self.networks = {name: f"{self.run}-{name}" for name in place.pools}
+        self.networks = {name: f"{self.run}-{name}" for name in [*place.pools, PUBLISHED]}
         self.containers: list[str] = []
         self.door_name = f"{self.run}-door"
         self.upstream_name = f"{self.run}-jellyfin"
@@ -507,12 +523,16 @@ class Rig:
         self.workdir = pathlib.Path(tempfile.mkdtemp(prefix=PREFIX))
 
     def __enter__(self) -> Rig:
-        for name, network in self.networks.items():
-            subnet, handed_out, internal = self.place.pools[name]
-            must(docker("network", "create", "--subnet", subnet, "--ip-range", handed_out,
-                        *(["--internal"] if internal else []), network),
-                 f"the {name} network ({subnet}) could not be made; a stack holding it may be running here")
-        door_pair.write(self.workdir)
+        try:
+            for name, (subnet, handed_out, internal) in self.place.pools.items():
+                must(docker("network", "create", "--subnet", subnet, "--ip-range", handed_out,
+                            *(["--internal"] if internal else []), self.networks[name]),
+                     f"the {name} network ({subnet}) could not be made; a stack holding it may be running here")
+            must(docker("network", "create", self.networks[PUBLISHED]), "the door's own network could not be made")
+            door_pair.write(self.workdir)
+        except BaseException:
+            self.__exit__()
+            raise
         return self
 
     def __exit__(self, *_: object) -> None:
@@ -523,7 +543,7 @@ class Rig:
         shutil.rmtree(self.workdir, ignore_errors=True)
 
     def start_upstream(self, image: str, options: list[str], *, published: int | None = None) -> None:
-        """Jellyfin, or what stands in for it, on `door-upstream` alone, where the
+        """Jellyfin, or what stands in for it, on the door's upstream network alone, where the
         door reaches it as `jellyfin`. Published on loopback where asked, through a
         network of its own, because an internal network publishes nothing."""
         name = self.upstream_name
@@ -543,7 +563,8 @@ class Rig:
         must(docker("start", name), "Jellyfin's stand-in did not start")
 
     def start_door(self, caddyfile: str) -> None:
-        """The door, as compose/media.yml runs it, on both networks at its fixed addresses."""
+        """The door, as the project runs it: publishing from its own network, and on the
+        networks of its two asks at its fixed addresses."""
         docker("rm", "-fv", self.door_name)
         directory = self.workdir / "door"
         directory.mkdir(exist_ok=True)
@@ -553,8 +574,7 @@ class Rig:
         self.ports = {PLAIN: free_port(), TLS: free_port()}
         must(docker(
             "create", "--name", self.door_name,
-            "--network", self.networks[DOOR_NETWORK], "--ip", self.place.door[DOOR_NETWORK],
-            "--network-alias", DOOR,
+            "--network", self.networks[PUBLISHED],
             "-p", f"{HOST}:{self.ports[PLAIN]}:{PLAIN}", "-p", f"{HOST}:{self.ports[TLS]}:{TLS}",
             "--user", f"{os.getuid()}:{os.getgid()}", "--read-only",
             "--security-opt", "no-new-privileges:true",
@@ -564,6 +584,8 @@ class Rig:
         ), "the door could not be made")
         if self.door_name not in self.containers:
             self.containers.append(self.door_name)
+        must(docker("network", "connect", "--ip", self.place.door[DOOR_NETWORK], "--alias", DOOR,
+                    self.networks[DOOR_NETWORK], self.door_name), "the door could not join the proxy's network")
         must(docker("network", "connect", "--ip", self.place.door[DOOR_UPSTREAM],
                     self.networks[DOOR_UPSTREAM], self.door_name), "the door could not join its upstream network")
         must(docker("start", self.door_name), "the door did not start")

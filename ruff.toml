@@ -1,7 +1,7 @@
 # The scripts in this directory are the gates. `validate_manifest` decides
-# whether `stack.toml` and the resolved Compose model agree, `check_images`
-# decides whether every pinned image runs on a Raspberry Pi, and `check_forms`
-# decides whether a form is a project somebody can start. Nothing read them.
+# whether `stack.toml` and its service files hold to the contract, `check_images`
+# decides whether every pinned image runs on a Raspberry Pi, and `check_runs`
+# decides whether the project lemonfiber writes starts. Nothing read them.
 #
 # Most of them carry a `--self-test` that drives their judgements against
 # replies they did not fetch, which is the harder half. This is the easy half

@@ -19,7 +19,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # The offline half: contract, parity, every form. No network, no registry.
+  # The offline half: the manifest and what the change says. No network, no registry.
   stack:
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -40,10 +40,8 @@ jobs:
       - name: The gate scripts themselves
         run: pipx run ruff==0.16.4 check scripts/
 
-      # stack.toml against the contract, and the resolved Compose model held in
-      # parity with it — services, images, profiles, mounts, bindings and
-      # capabilities (REPO-R18, REPO-R19).
-      - name: Manifest contract and compose parity
+      # stack.toml and its service files against the contract (ARCH-R246).
+      - name: Manifest contract
         run: python3 scripts/validate_manifest.py
 
       # Where a request may be addressed, and what may be echoed out of a
@@ -102,13 +100,6 @@ jobs:
           }
           python3 scripts/check_manifest_change.py --base "$BASE_SHA"
 
-      # Every form is a valid project on its own and drags in nothing outside
-      # its own profiles (REPO-R17, B1-R14).
-      - name: Every form and overlay resolves
-        run: |
-          python3 scripts/check_forms.py --self-test
-          python3 scripts/check_forms.py
-
       # `19 services` is restated in this repo's prose and in documents outside
       # it. The manifest is the only place that knows.
       - name: The docs state the count the manifest defines
@@ -135,6 +126,11 @@ jobs:
   # to moves when that file does, in a change somebody reviewed. A refuted probe
   # or a refused claim fails this; a probe nothing could be judged against is
   # reported unproven and does not (ARCH-R122).
+  #
+  # The lemonfiber binary built from the same tree is handed to the jobs below,
+  # which start what it writes: the project for this stack, and the door at the
+  # addresses the project it carries fixes. Built and handed over before the
+  # claims are judged, so a refused claim does not leave them nothing to run.
   claims:
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -182,13 +178,30 @@ jobs:
         with:
           workspaces: judge
 
+      - name: The binary that writes the project
+        working-directory: judge
+        run: cargo build --quiet --locked -p lemonfiber --bin lemonfiber
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: lemonfiber
+          path: judge/target/debug/lemonfiber
+          if-no-files-found: error
+          retention-days: 1
+
       - name: Every claim, against its recordings
         working-directory: judge
         run: cargo run --quiet --locked --example bundled_claims -p lemonfiber-core
 
   # The networked half, kept apart so a registry outage reads as a registry
   # outage rather than as a broken manifest (REPO-R20).
+  #
+  # `!cancelled()` rather than `needs:` alone: a dependency that fails makes a
+  # job vanish, and a skipped required check satisfies branch protection. Where
+  # the binary was never handed over, the download below fails this instead.
   images:
+    needs: claims
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -198,6 +211,17 @@ jobs:
           # The licence gate asks which pins this change moved, and that is a
           # question about the manifest at the base commit.
           fetch-depth: 0
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: lemonfiber
+          path: ${{ runner.temp }}/lemonfiber
+
+      # Off the path, named by LEMONFIBER: what runs the stack must not find it.
+      - name: The binary that writes the project
+        run: |
+          chmod +x "$RUNNER_TEMP/lemonfiber/lemonfiber"
+          printf 'LEMONFIBER=%s\n' "$RUNNER_TEMP/lemonfiber/lemonfiber" >> "$GITHUB_ENV"
 
       # A check nobody has watched fail is a check nobody knows works, and this
       # one's judgements are reachable only when a registry answers. The
@@ -227,8 +251,9 @@ jobs:
       - name: The template check can fail
         run: python3 scripts/check_configs.py --self-test
 
-      # The door started on its two networks in front of a stand-in for
-      # Jellyfin, and asked every case it must refuse or pass on both ports,
+      # The door started on its two networks, at the addresses the project the
+      # binary carries fixes, in front of a stand-in for Jellyfin, and asked
+      # every case it must refuse or pass on both ports,
       # each held to its recording of Jellyfin itself. Then broken doors and
       # recordings, each of which has to be caught.
       - name: The door refuses what it must and passes what it may
@@ -288,18 +313,17 @@ jobs:
         run: |
           printf 'groups=%s\n' "$(python3 scripts/check_runs.py --plan)" >> "$GITHUB_OUTPUT"
 
-  # The half that runs the stack, which until now nothing did. Every check in
-  # this repository read the project — `docker compose config` answers whether
-  # Compose can build a model, and a model that builds is not a stack that
-  # starts. This starts one with plain `docker compose`, with no lemonfiber
-  # binary on the path, and asks each service the question `stack.toml` declares
-  # for it on the port `stack.toml` publishes it on (F1-R1).
+  # The half that runs the stack. The lemonfiber binary writes the project for
+  # this stack, and this starts it with plain `docker compose` in its directory,
+  # with no lemonfiber binary on the path, and asks each service the question
+  # `stack.toml` declares for it on the port `stack.toml` publishes it on (F1-R1).
   #
   # One runner per group, so a profile boots on hardware of its own rather than
   # competing with sixteen other services for four cores — and so a failure is
   # named by the check that carries it.
   runs:
-    needs: runnable
+    needs: [runnable, claims]
+    if: ${{ !cancelled() && needs.runnable.result == 'success' }}
     name: runs (${{ matrix.group.name }})
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -322,6 +346,17 @@ jobs:
       # stack replaced by `sleep infinity`.
       - name: The verdicts are proved before anything is started
         run: python3 scripts/check_runs.py --self-test
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: lemonfiber
+          path: ${{ runner.temp }}/lemonfiber
+
+      # Off the path, named by LEMONFIBER: the run refuses one it can find there.
+      - name: The binary that writes the project
+        run: |
+          chmod +x "$RUNNER_TEMP/lemonfiber/lemonfiber"
+          printf 'LEMONFIBER=%s\n' "$RUNNER_TEMP/lemonfiber/lemonfiber" >> "$GITHUB_ENV"
 
       - name: The stack starts, answers, and comes down
         env:

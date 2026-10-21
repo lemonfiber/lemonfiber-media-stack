@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Validate the configuration templates this repo ships.
 
-A template that resolves as Compose data can still be rejected by the service
-that has to read it, and the failure lands at `up` time rather than in CI. The
+A template the project mounts can still be rejected by the service that has to
+read it, and the failure lands at `up` time rather than in CI. The
 proxy profile is the sharp case: Caddy refuses to start on a config it cannot
 parse, and nothing about the Compose model reveals that.
 
@@ -16,8 +16,6 @@ stack.toml so this cannot drift from what is deployed.
 from __future__ import annotations
 
 import argparse
-import json
-import os
 import pathlib
 import re
 import shutil
@@ -26,10 +24,13 @@ import sys
 import tempfile
 
 import door_pair
+import generated
 import stack_manifest
 from registry import pinned
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
+# The name the project the dashboard is read from is written with.
+PROJECT = "lemonfiber-configs-check"
 
 
 SABNZBD_INI = "sabnzbd.ini"
@@ -204,26 +205,25 @@ def judge_dashboard(environment: dict, services_yaml: str) -> tuple[bool, str]:
 
 
 def dashboard_environment() -> tuple[dict | None, str]:
-    """The environment Compose gives the dashboard's container, as resolved.
+    """The environment the project lemonfiber writes gives the dashboard's container,
+    as Compose resolves it.
 
-    The resolved model rather than dash.yml, so an `env_file`, an `extends` or
-    an anchor that brings a variable in is seen the way Docker will run it.
+    The resolved project rather than the service file, so a value the writer
+    brings in is seen the way Docker will run it. A secrets file is a credential
+    filed for the service, so one named for the dashboard is the refusal itself.
     """
-    env = {
-        **os.environ,
-        "COMPOSE_PROFILES": "dash",
-        "VPN_PROVIDER": os.environ.get("VPN_PROVIDER", "validation-placeholder"),
-        "WIREGUARD_PRIVATE_KEY": os.environ.get("WIREGUARD_PRIVATE_KEY", "validation-placeholder"),
-    }
-    result = subprocess.run(
-        ["docker", "compose", "config", "--format", "json"],
-        cwd=ROOT, env=env, capture_output=True, text=True, check=False,
-    )
-    if result.returncode != 0:
-        return None, f"`docker compose config` failed: {result.stderr.strip()[-300:]}"
-    service = json.loads(result.stdout).get("services", {}).get("homepage")
+    with tempfile.TemporaryDirectory() as directory:
+        scratch = pathlib.Path(directory)
+        (scratch / "data").mkdir()
+        try:
+            model = generated.model(generated.written(scratch, generated.operator(scratch / "data", PROJECT)))
+        except RuntimeError as failed:
+            return None, str(failed)
+    service = model.get("services", {}).get("homepage")
     if service is None:
-        return None, "the dash profile resolves with no homepage service"
+        return None, "the project holds no homepage service"
+    if service.get("env_file"):
+        return None, "the project files a secret for the dashboard; the dashboard holds no credential (C6-R20)"
     return service.get("environment") or {}, ""
 
 
@@ -413,7 +413,7 @@ def main() -> int:
         environment, (ROOT / "config" / "homepage" / "services.yaml").read_text(encoding="utf-8")
     )
     if not checked(
-        "compose/dash.yml and config/homepage/services.yaml",
+        "services/homepage.toml and config/homepage/services.yaml",
         ok,
         error,
         "The dashboard is published to the LAN, and a credential in it administers the "

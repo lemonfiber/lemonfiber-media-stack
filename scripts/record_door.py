@@ -41,6 +41,7 @@ import stack_manifest
 from check_door import (
     CASES,
     DOOR,
+    DOOR_UPSTREAM,
     FROM_HOUSEHOLD,
     KEPT_ARTIST,
     PLAIN,
@@ -53,7 +54,6 @@ from check_door import (
     request_of,
     verdict,
 )
-from compose_parity import DOOR_UPSTREAM
 from record import still_carries
 from registry import by_digest, pinned
 

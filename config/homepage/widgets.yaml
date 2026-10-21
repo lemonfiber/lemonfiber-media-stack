@@ -5,15 +5,17 @@
     memory: true
     expanded: true
 
-# Disk usage is deliberately absent. Homepage has no ${DATA_ROOT} mount: it is
+# Disk usage is deliberately absent. Homepage takes no data mount: it is
 # published to the LAN, and mounting the whole library into a LAN-facing web app
 # to render a free-space gauge is a trade the default should not make for you.
 #
-# To enable it, add a read-only data mount to compose/dash.yml —
+# To enable it, give it a read-only mount of the data root in overlay.yml beside
+# lemonfiber's settings —
 #
-#     volumes:
-#       - ${DATA_ROOT:-./data}:/data:ro
-#       - ./config/homepage:/app/config
+#     services:
+#       homepage:
+#         volumes:
+#           - /your/data/root:/data:ro
 #
 # — keeping it to exactly one mount beneath the data root, then add `disk: /data`
 # to the resources widget above. One figure covers downloads and library both,

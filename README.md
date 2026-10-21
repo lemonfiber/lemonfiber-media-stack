@@ -8,9 +8,9 @@
 <h1 align="center">lemonfiber-media-stack</h1>
 
 <p align="center">
-  The Docker Compose media stack that lemonfiber runs: indexers, download
-  clients, the *arr apps, Jellyfin and Seerr. It also runs on its own, with
-  plain <code>docker compose</code>.
+  The media stack that lemonfiber runs: indexers, download clients, the *arr
+  apps, Jellyfin and Seerr. The Compose project lemonfiber writes from it runs
+  on its own, with plain <code>docker compose</code>.
 </p>
 
 <p align="center">
@@ -26,10 +26,10 @@ Jellyfin and Seerr, with Caddy run twice, as the proxy and as Jellyfin's door,
 plus two small services lemonfiber builds for it. Every image is pinned to an
 exact version.
 
-The [`lemonfiber`](https://github.com/lemonfiber/lemonfiber) tool sets this
-stack up, wires the services together and checks them. You do not need it: the
-stack is a normal Compose project, so you can run it yourself and stop using
-lemonfiber at any time.
+The [`lemonfiber`](https://github.com/lemonfiber/lemonfiber) tool writes this
+stack's Compose project, wires the services together and checks them. You do not
+need it to keep running: the project it writes is a normal Compose project, so
+you can run it yourself and stop using lemonfiber at any time.
 
 > **Status:** CI starts every profile on every change and checks that each
 > service answers. The exception is the torrent profile (Gluetun and
@@ -38,25 +38,28 @@ lemonfiber at any time.
 
 ## Run it without lemonfiber
 
-You need Docker with Compose v2.20 or newer (`compose.yml` uses `include:`).
+This repository holds the stack's manifest, `stack.toml` and a file per service
+in `services/`, and no Compose file. lemonfiber writes the project from them:
+`compose.generated.yml` in its stack directory, with every value written in, a
+`.env` beside it naming the profiles of the last start and the files Compose
+reads, and each service's secrets in a file of its own that no container
+mounts. From then on the stack is operable with plain `docker compose` in that
+directory, with no lemonfiber binary running. You need Docker with Compose v2.
 
 ```sh
-git clone https://github.com/lemonfiber/lemonfiber-media-stack.git
-cd lemonfiber-media-stack
-cp .env.example .env      # set DATA_ROOT; add VPN credentials only for torrents
 docker compose --profile media up -d
 ```
 
 That starts the library services, with no third-party accounts needed:
 Jellyfin on port 8096, plus Seerr, Navidrome, Audiobookshelf and
-Calibre-Web-Automated. `.env.example` documents every variable.
+Calibre-Web-Automated.
 
 Jellyfin is reached through its door, which publishes 8096 and 8920 and asks
 Jellyfin, before any item's stream or picture goes on, whether the session
 presented may see that item. A picture Jellyfin finds by a name rather than an
 id, and its splash screen, it refuses. Its TLS port reads a certificate and key from
-`config/door/`, which lemonfiber writes. Without lemonfiber, make your own pair
-before `up`:
+the project's `config/door/`, which lemonfiber writes before it starts the door.
+Where lemonfiber never started it, make your own pair there before `up`:
 
 ```sh
 openssl ecparam -name prime256v1 -genkey -noout -out config/door/key.pem
@@ -72,7 +75,8 @@ than the door.
 ### Forms
 
 A *form* is a named set of profiles: the part of the stack you want for one
-job. [`just`](https://github.com/casey/just) reads them from `stack.toml`:
+job. `lemonfiber up <form>` starts one, and [`just`](https://github.com/casey/just)
+reads them from `stack.toml`:
 
 ```console
 $ just forms-list
@@ -87,24 +91,25 @@ auto     Everything automated, nothing served
 library  Serve what exists. Requires no third-party accounts.
 full     The lot.
 proxy    Friendly hostnames. Layers onto any other form.
-$ just up tv
+$ just form tv
+--profile search --profile usenet --profile torrent --profile tv --profile subs
 ```
 
-`just up tv` runs the same command you could type yourself:
+`lemonfiber up tv` starts those profiles, and so does the same command typed in
+the project's directory:
 
 ```sh
 docker compose --profile search --profile usenet --profile torrent \
                --profile tv --profile subs up -d
 ```
 
-`just down tv` stops it again.
-
 ## The one rule
 
-**Every service that touches your files gets exactly one `${DATA_ROOT}:/data`
-mount.** Downloads and media live under it on one filesystem, so an import is a
-hardlink: instant, and no extra disk. Split them across two mounts and every
-import silently becomes a copy. CI rejects a change that does this.
+**Every service that touches your files gets exactly one mount of the data
+root, at `/data`.** Downloads and media live under it on one filesystem, so an
+import is a hardlink: instant, and no extra disk. Split them across two mounts
+and every import silently becomes a copy. A service declares only whether it
+takes data, and lemonfiber writes the one mount.
 
 ## What is in this repository
 
@@ -112,13 +117,10 @@ import silently becomes a copy. CI rejects a change that does this.
 |------|------------|
 | `stack.toml` | The manifest's root: profiles, forms, wiring, services that were removed, and `include`, which names each service's file |
 | `services/` | One file per service, `<id>.toml`, holding its `[[service]]` |
-| `compose.yml` | Includes the fragments below and declares the named networks; no services of its own |
-| `compose/` | One fragment per profile: `tv.yml`, `media.yml`, `torrent.yml`, and the rest |
-| `compose/_common.yml` | Shared service defaults, reached through `extends:` |
-| `.env.example` | Every variable, documented |
+| `.env.example` | Every variable the operator sets, documented |
 | `config/` | Starting configuration for Recyclarr, Homepage, Caddy, the door and SABnzbd |
 | `recordings/` | Recorded answers from each service, which prove what it can do |
-| `scripts/` | The checks CI runs, each runnable locally through `just` |
+| `scripts/` | The checks CI runs, each runnable locally through `just`; the ones that start the stack run the project lemonfiber writes |
 
 ## Documentation
 
