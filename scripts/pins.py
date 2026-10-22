@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Move each pin to the newest release of its own major, by tag and digest together.
 
-A pin is `image:tag@digest`, written twice: in `services/<id>.toml` as `tag` and `digest`,
-and in the service's compose fragment as the reference Compose pulls. This finds,
+A pin is `image:tag@digest`, written in `services/<id>.toml` as `tag` and `digest`, from
+which lemonfiber writes the reference Compose pulls. This finds,
 for each service, the newest tag the registry publishes that
 
   - is spelled the way the current tag is spelled — the same prefix, the same
@@ -50,7 +50,6 @@ from check_manifest_change import BUILD
 from check_releases import github_latest
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-COMPOSE_DIR = ROOT / "compose"
 REQUIRED = {("linux", "amd64"), ("linux", "arm64")}
 # Where lemonfiber publishes the images it builds (ADR-0033 §1).
 OWN_IMAGES = "ghcr.io/lemonfiber"
@@ -141,11 +140,6 @@ def rewrite_manifest(text: str, sid: str, tag: str, digest: str, last_release: s
     raise KeyError(f"no [[service]] with id {sid!r} here")
 
 
-def rewrite_compose(text: str, image: str, reference: str) -> tuple[str, int]:
-    """A compose fragment with `image`'s reference replaced, and how many lines changed."""
-    return re.subn(rf"(?m)^(\s*image:\s*){re.escape(image)}(?::|@)\S*$", rf"\g<1>{reference}", text)
-
-
 def plan(only: set[str]) -> tuple[list[dict], list[str]]:
     """Every pin that would move, and every service whose next pin could not be read."""
     manifest = stack_manifest.load(ROOT)
@@ -181,7 +175,7 @@ def plan(only: set[str]) -> tuple[list[dict], list[str]]:
 
 
 def apply(moves: list[dict]) -> list[str]:
-    """Write each move into its service's file and compose fragment; the `Pin-reviewed` ids.
+    """Write each move into its service's file; the `Pin-reviewed` ids.
 
     A service whose tag moved and whose upstream date is the one already recorded
     was reviewed and needed no new date, so it is named for the trailer. One whose
@@ -197,16 +191,6 @@ def apply(moves: list[dict]) -> list[str]:
             handle.write(text)
         if move["to"]["tag"] != move["from"]["tag"] and now == was:
             reaffirmed.append(move["id"])
-        reference = f"{move['image']}:{move['to']['tag']}@{move['to']['digest']}"
-        changed = 0
-        for fragment in sorted(COMPOSE_DIR.glob("*.yml")):
-            body, count = rewrite_compose(fragment.read_text(encoding="utf-8"), move["image"], reference)
-            if count:
-                with fragment.open("w", encoding="utf-8") as handle:
-                    handle.write(body)
-                changed += count
-        if changed != 1:
-            raise SystemExit(f"{move['id']}: {changed} compose lines name {move['image']}, not one")
     return reaffirmed
 
 
@@ -289,27 +273,14 @@ def manifest_problems(digest: str, rebuilt: str) -> list[str]:
     return problems
 
 
-def compose_problems(digest: str, later: str) -> list[str]:
-    """How a move is written into a compose fragment: the one image, and only it."""
-    problems = []
-    fragment = "services:\n  caddy:\n    image: caddy:2.8.4\n  other:\n    image: caddy-helper:1.0\n"
-    body, count = rewrite_compose(fragment, "caddy", f"caddy:2.11.4@{digest}")
-    if count != 1 or f"image: caddy:2.11.4@{digest}" not in body or "caddy-helper:1.0" not in body:
-        problems.append(f"the compose rewrite changed {count} lines, or the wrong one")
-    _, again = rewrite_compose(body, "caddy", f"caddy:2.11.5@{later}")
-    if again != 1:
-        problems.append("a reference already carrying a digest was not found again")
-    return problems
-
-
 def self_test() -> int:
-    digest, rebuilt, later = (f"sha256:{char * 64}" for char in "abc")
-    problems = choice_problems() + manifest_problems(digest, rebuilt) + compose_problems(digest, later)
+    digest, rebuilt = (f"sha256:{char * 64}" for char in "ab")
+    problems = choice_problems() + manifest_problems(digest, rebuilt)
     for problem in problems:
         print(f"::error::self-test: {problem}")
     if problems:
         return 1
-    print("self-test: the newest tag of each major chosen, and written in both places")
+    print("self-test: the newest tag of each major chosen, and written into its service's file")
     return 0
 
 

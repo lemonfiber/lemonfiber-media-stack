@@ -1,24 +1,11 @@
 #!/usr/bin/env python3
-"""Validate the stack manifest, and hold compose.yml in parity with it.
+"""Validate the stack manifest.
 
-Two halves:
-
-  Manifest    stack.toml and the service files it includes against the
-              contract at spec 20-architecture/contracts/stack-manifest.md:
-              how the files are laid out in stack_manifest.py, what they say in
-              manifest_rules.py, and the `[[wiring]]` table in wiring_rules.py.
-
-  Parity      the *resolved* Compose model against the manifest — services,
-              images, profiles, mounts and bindings in compose_parity.py, every
-              entry against its declared container in model_parity.py — and
-              lemonfiber's own services held to the containment their ADRs
-              state.
-
-The parity half reads `docker compose config --format json` rather than parsing
-compose.yml. That is deliberate: the resolved model is what Docker will actually
-run, with includes merged, `extends:` applied, anchors expanded and variables
-interpolated. Linting the source YAML would check what the file appears to say;
-this checks what it does.
+stack.toml and the service files it includes against the contract at spec
+20-architecture/contracts/stack-manifest.md: how the files are laid out in
+stack_manifest.py, what they say in manifest_rules.py, and the `[[wiring]]`
+table in wiring_rules.py. There is no Compose file here to hold to it: lemonfiber
+writes the project from the manifest, and `check_runs.py` starts what it writes.
 
 Every violation is reported in one pass, each naming its location — reporting
 one error per run turns fixing a fork into a guessing game.
@@ -26,12 +13,10 @@ one error per run turns fixing a fork into a guessing game.
 
 from __future__ import annotations
 
-import argparse
 import pathlib
 import sys
 
 import stack_manifest
-from compose_parity import load_compose_model, validate_parity
 from manifest_rules import (
     osi_licences,
     validate_errands,
@@ -67,14 +52,6 @@ def validate_manifest(manifest: dict, report: Report) -> None:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "--manifest-only",
-        action="store_true",
-        help="skip compose parity (for environments without Docker)",
-    )
-    args = parser.parse_args()
-
     report = Report()
     # The files first: a manifest whose pieces break the rules about them is read
     # as whatever they do hold, and every fault below is then about that.
@@ -82,14 +59,6 @@ def main() -> int:
         report.fail(where, what, "ARCH-R171")
     manifest = stack_manifest.load(ROOT)
     validate_manifest(manifest, report)
-
-    checked_parity = False
-    if not args.manifest_only:
-        model = load_compose_model(report)
-        raw_model = load_compose_model(report, "--no-interpolate")
-        if model is not None and raw_model is not None:
-            validate_parity(manifest, model, raw_model, report)
-            checked_parity = True
 
     for note in report.notes:
         print(f"::notice::{note}")
@@ -104,10 +73,9 @@ def main() -> int:
         len(manifest.get("form", [])),
         len(manifest.get("service", [])),
     )
-    scope = "manifest + compose parity" if checked_parity else "manifest only"
     removals = len(manifest.get("removed", []))
     recorded = f", {removals} removal(s) recorded" if removals else ""
-    print(f"{scope} valid: {counts[0]} profiles, {counts[1]} forms, {counts[2]} services{recorded}")
+    print(f"manifest valid: {counts[0]} profiles, {counts[1]} forms, {counts[2]} services{recorded}")
     return 0
 
 

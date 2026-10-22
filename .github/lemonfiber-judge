@@ -1,8 +1,9 @@
-# The lemonfiber commit this stack's claims are held to. The `claims` job in
-# validate.yml runs the judge it builds, and `pins` re-records a moved pin's
-# claims with the capability vocabulary it publishes, so both read the same
-# vocabulary. Moved by hand, in a change somebody reviews.
+# The lemonfiber commit this stack's claims are held to, and whose binary writes
+# the project CI starts. The `claims` job in validate.yml runs the judge it
+# builds and hands the binary to `images` and `runs`, and `pins` re-records a
+# moved pin's claims with the capability vocabulary it publishes, so all of them
+# read the same commit. Moved by hand, in a change somebody reviews.
 #
-# lemonfiber/lemonfiber `main`, 2026-10-20: lemonfiber#1057, whose vocabulary
-# carries dashboard.show and the other capabilities the bundled parts fill.
-7343ad109f993c0459be32d5876bed1aa7f6b42e
+# lemonfiber/lemonfiber `main`, 2026-10-21: lemonfiber#1061, whose binary writes
+# the stack's project from the manifest.
+d077cd3c0615276d2c10ff3794aec0f08f6e89d9

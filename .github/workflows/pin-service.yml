@@ -116,8 +116,8 @@ jobs:
           python3 scripts/record.py "$SERVICE" < .judge/contract/capability-vocabulary.json
 
       # The same offline gate the pull request will meet, so a rewrite that
-      # breaks parity is reported here rather than as a red pull request.
-      - name: The manifest and the compose model still agree
+      # breaks the manifest is reported here rather than as a red pull request.
+      - name: The manifest still holds to its contract
         if: steps.move.outputs.moved == 'yes'
         run: python3 scripts/validate_manifest.py
 

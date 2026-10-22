@@ -1,19 +1,20 @@
 #!/usr/bin/env python3
 """Start the stack with plain `docker compose`, and prove it came up.
 
-Every other check in this repository reads the project rather than running it.
-`check_forms.py` resolves each form through `docker compose config`, which
-answers whether Compose can *build* a model — not whether that model starts,
-stays up, or serves anything. The distance between those two answers is the
-whole of `F1-R1`: the stack is only operable without lemonfiber if it runs
-without lemonfiber, and resolving is not running.
+Every other check in this repository reads the stack rather than running it.
+`docker compose config` answers whether Compose can *build* a model — not
+whether that model starts, stays up, or serves anything. The distance between
+those two answers is the whole of `F1-R1`: the stack is only operable without
+lemonfiber if the project lemonfiber writes for it runs without lemonfiber, and
+resolving is not running.
 
-So this starts one. For each profile named it brings the services up with
-nothing but `docker compose`, each held to the posture its service file declares
-by an overlay written from the manifest (REPO-R93), then asks each of them the
-question the manifest itself declares — the `health` table, on the port the
-manifest publishes it on, inside the timeout the manifest gives it — and tears
-the project down again.
+So this starts one. The lemonfiber binary `LEMONFIBER` names writes this stack's
+project into a scratch copy of it, each service under the posture its service
+file declares (REPO-R93), and is never run again. For each profile named this
+brings the services up with nothing but `docker compose` in the project's
+directory, then asks each of them the question the manifest itself declares —
+the `health` table, on the port the manifest publishes it on, inside the timeout
+the manifest gives it — and tears the project down again.
 
 Four things are asserted, and each fails for a different reason:
 
@@ -54,19 +55,19 @@ import urllib.error
 import urllib.request
 
 import door_pair
+import generated
 import stack_manifest
-from container_rules import written_posture
 from registry import pinned
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 
-# Distinct from the project name a bare `docker compose up` would pick — the
-# directory's — because `down --volumes` at the end of this would otherwise
+# The name the project is written with. Distinct from the one lemonfiber gives an
+# operator's stack, because `down --volumes` at the end of this would otherwise
 # take an operator's own running stack with it on the machine where both live.
 PROJECT = "lemonfiber-runs-check"
 
-# The published ports are bound to 127.0.0.1 for the admin tier and to
-# ${LAN_BIND} for the household one; the loopback address reaches both.
+# The published ports are bound to 127.0.0.1 for the admin tier and to the
+# household address for the household one; the loopback address reaches both.
 HOST = "127.0.0.1"
 
 # Plain: every port the manifest declares speaks cleartext. The door also
@@ -75,11 +76,14 @@ HOST = "127.0.0.1"
 # here that is cleartext across a loopback interface.
 SCHEME = "http"
 
-# What lemonfiber writes before `up`, by the service that reads it. No lemonfiber
-# binary is involved here, so this writes it in lemonfiber's place, as an
-# operator running the stack without lemonfiber does: only where none is there
-# yet, and taking away only what it wrote.
+# What lemonfiber writes before `up`, by the service that reads it. Writing the
+# project is not `up`, so this writes it in lemonfiber's place, as an operator
+# running the stack without lemonfiber does.
 WRITTEN_BEFORE_UP = {"door": door_pair.DIRECTORY}
+
+# Where a service keeps its configuration, and the sources of its further mounts,
+# beneath the project's directory.
+CONFIGURATION_TREE, MOUNT_TREE = "config", "mounts"
 
 # A profile nobody without an account can start, and why. Naming it here is what
 # keeps the omission visible: --plan leaves it out, and asking for it by hand is
@@ -135,32 +139,6 @@ ATTEMPT_TIMEOUT_S = 5
 # something or hang up. A server with nothing to say yet says nothing, and that
 # silence is the evidence; see `ask_tcp` for why a connection on its own is not.
 LISTEN_READ_S = 1.5
-
-
-# The run's empty environment file, and the overlay that holds every service to
-# the posture its service file declares, both in the run's own scratch directory.
-EMPTY_ENV = "empty.env"
-POSTURE_OVERLAY = "posture.yml"
-
-
-def posture_overlay(data: dict) -> dict:
-    """Each service held to the posture its service file declares, laid over
-    compose.yml so that every image this starts runs under it (REPO-R93)."""
-    return {"services": {service["id"]: written_posture(service) for service in data["service"]}}
-
-
-def overlay_text(overlay: dict) -> str:
-    """The overlay as Compose reads it, each list replacing the one compose.yml
-    gives rather than joining it: a list joined to one already holding an item is
-    a list holding it twice, which Compose refuses."""
-    lines = ["services:"]
-    for sid, keys in overlay["services"].items():
-        lines.append(f"  {json.dumps(sid)}:")
-        lines += [
-            f"    {key}: {'!override ' if isinstance(value, list) else ''}{json.dumps(value)}"
-            for key, value in keys.items()
-        ]
-    return "\n".join(lines) + "\n"
 
 
 def manifest() -> dict:
@@ -373,15 +351,15 @@ def unrunnable_reason(profile: str) -> str | None:
     return UNRUNNABLE.get(profile)
 
 
-def bare_environment(data_root: str) -> dict[str, str]:
+def bare_environment() -> dict[str, str]:
     """The environment Compose is given, and nothing else.
 
-    The same discipline `check_forms.py` applies for the same reason: what the
-    stack needs must not depend on whose machine is running it. What is supplied
-    is exactly what `.env.example` tells an operator to set and no more — a data
-    root, because a bind mount needs a source, and the uid pair, because that
-    file defines it as `id -u` and `id -g` and every service that drops
-    privileges is started as it.
+    What the stack needs must not depend on whose machine is running it, so
+    nothing of this one's environment reaches Compose but what finds Docker. What
+    an operator sets is in the project: lemonfiber writes it in from the values
+    `.env.example` tells an operator to set and no more — a data root, because a
+    bind mount needs a source, and the uid pair, because that file defines it as
+    `id -u` and `id -g` and every service that drops privileges is started as it.
 
     Leaving the pair at its default was this check's own first mistake. A runner
     whose user is 1001 wrote a clone owned by 1001 and then started services as
@@ -393,28 +371,21 @@ def bare_environment(data_root: str) -> dict[str, str]:
         "PATH": os.environ.get("PATH", ""),
         "HOME": os.environ.get("HOME", ""),
         "DOCKER_HOST": os.environ.get("DOCKER_HOST", ""),
-        "DATA_ROOT": data_root,
-        "PUID": str(os.getuid()),
-        "PGID": str(os.getgid()),
     }
 
 
-def compose(env: dict[str, str], scratch: pathlib.Path, *args: str) -> subprocess.CompletedProcess:
-    command = [
-        "docker", "compose", "--env-file", str(scratch / EMPTY_ENV), "--project-name", PROJECT,
-        "--file", "compose.yml", "--file", str(scratch / POSTURE_OVERLAY), *args,
-    ]
-    return subprocess.run(command, cwd=ROOT, env=env, capture_output=True, text=True, check=False)
+def compose(env: dict[str, str], project: pathlib.Path, *args: str) -> subprocess.CompletedProcess:
+    return generated.compose(project, *args, env=env)
 
 
-def roster(env: dict[str, str], scratch: pathlib.Path) -> list[dict]:
+def roster(env: dict[str, str], project: pathlib.Path) -> list[dict]:
     """Every container the project holds, with what the daemon says about it.
 
     `compose ps` names them; `docker inspect` is asked for the rest, because the
     image a container was created from and the number of times it has restarted
     are what separate a service that is up from one that is looping.
     """
-    listed = compose(env, scratch, "ps", "--all", "--format", "json")
+    listed = compose(env, project, "ps", "--all", "--format", "json")
     rows = [json.loads(line) for line in listed.stdout.splitlines() if line.strip()]
 
     observed = []
@@ -438,10 +409,10 @@ def roster(env: dict[str, str], scratch: pathlib.Path) -> list[dict]:
     return observed
 
 
-def report_failure(env: dict[str, str], scratch: pathlib.Path, names: list[str]) -> None:
+def report_failure(env: dict[str, str], project: pathlib.Path, names: list[str]) -> None:
     """The logs of whatever did not come up, so the failure is readable from the run."""
     for name in names:
-        logs = compose(env, scratch, "logs", "--tail", "40", name)
+        logs = compose(env, project, "logs", "--tail", "40", name)
         print(f"\n--- {name} ---")
         print(logs.stdout.strip() or logs.stderr.strip() or "(no output)")
 
@@ -461,7 +432,8 @@ def refuse(profiles: list[str], declared: set[str]) -> str | None:
             return f"profile {profile!r} cannot be started here: {reason}"
 
     if shutil.which("lemonfiber", path=os.environ.get("PATH", "")) is not None:
-        return "a lemonfiber binary is on PATH; this proves nothing while it is"
+        return ("a lemonfiber binary is on PATH; this proves nothing while it is. Name the one that writes "
+                "the project with LEMONFIBER instead")
 
     return None
 
@@ -495,18 +467,21 @@ def judge_everything(expected: dict[str, str], answers: list[dict], observed: li
     return errors + judge_known(broken, answers, observed)
 
 
-def stand_in(chosen: list[dict]) -> list[pathlib.Path]:
-    """The files lemonfiber would have written for these services, and only those
-    this wrote: a pair already there is somebody's own, and stays as it is."""
-    made: list[pathlib.Path] = []
+def stand_in(project: pathlib.Path, chosen: list[dict]) -> None:
+    """What lemonfiber's start would have left before `up` for these services: the files
+    it writes, and each mount's state the stack keeps in its configuration tree moved
+    into the mount tree, where the project mounts it from and where a directory Docker
+    made instead would belong to root."""
     for service in chosen:
         directory = WRITTEN_BEFORE_UP.get(service["id"])
-        if directory is None:
-            continue
-        target = ROOT / directory
-        if not any((target / name).exists() for name in (door_pair.CERTIFICATE, door_pair.KEY)):
-            made += door_pair.write(target)
-    return made
+        if directory is not None:
+            door_pair.write(project / directory)
+        for mount in service.get("mount", []):
+            kept = project / CONFIGURATION_TREE / service["id"] / mount["from"]
+            moved = project / MOUNT_TREE / service["id"] / mount["from"]
+            if kept.is_dir() and not moved.exists():
+                moved.parent.mkdir(parents=True, exist_ok=True)
+                kept.rename(moved)
 
 
 def run(profiles: list[str]) -> int:
@@ -522,57 +497,55 @@ def run(profiles: list[str]) -> int:
         print(f"::error::profiles {profiles} hold no services")
         return 1
 
-    made = stand_in(chosen)
+    scratch = pathlib.Path(tempfile.mkdtemp())
     try:
-        return started_and_judged(profiles, chosen)
+        data_root = scratch / "data"
+        data_root.mkdir()
+        project = generated.written(scratch, generated.operator(data_root, PROJECT))
+        stand_in(project, chosen)
+        return started_and_judged(project, profiles, chosen)
     finally:
-        for path in made:
-            path.unlink(missing_ok=True)
+        # What the services wrote while they ran is theirs, and what a service running
+        # as root wrote is not this run's to remove: it is left to the machine.
+        shutil.rmtree(scratch, ignore_errors=True)
 
 
-def started_and_judged(profiles: list[str], chosen: list[dict]) -> int:
+def started_and_judged(project: pathlib.Path, profiles: list[str], chosen: list[dict]) -> int:
     expected = {s["id"]: pinned(s) for s in chosen}
     probes = [probe_of(service) for service in chosen]
     errors: list[str] = []
+    env = bare_environment()
 
-    with tempfile.TemporaryDirectory() as tmp:
-        scratch = pathlib.Path(tmp)
-        (scratch / EMPTY_ENV).write_text("", encoding="utf-8")
-        (scratch / POSTURE_OVERLAY).write_text(overlay_text(posture_overlay(manifest())), encoding="utf-8")
-        data_root = scratch / "data"
-        data_root.mkdir()
-        env = bare_environment(str(data_root))
+    # Named on `down` as on `up`: a service the project holds in a profile is out of
+    # reach of a `down` that activates none of its profiles.
+    selected = [argument for profile in profiles for argument in ("--profile", profile)]
 
-        # Named on `down` as on `up`: a service the overlay names is out of reach of
-        # a `down` that activates none of its profiles.
-        selected = [argument for profile in profiles for argument in ("--profile", profile)]
+    print(f"starting {len(chosen)} service(s) across {','.join(profiles)} with plain docker compose, "
+          "from the project lemonfiber wrote, each under the posture its service file declares")
+    started = compose(env, project, *selected, "up", "--detach", "--quiet-pull")
 
-        print(f"starting {len(chosen)} service(s) across {','.join(profiles)} with plain docker compose, "
-              "each under the posture its service file declares")
-        started = compose(env, scratch, *selected, "up", "--detach", "--quiet-pull")
+    if started.returncode != 0:
+        errors.append(f"the project did not start:\n{started.stderr.strip()}")
+        compose(env, project, *selected, "down", "--volumes", "--remove-orphans")
+        return report(errors)
 
-        if started.returncode != 0:
-            errors.append(f"the project did not start:\n{started.stderr.strip()}")
-            compose(env, scratch, *selected, "down", "--volumes", "--remove-orphans")
-            return report(errors)
+    try:
+        answers = wait_for_all(probes, attempt, time.monotonic, time.sleep)
+        broken = {name for name in expected if name in KNOWN_BROKEN}
+        errors += judge_everything(expected, answers, roster(env, project))
+        describe(answers, broken)
 
-        try:
-            answers = wait_for_all(probes, attempt, time.monotonic, time.sleep)
-            broken = {name for name in expected if name in KNOWN_BROKEN}
-            errors += judge_everything(expected, answers, roster(env, scratch))
-            describe(answers, broken)
+        if errors:
+            late = (answer["id"] for answer in answers if answer.get("late"))
+            report_failure(env, project, sorted(name for name in late if name not in broken))
+    finally:
+        removed = compose(env, project, *selected, "down", "--volumes", "--remove-orphans")
+        if removed.returncode != 0:
+            errors.append(f"down failed:\n{removed.stderr.strip()}")
 
-            if errors:
-                late = (answer["id"] for answer in answers if answer.get("late"))
-                report_failure(env, scratch, sorted(name for name in late if name not in broken))
-        finally:
-            removed = compose(env, scratch, *selected, "down", "--volumes", "--remove-orphans")
-            if removed.returncode != 0:
-                errors.append(f"down failed:\n{removed.stderr.strip()}")
-
-        left = judge_teardown([row["service"] for row in roster(env, scratch)])
-        if left is not None:
-            errors.append(left)
+    left = judge_teardown([row["service"] for row in roster(env, project)])
+    if left is not None:
+        errors.append(left)
 
     if errors:
         return report(errors)
@@ -582,7 +555,7 @@ def started_and_judged(profiles: list[str], chosen: list[dict]) -> int:
         print(f"\n{len(unproved)} service(s) are recorded as not starting from a clean clone: {unproved}")
     print(
         f"\n{len(expected) - len(unproved)} service(s) started, answered, and were torn down. "
-        "No lemonfiber binary involved."
+        "No lemonfiber binary involved past writing the project."
     )
     return 0
 
@@ -793,23 +766,6 @@ def plan_verdicts() -> list[str]:
     return problems
 
 
-def posture_verdicts() -> list[str]:
-    """The overlay holds each service to its own posture, its shape included."""
-    held = posture_overlay({"service": [
-        {"id": "guard", "shape": "egress-guard"},
-        {"id": "gate", "posture": "confined"},
-        {"id": "plain"},
-    ]})["services"]
-    problems = []
-    if "NET_ADMIN" not in held["guard"]["cap_add"] or held["guard"]["read_only"]:
-        problems.append(f"the egress guard is held as {held['guard']}, without its shape's capability")
-    if held["gate"]["cap_add"] or not held["gate"]["read_only"]:
-        problems.append(f"a confined service is held as {held['gate']}, keeping a capability or a writable root")
-    if held["plain"]["cap_drop"] != ["ALL"] or "NET_ADMIN" in held["plain"]["cap_add"]:
-        problems.append(f"a standard service is held as {held['plain']}")
-    return problems
-
-
 def self_test() -> int:
     """Each verdict, driven against a stack that was never started.
 
@@ -827,7 +783,6 @@ def self_test() -> int:
         *probe_discriminates(),
         *register_verdicts(),
         *plan_verdicts(),
-        *posture_verdicts(),
     ]
 
     for problem in problems:

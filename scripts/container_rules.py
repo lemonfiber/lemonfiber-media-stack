@@ -29,12 +29,6 @@ MEDIA_SERVE = "media.serve"
 VIA = (EGRESS_GUARD,)
 USER_MODES = ("image", "puid-env", "uid")
 POSTURES = ("standard", "confined")
-# The kernel capabilities `standard` gives back after dropping every one.
-KEPT = ("CHOWN", "DAC_OVERRIDE", "FOWNER", "SETGID", "SETUID", "KILL")
-# How many processes `standard` lets a container hold at once.
-PROCESSES = 1024
-# What `standard` writes so that no privilege is gained after start.
-NO_NEW_PRIVILEGES = "no-new-privileges:true"
 # What each shape adds, and the capability a service taking it provides.
 SHAPES: dict[str, dict] = {
     "egress-guard": {"grants": ("NET_ADMIN",), "devices": ("/dev/net/tun",), "serves": EGRESS_GUARD},
@@ -309,18 +303,3 @@ def validate_service_container(service: dict, report: Report) -> None:
     for rule in (published, mounted, environed, held, routed, shaped):
         rule(service, at, report)
 
-
-def written_posture(service: dict) -> dict:
-    """The Compose keys a service's posture is written as: every kernel capability
-    dropped, the six `standard` keeps and what its shape adds given back, no
-    privilege gained after start and a process limit; `confined` gives none back
-    and has a read-only root."""
-    confined = service.get("posture") == "confined"
-    grants = SHAPES[service["shape"]]["grants"] if service.get("shape") in SHAPES else ()
-    return {
-        "cap_drop": ["ALL"],
-        "cap_add": sorted(grants if confined else (*KEPT, *grants)),
-        "security_opt": [NO_NEW_PRIVILEGES],
-        "pids_limit": PROCESSES,
-        "read_only": confined,
-    }

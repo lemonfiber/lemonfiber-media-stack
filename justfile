@@ -9,22 +9,17 @@ hooks:
 
 # Everything CI runs bar the image check, which needs the network — and the hooks
 # turned on if they are not already, this being the command run before a push.
-ci: hooks lint validate changes forms docs test forge
+ci: hooks lint validate changes docs test forge
 
 # The gate scripts themselves, read by ruff. First, because a name that does not
 # exist is a failure every check below would report as its own.
 lint:
     uvx ruff@0.16.4 check scripts/
 
-# The manifest's files against the contract, and compose.yml held in parity with it.
+# The manifest's files against the contract.
 validate:
     python3 scripts/stack_manifest.py
     python3 scripts/validate_manifest.py
-
-# Every form resolves to a valid project.
-forms:
-    python3 scripts/check_forms.py --self-test
-    python3 scripts/check_forms.py
 
 # The service count the docs state matches the one the manifest defines.
 docs:
@@ -36,11 +31,11 @@ test:
     python3 scripts/test_validate_manifest.py
 
 # Start profiles for real and make each service answer the probe stack.toml
-# declares for it, then take them down. Needs Docker and the network, and it is
-# the only check here that runs the stack rather than reading it — `just ci`
-# leaves it out for that reason. Services write into config/<service>/ while
-# they are up, which is runtime state git ignores everywhere but the four
-# templates this repo ships; expect sabnzbd.ini to come back modified.
+# declares for it, then take them down. Needs Docker, the network and a lemonfiber
+# binary to write the project, named by LEMONFIBER where it is not on the path,
+# and it is the only check here that runs the stack rather than reading it —
+# `just ci` leaves it out for that reason. The project is written into a scratch
+# copy of the stack, so nothing a service writes while it is up lands here.
 #
 #   just runs search
 #   just runs search,usenet
@@ -100,18 +95,19 @@ record vocabulary +services:
 
 # The door, started on its two networks in front of a stand-in for Jellyfin, and
 # asked every case it must refuse or pass on both of its ports; then broken
-# doors and recordings, each of which has to be caught. Needs Docker and the
-# pinned Caddy image.
+# doors and recordings, each of which has to be caught. Needs Docker, the pinned
+# Caddy image and a lemonfiber binary, whose project fixes the door's addresses.
 door:
     python3 scripts/check_door.py
     python3 scripts/check_door.py --self-test
 
 # What Jellyfin itself answers behind the door, case by case, into
-# recordings/door/. Needs Docker and the pinned Jellyfin image.
+# recordings/door/. Needs Docker, the pinned Jellyfin image and a lemonfiber binary.
 record-door:
     python3 scripts/record_door.py
 
-# Shipped config templates parse in the service that reads them. Networked.
+# Shipped config templates parse in the service that reads them. Networked, and the
+# dashboard's environment is read from the project a lemonfiber binary writes.
 configs:
     python3 scripts/check_configs.py
     python3 scripts/check_configs.py --self-test
@@ -142,22 +138,15 @@ candidate url *flags:
     python3 scripts/check_candidate.py --self-test
     python3 scripts/check_candidate.py {{url}} {{flags}}
 
-# Raw Compose validity, no manifest involved.
-config:
-    VPN_PROVIDER=protonvpn WIREGUARD_PRIVATE_KEY=x docker compose config --quiet
-
 # List the forms this stack declares.
 forms-list:
     @python3 scripts/form_profiles.py --list
 
-# Start a form, e.g. `just up tv`.
+# The `--profile` flags a form starts in the project lemonfiber writes, e.g.
+# `just form tv`.
 #
 # A form is a *set* of profiles, not one profile: `tv` means search, usenet,
 # torrent, tv and subs together. The set is read from stack.toml, so this cannot
 # drift from what lemonfiber would start.
-up form:
-    docker compose $(python3 scripts/form_profiles.py {{form}}) up -d
-
-# Stop a form the same way.
-down form:
-    docker compose $(python3 scripts/form_profiles.py {{form}}) down
+form form:
+    @python3 scripts/form_profiles.py {{form}}

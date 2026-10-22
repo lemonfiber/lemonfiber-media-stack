@@ -20,16 +20,16 @@ say() {
 staged=$(git diff --cached --name-only --diff-filter=ACM)
 
 if ! command -v python3 >/dev/null 2>&1; then
-	say "python3 is not installed, so the manifest, the forms and the script suite were not checked here. All three run in CI."
+	say "python3 is not installed, so the manifest and the script suite were not checked here. Both run in CI."
 	exit 0
 fi
 
 ran=""
 
 case "$staged" in
-*stack.toml* | *compose*)
-	python3 scripts/validate_manifest.py && python3 scripts/check_forms.py || exit 1
-	ran="${ran}manifest and forms; "
+*stack.toml* | *services/*)
+	python3 scripts/validate_manifest.py || exit 1
+	ran="${ran}manifest; "
 	;;
 esac
 

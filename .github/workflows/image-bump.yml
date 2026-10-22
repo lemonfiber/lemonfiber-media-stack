@@ -88,7 +88,7 @@ jobs:
           echo "moved=yes" >> "$GITHUB_OUTPUT"
 
       # The same offline gate the pull request will meet.
-      - name: The manifest and the compose model still agree
+      - name: The manifest still holds to its contract
         if: steps.move.outputs.moved == 'yes'
         run: python3 scripts/validate_manifest.py
 
