@@ -1,5 +1,5 @@
 {
-  "recorded_from": "lscr.io/linuxserver/bazarr@sha256:c1673816321156b904af9b7e6415ea547ae9622e4acc375358f1e1eb9ed1e904",
+  "recorded_from": "lscr.io/linuxserver/bazarr@sha256:946dc8c5bb5331418eac60050cf40a63cb8f66ac039841dda493870e3559799c",
   "note": "Its own state, asked for presenting nothing, on a fresh instance. A refusal is the pass: it holds subtitle-provider accounts and a path into the library, and neither is something the network may read.",
   "request": {
     "method": "GET",
