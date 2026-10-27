@@ -7,6 +7,9 @@
 
 <h1 align="center">lemonfiber-media-stack</h1>
 
+> [!IMPORTANT]
+> This repository is archived. Each service it held is a first-party plugin with a repository of its own, pinned in [lemonfiber/lemonfiber-plugins](https://github.com/lemonfiber/lemonfiber-plugins), which lemonfiber reads its stack from.
+
 <p align="center">
   The media stack that lemonfiber runs: indexers, download clients, the *arr
   apps, Jellyfin and Seerr. The Compose project lemonfiber writes from it runs
